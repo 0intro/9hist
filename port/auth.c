@@ -537,7 +537,7 @@ authentwrite(Chan *c, char *a, int n)
 
 /*
  *  create an authenticator and return it and optionally the
- *  unencripted ticket
+ *  unencrypted ticket
  */
 long
 authentread(Chan *c, char *a, int n)

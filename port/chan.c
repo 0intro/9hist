@@ -156,7 +156,8 @@ addelem(Cname *n, char *s)
 		n->s = t;
 		n->alen = a;
 	}
-	n->s[n->len++] = '/';
+	if(n->len>0 && n->s[n->len-1]!='/' && s[0]!='/')	/* don't insert extra slash if one is present */
+		n->s[n->len++] = '/';
 	memmove(n->s+n->len, s, i+1);
 	n->len += i;
 	return n;
@@ -473,6 +474,21 @@ undomount(Chan *c)
 	return c;
 }
 
+Chan *
+updatecname(Chan *c, char *name, int dotdot)
+{
+	if(c->name == nil)
+		c->name = newcname(name);
+	else
+		c->name = addelem(c->name, name);
+	
+	if(dotdot){
+		cleancname(c->name, c->name->s[0]=='#');	/* could be cheaper */
+		c = undomount(c);
+	}
+	return c;
+}
+
 int
 walk(Chan **cp, char *name, int domnt)
 {
@@ -494,16 +510,7 @@ walk(Chan **cp, char *name, int domnt)
 	ac->flag &= ~CCREATE;	/* not inherited through a walk */
 	if(devtab[ac->type]->walk(ac, name) != 0) {
 		/* walk succeeded: update name associated with *cp (ac) */
-		c = *cp;
-		if(c->name == nil)
-			c->name = newcname(name);
-		else
-			c->name = addelem(c->name, name);
-		
-		if(dotdot){
-			cleancname(c->name, c->name->s[0]=='#');	/* could be cheaper */
-			*cp = undomount(c);
-		}
+		*cp = updatecname(*cp, name, dotdot);
 		if(domnt)
 			*cp = domount(*cp);
 		return 0;
@@ -535,23 +542,22 @@ walk(Chan **cp, char *name, int domnt)
 	if(c == nil)
 		return -1;
 
-	if(dotdot)
-		c = undomount(c);
-
 	if(c->mh){
 		putmhead(c->mh);
 		c->mh = nil;
 	}
-	if(domnt) {
-		if(waserror()) {
-			cclose(c);
-			nexterror();
-		}
-		c = domount(c);
-		poperror();
-	}
+
+	/* replace c->name by ac->name */
+	cnameclose(c->name);
+	c->name = ac->name;
+	if(ac->name)
+		incref(ac->name);
+	c = updatecname(c, name, dotdot);
 	cclose(ac);
 	*cp = c;
+
+	if(domnt)
+		*cp = domount(c);
 	return 0;
 }
 
@@ -733,8 +739,11 @@ namec(char *name, int amode, int omode, ulong perm)
 		mntok = 0;
 		elem[0] = 0;
 		n = 0;
-		while(*name && (*name != '/' || n < 2))
+		while(*name && (*name != '/' || n < 2)){
+			if(n >= NAMELEN-1)
+				error(Efilename);
 			elem[n++] = *name++;
+		}
 		elem[n] = '\0';
 		n = chartorune(&r, elem+1)+1;
 		if(r == 'M') {

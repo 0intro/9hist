@@ -2012,7 +2012,7 @@ addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 	if(i > 100 && once++ == 0){
 		print("very long tcp resequence queue: %d\n", length);
 		for(rp1 = tcb->reseq, i = 0; i < 10 && rp1 != nil; rp1 = rp1->next, i++)
-			print("0x%lux 0x%lux 0x%ux", rp1->seg.seq, rp1->seg.ack,
+			print("0x%lux 0x%lux 0x%ux\n", rp1->seg.seq, rp1->seg.ack,
 				rp1->seg.flags);
 		return -1;
 	}
