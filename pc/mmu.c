@@ -150,9 +150,9 @@ mmuinit(void)
 	ktoppg.pa = ktoppg.va & ~KZERO;
 
 	/*  map all memory to KZERO (add some address space for ISA memory) */
-	isamemalloc.addr = conf.topofmem;
-	isamemalloc.end = 64*MB;
-	npage = isamemalloc.end/BY2PG;
+	isamemalloc.addr = 0xd8000;
+	isamemalloc.end = 0xe0000;
+	npage = 64*MB/BY2PG;
 	nbytes = PGROUND(npage*BY2WD);		/* words of page map */
 	nkpt = nbytes/BY2PG;			/* pages of page map */
 	kpt = xspanalloc(nbytes, BY2PG, 0);
