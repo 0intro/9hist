@@ -135,7 +135,10 @@ sysfsession(ulong *arg)
 		n = convS2M(f, buf);
 		if((*devtab[c->type].write)(c, buf, n, 0) != n)
 			error(Emountrpc);
+	dkhack:
 		n = (*devtab[c->type].read)(c, buf, MAXMSG, 0);
+		if(n == 2 && buf[0] == 'O' && buf[1] == 'K')
+			goto dkhack;
 		if(convM2S(buf, f, n) == 0)
 			error(Emountrpc);
 		if(f->type == Rsession){
@@ -409,8 +412,10 @@ authcheck(Chan *c, char *a, int n)
 		c->aux = newcrypt();
 	cp = c->aux;
 	convM2T(a, &cp->t, evekey);
-	if(cp->t.num != AuthTc || strcmp(u->p->user, cp->t.cuid))
+	if(cp->t.num != AuthTc)
 		error(Ebadarg);
+	if(strcmp(u->p->user, cp->t.cuid))
+		error(cp->t.cuid);
 	convM2A(a+TICKETLEN, &cp->a, cp->t.key);
 	if(cp->a.num != AuthAs || memcmp(cp->t.chal, cp->a.chal, CHALLEN))
 		error(Eperm);

@@ -1,6 +1,7 @@
 #include "../port/portfns.h"
 
 void	meminit(void);
+void	bbinit(void);
 void	bigcursor(void);
 void	bootargs(ulong);
 #define	clearmmucache()		/* 386 doesn't have one */

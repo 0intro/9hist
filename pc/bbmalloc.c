@@ -18,7 +18,7 @@ enum {
 	nbbarena=4096	/* number of words in an arena */
 };
 
-static ulong	bbarena[narena][nbbarena];
+static ulong	*bbarena[narena];
 static ulong	*bbcur[narena] = {&bbarena[0][0], &bbarena[1][0]};
 static ulong	*bblast[narena] = {0, 0};
 
@@ -42,6 +42,18 @@ bbmalloc(int nbytes)
 	bblast[a] = ans;
 	return ans;
 }
+
+void
+bbinit(void)
+{
+	int i;
+
+	if(bbarena[0])
+		return;
+	for(i = 0; i < narena; i++)
+		bbarena[i] = xalloc(nbbarena);
+}
+
 
 void
 bbfree(void *p, int n)

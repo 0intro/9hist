@@ -293,6 +293,7 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		|| ldepth > 3 || ldepth < 0)
 			error(Ebadarg);
 		cursoroff(1);
+		bbinit();
 		setscreen(maxx, maxy, ldepth);
 		cursoron(1);
 		return n;

@@ -94,7 +94,6 @@ boot(int argc, char *argv[])
 	if(fd < 0)
 		fatal("can't connect to file server");
 	if(!islocal && !ishybrid){
-		nop(fd);
 		if(cfs)
 			fd = (*cfs)(fd);
 		doauthenticate(fd, mp);

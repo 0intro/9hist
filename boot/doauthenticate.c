@@ -101,12 +101,12 @@ checkkey(Method *mp, char *name, char *key)
 	strcpy(tr.uid, name);
 	convTR2M(&tr, trbuf);
 	msg = fromauth(mp, trbuf, tbuf);
-	if(msg)
-		return msg;
 	if(msg == ccmsg){
 		fprint(2, "boot: can't contact auth server, passwd unchecked\n");
 		return 0;
 	}
+	if(msg)
+		return msg;
 	convM2T(tbuf, &t, key);
 	if(t.num == AuthTc && strcmp(name, t.cuid)==0)
 		return 0;
