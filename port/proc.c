@@ -634,7 +634,6 @@ procdump(void)
 	int i;
 	Proc *p;
 
-	print("process table %d:\n", conf.nproc);
 	for(i=0; i<conf.nproc; i++){
 		p = procalloc.arena+i;
 		if(p->state != Dead){
@@ -643,7 +642,6 @@ procdump(void)
 				statename[p->state], p->time[0], p->time[1], p->r);
 		}
 	}
-	print("procdump: ret\n");
 }
 
 void
