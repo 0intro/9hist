@@ -41,6 +41,16 @@ enum
 	Tdst,
 	Tsrc,
 	Tifc,
+
+	Cother = 0,
+	Cbyte,		/* single byte */
+	Cmbyte,		/* single byte with mask */
+	Cshort,		/* single short */
+	Cmshort,	/* single short with mask */
+	Clong,		/* single long */
+	Cmlong,		/* single long with mask */
+	Cifc,
+	Cmifc,
 };
 
 char *ftname[] = 
@@ -60,9 +70,11 @@ struct Ipmux
 	Ipmux	*yes;
 	Ipmux	*no;
 	uchar	type;		/* type of field (Txxxx) */
+	uchar	ctype;		/* tupe of comparison (Cxxxx) */
 	uchar	len;		/* length in bytes of item to compare */
 	uchar	n;		/* number of items val points to */
 	short	off;		/* offset of comparison */
+	short	eoff;		/* end offset of comparison */
 	uchar	*val;
 	uchar	*mask;
 	uchar	*e;		/* val + n*len */
@@ -210,7 +222,7 @@ parseval(uchar *v, char *p, int len)
 static Ipmux*
 parsemux(char *p)
 {
-	int n;
+	int n, nomask;
 	Ipmux *f;
 	char *val;
 	char *mask;
@@ -244,7 +256,9 @@ parsemux(char *p)
 		default:
 			goto parseerror;
 		}
+		nomask = 0;
 	} else {
+		nomask = 1;
 		f->mask = smalloc(f->len);
 		memset(f->mask, 0xff, f->len);
 	}
@@ -270,7 +284,25 @@ parsemux(char *p)
 		v += f->len;
 	}
 
+	f->eoff = f->off + f->len;
 	f->e = f->val + f->n*f->len;
+	f->ctype = Cother;
+	if(f->n == 1){
+		switch(f->len){
+		case 1:
+			f->ctype = nomask ? Cbyte : Cmbyte;
+			break;
+		case 2:
+			f->ctype = nomask ? Cshort : Cmshort;
+			break;
+		case 4:
+			if(f->type == Cifc)
+				f->ctype = nomask ? Cifc : Cmifc;
+			else
+				f->ctype = nomask ? Clong : Cmlong;
+			break;
+		}
+	}
 	return f;
 
 parseerror:
@@ -372,7 +404,7 @@ ipmuxcopy(Ipmux *f)
 	nf->no = ipmuxcopy(f->no);
 	nf->yes = ipmuxcopy(f->yes);
 	nf->val = smalloc(f->n*f->len);
-	nf->e = nf->val + f->n*f->len;
+	nf->e = nf->val + f->len*f->n;
 	memmove(nf->val, f->val, f->n*f->len);
 	return nf;
 }
@@ -619,54 +651,72 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 	if(p->priv == nil)
 		goto nomatch;
 
-	/* make interface address part of packet */
-	if(bp->rp - bp->base < IPv4addrlen){
-		bp = padblock(bp, IPv4addrlen);
-		bp->rp += IPv4addrlen;
-	}
 	h = bp->rp;
-	memmove(h-IPv4addrlen, ia+IPv4off, IPv4addrlen);
 	len = BLEN(bp);
 
-	/* run the v4 filter (needs optimizing) */
+	/* run the v4 filter */
 	rlock(f);
 	c = nil;
 	mux = f->ipmux->priv;
-match:
 	while(mux != nil){
-		if(mux->len + mux->off > len){
+		if(mux->eoff > len){
 			mux = mux->no;
 			continue;
 		}
-		v = mux->val;
-		for(e = mux->e; v < e; v = ve){
-			m = mux->mask;
-			hp = h + mux->off;
-			for(ve = v + mux->len; v < ve; v++){
-				if((*hp++ & *m++) != *v)
-					break;
-			}
-			if(v == ve){
-				if(mux->conv != nil)
-					c = mux->conv;
-				mux = mux->yes;
-				goto match;
+		hp = h + mux->off;
+		switch(mux->ctype){
+		case Cbyte:
+			if(*mux->val == *hp)
+				goto yes;
+			break;
+		case Cmbyte:
+			if((*mux->val & *mux->mask) == *hp)
+				goto yes;
+			break;
+		case Cshort:
+			if(*((ushort*)mux->val) == *(ushort*)hp)
+				goto yes;
+			break;
+		case Cmshort:
+			if((*((ushort*)mux->val) & (*((ushort*)mux->mask))) == *(ushort*)hp)
+				goto yes;
+			break;
+		case Clong:
+			if(*((ulong*)mux->val) == *(ulong*)hp)
+				goto yes;
+			break;
+		case Cmlong:
+			if((*((ulong*)mux->val) & (*((ulong*)mux->mask))) == *(ulong*)hp)
+				goto yes;
+			break;
+		case Cifc:
+			if(*((ulong*)mux->val) == *(ulong*)ia)
+				goto yes;
+			break;
+		case Cmifc:
+			if((*((ulong*)mux->val) & (*((ulong*)mux->mask))) == *(ulong*)ia)
+				goto yes;
+			break;
+		default:
+			v = mux->val;
+			for(e = mux->e; v < e; v = ve){
+				m = mux->mask;
+				hp = h + mux->off;
+				for(ve = v + mux->len; v < ve; v++){
+					if((*hp++ & *m++) != *v)
+						break;
+				}
+				if(v == ve)
+					goto yes;
 			}
 		}
 		mux = mux->no;
+		continue;
+yes:
+		if(mux->conv != nil)
+			c = mux->conv;
+		mux = mux->yes;
 	}
-	runlock(f);
-
-	if(c != nil){
-		if(bp->next){
-			bp = concatblock(bp);
-			if(bp == 0)
-				panic("ilpullup");
-		}
-		qpass(c->rq, bp);
-		return;
-	}
-
 nomatch:
 	/* doesn't match any filter, hand it to the specific protocol handler */
 	ip = (Iphdr*)bp->rp;
