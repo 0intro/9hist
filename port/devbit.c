@@ -9,7 +9,7 @@
 
 #include	<libg.h>
 #include	<gnot.h>
-#include	"mouse.h"
+#include	"screen.h"
 
 extern GFont	*defont;
 

@@ -9,7 +9,10 @@
 
 #include	<libg.h>
 #include	<gnot.h>
-#include	"mouse.h"
+#include	"screen.h"
+
+/* gnot screen.h defines gbitblt to use balu; doesn't work here */
+#undef gbitblt
 
 #define	MINX	8
 
@@ -76,13 +79,6 @@ screenputc(int c)
 		buf[1] = 0;
 		out.pos = gbitbltstring(&gscreen, out.pos, defont, buf, S);
 	}
-}
-
-/* Use the balu version */
-void
-gbitblt(GBitmap *d, Point p, GBitmap *s, Rectangle r, Fcode f)
-{
-	balubitblt(d, p, s, r, f);
 }
 
 void
