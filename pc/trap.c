@@ -223,8 +223,6 @@ syscall(Ureg *ur)
 	ulong	sp;
 	long	ret;
 	int	i;
-	static int times;
-ulong	*z;
 
 	u->p->insyscall = 1;
 	u->p->pc = ur->pc;
@@ -240,11 +238,6 @@ ulong	*z;
 	sp = ur->usp;
 	u->nerrlab = 0;
 	ret = -1;
-z = (ulong *)sp;
-print("syscall %lux %lux %lux %lux\n", *z, *(z+1), *(z+2), *(z+3));
-dumpregs(ur);
-if(++times==3)
-	panic("3rd time in syscall");
 	if(!waserror()){
 		if(ax >= sizeof systab/BY2WD){
 			pprint("bad sys call number %d pc %lux\n", ax, ur->pc);
@@ -256,7 +249,6 @@ if(++times==3)
 		ret = (*systab[ax])((ulong*)(sp+BY2WD));
 		poperror();
 	}
-print("return from syscall\n");
 	if(u->nerrlab){
 		print("bad errstack [%d]: %d extra\n", ax, u->nerrlab);
 		for(i = 0; i < NERR; i++)

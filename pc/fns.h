@@ -64,4 +64,5 @@ void	systrap(void);
 void	touser(void);
 void	trapinit(void);
 int	tas(Lock*);
+void	vgainit(void);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))

@@ -282,3 +282,35 @@ tcprcvwin(Ipconv *s)
 	else
 		tcb->rcv.wnd = Streamhi;
 }
+
+/*
+ * Network byte order functions
+ */
+
+void
+hnputs(uchar *ptr, ushort val)
+{
+	ptr[0] = val>>8;
+	ptr[1] = val;
+}
+
+void
+hnputl(uchar *ptr, ulong val)
+{
+	ptr[0] = val>>24;
+	ptr[1] = val>>16;
+	ptr[2] = val>>8;
+	ptr[3] = val;
+}
+
+ulong
+nhgetl(uchar *ptr)
+{
+	return ((ptr[0]<<24) | (ptr[1]<<16) | (ptr[2]<<8) | ptr[3]);
+}
+
+ushort
+nhgets(uchar *ptr)
+{
+	return ((ptr[0]<<8) | ptr[1]);
+}

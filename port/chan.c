@@ -34,17 +34,9 @@ decref(Ref *r)
 	lock(r);
 	x = --r->ref;
 	unlock(r);
-	if(x < 0) {
-		if(u) {
-			print("%d: %s %lux %lux\n", u->p->pid, u->p->text, *(ulong*)((Ureg*)UREGADDR)->pc, r);
-			for(i = 0; i < NSEG; i++) {
-				s = u->p->seg[i];
-				if(s)
-					print("%d: %lux %lux %lux", i, s, s->base, s->top);
-			}
-		}
+	if(x < 0) 
 		panic("decref");
-	}
+
 	return x;
 }
 

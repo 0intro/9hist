@@ -178,8 +178,8 @@ mapstack(Proc *p)
 	/*
 	 *  point top level page table to bottom level ones
 	 */
-	memmove(toppt, p->mmu, MAXMMU*sizeof(ulong));
-	memmove(&toppt[TOPOFF(USTKBTM)], &p->mmu[MAXMMU], MAXSMMU*sizeof(ulong));
+	memmove(toppt, p->mmue, MAXMMU*sizeof(ulong));
+	memmove(&toppt[TOPOFF(USTKBTM)], &p->mmue[MAXMMU], MAXSMMU*sizeof(ulong));
 
 	/* map in u area */
 	upt[0] = PPN(p->upage->pa) | PTEVALID | PTEKERNEL | PTEWRITE;
@@ -216,7 +216,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 	int topoff;
 	ulong *pt;
 	Proc *p;
-	int i;
+	int i = 0;
 
 print("putmmu %lux %lux\n", va, pa); /**/
 	if(u==0)
@@ -238,18 +238,19 @@ print("putmmu %lux %lux\n", va, pa); /**/
 	 *  if bottom level page table missing, allocate one
 	 */
 	pg = p->mmu[i];
+print("toppt[%d] was %lux\n", topoff, toppt[topoff]);
 	if(pg == 0){
 		pg = p->mmu[i] = newpage(1, 0, 0);
 		p->mmue[i] = PPN(pg->pa) | PTEVALID | PTEUSER | PTEWRITE;
 		toppt[topoff] = p->mmue[i];
-print("toppt[%d] = %lux\n", topoff, toppt[topoff]);
+print("toppt[%d] now %lux\n", topoff, toppt[topoff]);
 	}
 
 	/*
 	 *  fill in the bottom level page table
 	 */
-print("%lux[%d] was %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);
 	pt = (ulong*)(p->mmu[i]->pa|KZERO);
+print("%lux[%d] was %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);
 	pt[BTMOFF(va)] = pa | PTEUSER;
 print("%lux[%d] now %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);
 

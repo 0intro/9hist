@@ -16,7 +16,6 @@ fault386(Ureg *ur)
 	int user;
 	int n;
 	int insyscall;
-	static int times;
 
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
@@ -29,8 +28,6 @@ dumpregs(ur);
 	read = !(ur->ecode & 2);
 	user = (ur->ecode & 4);
 	n = fault(addr, read);
-if(++times==3)
-	panic("3rd time in fault");
 	if(n < 0){
 		if(user){
 			pprint("user %s error addr=0x%lux\n", read?"read":"write", addr);

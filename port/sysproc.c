@@ -96,6 +96,15 @@ sysfork(ulong *arg)
 	return pid;
 }
 
+static ulong
+l2be(long l)
+{
+	uchar *cp;
+
+	cp = (uchar*)&l;
+	return (cp[0]<<24) | (cp[1]<<16) | (cp[2]<<8) | cp[3];
+}
+
 long
 sysexec(ulong *arg)
 {
@@ -114,6 +123,7 @@ sysexec(ulong *arg)
 	char line[sizeof(Exec)];
 	Fgrp *f;
 	Image *img;
+	ulong magic, text, entry, data, bss;
 
 	p = u->p;
 	validaddr(arg[0], 1, 0);
@@ -132,10 +142,13 @@ sysexec(ulong *arg)
 	if(n < 2)
     Err:
 		error(Ebadexec);
-	if(n==sizeof(Exec) && exec.magic==AOUT_MAGIC){
-		if((exec.text&KZERO)
-		|| (ulong)exec.entry < UTZERO+sizeof(Exec)
-		|| (ulong)exec.entry >= UTZERO+sizeof(Exec)+exec.text)
+	magic = l2be(exec.magic);
+	text = l2be(exec.text);
+	entry = l2be(exec.entry);
+	if(n==sizeof(Exec) && magic==AOUT_MAGIC){
+		if((text&KZERO)
+		|| entry < UTZERO+sizeof(Exec)
+		|| entry >= UTZERO+sizeof(Exec)+text)
 			goto Err;
 		goto Binary;
 	}
@@ -165,9 +178,11 @@ sysexec(ulong *arg)
 
     Binary:
 	poperror();
-	t = (UTZERO+sizeof(Exec)+exec.text+(BY2PG-1)) & ~(BY2PG-1);
-	d = (t + exec.data + (BY2PG-1)) & ~(BY2PG-1);
-	bssend = t + exec.data + exec.bss;
+	data = l2be(exec.data);
+	bss = l2be(exec.bss);
+	t = (UTZERO+sizeof(Exec)+text+(BY2PG-1)) & ~(BY2PG-1);
+	d = (t + data + (BY2PG-1)) & ~(BY2PG-1);
+	bssend = t + data + bss;
 	b = (bssend + (BY2PG-1)) & ~(BY2PG-1);
 	if((t|d|b) & KZERO)
 		error(Ebadexec);
@@ -254,7 +269,7 @@ sysexec(ulong *arg)
 	p->seg[TSEG] = ts;
 	ts->flushme = 1;
 	ts->fstart = 0;
-	ts->flen = sizeof(Exec)+exec.text;
+	ts->flen = sizeof(Exec)+text;
 
 	/* Data. Shared. */
 	s = newseg(SG_DATA, t, (d-t)>>PGSHIFT);
@@ -264,7 +279,7 @@ sysexec(ulong *arg)
 	incref(img);
 	s->image = img;
 	s->fstart = ts->fstart+ts->flen;
-	s->flen = exec.data;
+	s->flen = data;
 
 	/* BSS. Zero fill on demand */
 	p->seg[BSEG] = newseg(SG_BSS, d, (b-d)>>PGSHIFT);
@@ -288,7 +303,7 @@ sysexec(ulong *arg)
 	 */
 	flushmmu();
 	clearmmucache();
-	execpc(exec.entry);
+	execpc(entry);
 	sp = (ulong*)(USTKTOP - ssize);
 	*--sp = nargs;
 	((Ureg*)UREGADDR)->usp = (ulong)sp;
@@ -488,6 +503,7 @@ syssegdetach(ulong *arg)
 	int i;
 	Segment *s;
 
+	s = 0;
 	for(i = 0; i < NSEG; i++)
 		if(s = u->p->seg[i]) {
 			qlock(&s->lk);

@@ -11,7 +11,7 @@
 struct {
 	IOQ;			/* lock to klogputs */
 	QLock;			/* qlock to getc */
-}	klogq;
+}klogq;
 
 IOQ	lineq;			/* lock to getc; interrupt putc's */
 IOQ	printq;
@@ -141,6 +141,7 @@ panic(char *fmt, ...)
 	char buf[PRINTSIZE];
 	int n;
 
+	print("panic: %lux m=%lux\n", &fmt, m);
 	strcpy(buf, "panic: ");
 	n = doprint(buf+7, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';

@@ -1464,7 +1464,7 @@ dkcsckproc(void *a)
 			break;
 		
 		case T_SRV:	/* ignore it, it's useless */
-			print("dksrvmesg(%d)\n", line);
+/*			print("dksrvmesg(%d)\n", line);		/**/
 			break;
 		
 		case T_RESTART:	/* datakit reboot */
