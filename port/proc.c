@@ -351,7 +351,7 @@ tfn(void *arg)
 void
 tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 {
-	ulong when;
+	ulong when, i;
 	Proc *f, **l;
 
 	when = MS2TK(ms)+MACHP(0)->ticks;
@@ -359,6 +359,7 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 	lock(&talarm);
 	/* take out of list if checkalarm didn't */
 	if(up->trend) {
+i = 0;
 		l = &talarm.list;
 		for(f = *l; f; f = f->tlink) {
 			if(f == up) {
@@ -366,6 +367,12 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 				break;
 			}
 			l = &f->tlink;
+if(i++ > 20) {
+	print("tlarm loop: %lux\n", talarm.list);
+	for(i = 20, f = talarm.list; f && i--; f = f->tlink)
+		print("%lux ", f);
+		for(;;);
+}
 		}
 	}
 	/* insert in increasing time order */

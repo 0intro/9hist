@@ -8,12 +8,19 @@
 void
 lock(Lock *l)
 {
+	int loop;
+
 	if(tas(&l->key) == 0)
 		return;
 
+	loop = 50000000;
 	for(;;){
-		while(l->key)
-			;
+		while(l->key) {
+			if(loop-- <= 0) {
+				dumpstack();
+				panic("lock loop: lock %lux\n", l);
+			}
+		}
 		if(tas(&l->key) == 0)
 			return;
 	}
