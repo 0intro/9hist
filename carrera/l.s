@@ -770,9 +770,18 @@ ccache:
 	BGTZ	R9, ccache
 	MOVW	R10, M(STATUS)
 	WAIT
+
+	/*
+	 * set up 32 byte primary cache line sizes,
+	 * kseg0 cache mode,
+	 * and store conditional using tlb cache mode
+	 */
 	MOVW	M(CONFIG), R1
-	OR	$((1<<4)|(1<<5)), R1
+	WAIT
+	AND	$~0x3f, R1
+	OR	$((1<<4)|(1<<5)|(PTECOHERXCLW>>3)), R1
 	MOVW	R1, M(CONFIG)
+	WAIT
 	RET
 	
 TEXT	getcallerpc(SB), $0

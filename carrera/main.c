@@ -31,6 +31,7 @@ Softtlb stlb[MAXMACH][STLBSIZE];
 
 Conf	conf;
 FPsave	initfp;
+int	configreg;
 
 int	int0mask = 0xff;	/* interrupts enabled for first 8259 */
 int	int1mask = 0xff;	/* interrupts enabled for second 8259 */
@@ -56,6 +57,7 @@ main(void)
 	vecinit();
 	screeninit();
 /*	iprint("\n\nBrazil\n");		/**/
+	print("Brazil config reg %#lux\n", configreg);
 	pageinit();
 	procinit0();
 	initseg();
@@ -144,7 +146,7 @@ machinit(void)
 	clrfpintr();
 
 	/* scrub cache */
-	((void(*)(void))((ulong)cleancache|0xA0000000))();
+	configreg = ((int(*)(void))((ulong)cleancache|0xA0000000))();
 
 	memset(m, 0, sizeof(Mach));
 
@@ -413,6 +415,11 @@ exit(int type)
 	uchar *vec;
 
 	USED(type);
+
+	lock(&active);
+	active.machs &= ~(1<<m->machno);
+	active.exiting = 1;
+	unlock(&active);
 
 	spllo();
 	print("cpu%d exiting\n", m->machno);

@@ -924,8 +924,10 @@ genrandom(void*)
 
 	for(;;){
 		for(;;)
-			if(++rb.randomcount > 1000000)
+			if(++rb.randomcount > 100000)
 				break;
+			if(anyhigher())
+				sched();
 		if(!rbnotfull(0))
 			sleep(&rb.producer, rbnotfull, 0);
 	}
