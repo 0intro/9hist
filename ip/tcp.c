@@ -2321,9 +2321,9 @@ tcpinit(Fs *fs)
 	tcp->inuse = tcpinuse;
 	tcp->gc = tcpgc;
 	tcp->ipproto = IP_TCPPROTO;
-	tcp->nc = Nchans;
+	tcp->nc = scalednconv();
 	tcp->ptclsize = sizeof(Tcpctl);
-	tpriv->stats[MaxConn] = Nchans;
+	tpriv->stats[MaxConn] = tcp->nc;
 
 	Fsproto(fs, tcp);
 }

@@ -521,6 +521,11 @@ i8250disable(Uart* uart)
 	ctlr = uart->regs;
 	ctlr->sticky[Ier] = 0;
 	csr8w(ctlr, Ier, 0);
+
+	if(ctlr->iena != 0){
+		intrdisable(ctlr->irq, i8250interrupt, uart, ctlr->tbdf, uart->name);
+		ctlr->iena = 0;
+	}
 }
 
 static void
@@ -552,6 +557,20 @@ i8250enable(Uart* uart, int ie)
 
 	(*uart->phys->dtr)(uart, 1);
 	(*uart->phys->rts)(uart, 1);
+}
+
+void*
+i8250alloc(int io, int irq, int tbdf)
+{
+	Ctlr *ctlr;
+
+	if((ctlr = malloc(sizeof(Ctlr))) != nil){
+		ctlr->io = io;
+		ctlr->irq = irq;
+		ctlr->tbdf = tbdf;
+	}
+
+	return ctlr;
 }
 
 static Uart*

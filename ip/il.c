@@ -1386,7 +1386,7 @@ ilinit(Fs *f)
 	il->inuse = ilinuse;
 	il->gc = nil;
 	il->ipproto = IP_ILPROTO;
-	il->nc = Nchans;
+	il->nc = scalednconv();
 	il->ptclsize = sizeof(Ilcb);
 	Fsproto(f, il);
 }

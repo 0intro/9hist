@@ -1344,3 +1344,11 @@ ndbwrite(Fs *f, char *a, ulong off, int n)
 	f->ndb[off+n] = 0;
 	return n;
 }
+
+ulong
+scalednconv(void)
+{
+	if(cpuserver && conf.npage*BY2PG >= 128*MB)
+		return Nchans*4;
+	return Nchans;
+}

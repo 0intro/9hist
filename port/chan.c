@@ -1237,6 +1237,7 @@ if(c->umh != nil){
 				putmhead(m);
 			cclose(c);
 			c = cnew;
+			c->name = addelem(c->name, e.elems[e.nelems-1]);
 			break;
 		}else{		/* create failed */
 			cclose(cnew);

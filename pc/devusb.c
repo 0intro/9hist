@@ -204,7 +204,7 @@ struct Endpt {
 	int		data01;	/* 0=DATA0, 1=DATA1 */
 	byte		eof;
 	ulong	csp;
-	byte		isopen;	/* ep operations forbidde on open endpoints */
+	byte		isopen;	/* ep operations forbidden on open endpoints */
 	byte		mode;	/* OREAD, OWRITE, ORDWR */
 	byte		nbuf;	/* number of buffers allowed */
 	byte		iso;
@@ -877,8 +877,8 @@ schedendpt(Endpt *e)
 	if (e->isopen){
 		return -1;
 	}
-		
-	e->curblock = allocb(e->maxpkt);
+	if (e->curblock == nil)
+		e->curblock = allocb(e->maxpkt);
 	if (e->curblock == nil)
 		panic("schedept: allocb");
 	e->curbytes = 0;
@@ -975,10 +975,8 @@ devendpt(Udev *d, int id, int add)
 	e->ref = 1;
 	e->x = id&0xF;
 	e->id = id;
-	e->iso = 0;
 	e->sched = -1;
 	e->maxpkt = 8;
-	e->pollms = 0;
 	e->nbuf = 1;
 	e->dev = d;
 	e->active = 0;
@@ -1005,7 +1003,6 @@ freept(Endpt *e)
 {
 	if(e != nil && decref(e) == 0){
 		XPRINT("freept(%d,%d)\n", e->dev->x, e->x);
-		e->isopen = 0;
 		unschedendpt(e);
 		e->dev->ep[e->x] = nil;
 		eptdeactivate(e);
@@ -1561,8 +1558,8 @@ usbopen(Chan *c, int omode)
 			}
 			if(schedendpt(e) < 0)
 				error("can't schedule USB endpoint");
+			e->isopen++;
 			eptactivate(e);
-			e->isopen = 1;
 		}
 		incref(d);
 		break;
@@ -1599,6 +1596,7 @@ void
 usbclose(Chan *c)
 {
 	Udev *d;
+	int s;
 
 	if(c->qid.type == QTDIR || c->qid.path < Q3rd)
 		return;
@@ -1608,6 +1606,15 @@ usbclose(Chan *c)
 		nexterror();
 	}
 	d = usbdevice(c);
+	s = QID(c->qid) - Qep0;
+	if(s >= 0 && s < nelem(d->ep)){
+		Endpt *e;
+		if((e = d->ep[s]) == nil) {
+			XPRINT("usbopen failed (endpoint)\n");
+			error(Enodev);
+		}
+		e->isopen--;
+	}
 	if(QID(c->qid) == Qctl)
 		d->busy = 0;
 	if(c->flag & COPEN)

@@ -43,6 +43,7 @@ int	i8042auxcmd(int);
 void	i8042auxenable(void (*)(int, int));
 void	i8042reset(void);
 void	i8250console(void);
+void*	i8250alloc(int, int, int);
 void	i8253init(int, int);
 void	i8253enable(void);
 uvlong	i8253read(uvlong*);
