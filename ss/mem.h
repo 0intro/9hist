@@ -71,7 +71,7 @@
 #define	ROMSEGM		0xFFE80000
 #define	ROMEND		0xFFEC0000
 #define	PG2ROM		((ROMEND-ROMSEGM)/BY2PG)
-#define	NIOSEGM		((MB/BY2SEGM) + 4)	/* 1M for screen + overhead */
+#define	NIOSEGM		((MB/BY2SEGM) + 8)	/* 1M for screen + overhead */
 #define	IOSEGM0		(ROMSEGM-NIOSEGM*BY2SEGM)
 #define	IOPMEG0		(ROMPMEG-NIOSEGM)
 #define	IOEND		ROMSEGM

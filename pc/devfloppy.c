@@ -818,7 +818,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	fl.cmd[fl.ncmd++] = 0xFF;
 	if(floppycmd() < 0){
 		spllo();
-		print("xfer cmd failed\n");
+/*		print("xfer cmd failed\n");/**/
 		error(Eio);
 	}
 
@@ -832,7 +832,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	 *  check for errors
 	 */
 	if(fl.nstat < 7){
-		print("xfer result failed %lux\n", inb(Pmsr));
+/*		print("xfer result failed %lux\n", inb(Pmsr));/**/
 		fl.confused = 1;
 		error(Eio);
 	}

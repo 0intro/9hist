@@ -10,6 +10,8 @@
 
 #define Nbuf	2
 #define DATASIZE	(32*512)
+#undef DATASIZE
+#define	DATASIZE	(64*1024)
 
 struct{
 	Lock;
