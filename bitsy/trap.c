@@ -7,18 +7,7 @@
 #include	"ureg.h"
 #include	"../port/error.h"
 
-struct Intrregs
-{
-	ulong	icip;	/* pending IRQs */
-	ulong	icmr;	/* IRQ mask */
-	ulong	iclr;	/* IRQ if bit == 0, FRIQ if 1 */
-	ulong	iccr;	/* control register */
-	ulong	icfp;	/* pending FIQs */
-	ulong	dummy1[3];
-	ulong	icpr;	/* pending interrupts */
-};
-
-struct Intrregs *intrregs;
+Intrregs *intrregs;
 
 typedef struct Vctl {
 	Vctl*	next;			/* handlers on this vector */
@@ -49,8 +38,24 @@ void (*doze)(void);
 static void	irq(Ureg*);
 static void	gpiointr(Ureg*, void*);
 
+/* recover state after power suspend
+ * NB: to help debugging bad suspend code,
+ *     I changed some prints below to iprints,
+ *     to avoid deadlocks when a panic is being
+ *     issued during the suspend/resume handler.
+ */
+void
+trapresume(void)
+{
+	vpage0 = (Vpage0*)EVECTORS;
+	memmove(vpage0->vectors, vectors, sizeof(vpage0->vectors));
+	memmove(vpage0->vtable, vtable, sizeof(vpage0->vtable));
+	wbflush();
+	mappedIvecEnable();
+}
+
 /*
- *  set up for exceptioons
+ *  set up for exceptions
  */
 void
 trapinit(void)
@@ -751,8 +756,10 @@ _dumpstack(Ureg *ureg)
 	ulong *p;
 	extern ulong etext;
 
-	if(up == 0)
+	if(up == 0){
+		print("no current proc\n");
 		return;
+	}
 
 	print("ktrace /kernel/path %.8lux %.8lux %.8lux\n", ureg->pc, ureg->sp, ureg->r14);
 	i = 0;

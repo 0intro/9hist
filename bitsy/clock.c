@@ -16,10 +16,21 @@ typedef struct OSTimer
 	ulong	oier;		/* timer interrupt enable register */
 } OSTimer;
 
-static OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
+OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
 static int clockinited;
 
 static void	clockintr(Ureg*, void*);
+
+void
+clockpower(int on)
+{
+
+	if (on){
+		timerregs->ossr |= 1<<0;
+		timerregs->oier = 1<<0;
+		timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
+	}
+}
 
 void
 clockinit(void)

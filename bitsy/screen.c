@@ -40,6 +40,8 @@ struct sa1110fb {
 	ushort	pixel[Wid*Ht];		/* Pixel data */
 } *framebuf;
 
+short savedpalette[16];	/* saved during suspend mode */
+
 enum {
 /* LCD Control Register 0, lcd->lccr0 */
 	LEN	=  0,	/*  1 bit */
@@ -205,6 +207,18 @@ lcdtweak(Cmdbuf *cmd)
 			| (atoi(cmd->f[1])<<VSW)
 			| (atoi(cmd->f[2])<<EFW)
 			| (atoi(cmd->f[3])<<BFW);
+}
+
+void
+screenpower(int on)
+{
+	if (on == 0){
+		memmove(savedpalette, framebuf->palette, sizeof framebuf->palette);
+		blankscreen(1);
+	} else {
+		memmove(framebuf->palette, savedpalette, sizeof framebuf->palette);
+		blankscreen(0);
+	}
 }
 
 void

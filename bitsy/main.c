@@ -37,6 +37,7 @@ main(void)
 	trapinit();
 	sa1110_uartsetup(1);
 	rs232power(1);
+	powerinit();
 	dmainit();
 	screeninit();
 	printinit();	/* from here on, print works, before this we need iprint */
@@ -362,6 +363,8 @@ ulong *egpioreg = (ulong*)EGPIOREGS;
 PPCregs *ppcregs;
 MemConfRegs *memconfregs;
 PowerRegs *powerregs;
+ResetRegs *resetregs;
+OSTimerRegs *timerregs = (OSTimerRegs*)OSTIMERREGS;
 
 /*
  *  configure the machine
@@ -395,6 +398,9 @@ machinit(void)
 
 	/* memory configuraton */
 	memconfregs = mapspecial(MEMCONFREGS, 32);
+
+	/* reset controller */
+	resetregs = mapspecial(RESETREGS, 32);
 }
 
 

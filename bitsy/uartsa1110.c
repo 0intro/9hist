@@ -436,16 +436,6 @@ serialµcputs(uchar *str, int n)
 		;
 }
 
-typedef struct Gpclkregs Gpclkregs;
-struct Gpclkregs
-{
-	ulong	r0;
-	ulong	r1;
-	ulong	dummya;
-	ulong	r2;
-	ulong	r3;
-};
-
 enum
 {
 	/* gpclk register 0 */

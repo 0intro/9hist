@@ -443,6 +443,188 @@ TEXT gotolabel(SB), $-4
 	MOVW	$1, R0
 	RET
 
+/* save the state machine in power_resume[] for an upcoming suspend
+ */
+TEXT setpowerlabel(SB), $-4
+	MOVW	$power_resume+0(SB), R0
+	/* svc */				/* power_resume[]: what */
+	MOVW		R1, 0(R0)
+	MOVW		R2, 4(R0)
+	MOVW		R3, 8(R0)
+	MOVW		R4, 12(R0)
+	MOVW		R5, 16(R0)
+	MOVW		R6, 20(R0)
+	MOVW		R7, 24(R0)
+	MOVW		R8, 28(R0)
+	MOVW		R9, 32(R0)
+	MOVW		R10,36(R0)
+	MOVW		R11,40(R0)
+	MOVW		R12,44(R0)
+	MOVW		R13,48(R0)
+	MOVW		R14,52(R0)
+	MOVW		SPSR, R1
+	MOVW		R1, 56(R0)
+	MOVW		CPSR, R2
+	MOVW		R2, 60(R0)
+	/* copro */
+	MRC		CpMMU, 0, R3, C(CpDAC), C(0x0)
+	MOVW		R3, 144(R0)
+	MRC		CpMMU, 0, R3, C(CpTTB), C(0x0)
+	MOVW		R3, 148(R0)
+	MRC		CpMMU, 0, R3, C(CpControl), C(0x0)
+	MOVW		R3, 152(R0)
+	MRC		CpMMU, 0, R3, C(CpFSR), C(0x0)
+	MOVW		R3, 156(R0)
+	MRC		CpMMU, 0, R3, C(CpFAR), C(0x0)
+	MOVW		R3, 160(R0)
+	MRC		CpMMU, 0, R3, C(CpPID), C(0x0)
+	MOVW		R3, 164(R0)
+	/* irq */
+	BIC		$(PsrMask), R2, R3
+	ORR		$(PsrDirq|PsrMirq), R3
+	MOVW		R3, CPSR
+	MOVW		SPSR, R11
+	MOVW		R11, 64(R0)
+	MOVW		R12, 68(R0)
+	MOVW		R13, 72(R0)
+	MOVW		R14, 76(R0)
+	/* und */
+	BIC		$(PsrMask), R2, R3
+	ORR		$(PsrDirq|PsrMund), R3
+	MOVW		R3, CPSR
+	MOVW		SPSR, R11
+	MOVW		R11, 80(R0)
+	MOVW		R12, 84(R0)
+	MOVW		R13, 88(R0)
+	MOVW		R14, 92(R0)
+	/* abt */
+	BIC		$(PsrMask), R2, R3
+	ORR		$(PsrDirq|PsrMabt), R3
+	MOVW		R3, CPSR
+	MOVW		SPSR, R11
+	MOVW		R11, 96(R0)
+	MOVW		R12, 100(R0)
+	MOVW		R13, 104(R0)
+	MOVW		R14, 108(R0)
+	/* fiq */
+	BIC		$(PsrMask), R2, R3
+	ORR		$(PsrDirq|PsrMfiq), R3
+	MOVW		R3, CPSR
+	MOVW		SPSR, R7
+	MOVW		R7, 112(R0)
+	MOVW		R8, 116(R0)
+	MOVW		R9, 120(R0)
+	MOVW		R10,124(R0)
+	MOVW		R11,128(R0)
+	MOVW		R12,132(R0)
+	MOVW		R13,136(R0)
+	MOVW		R14,140(R0)
+	/* done */
+	MOVW		R2, CPSR
+	MOVW		R1, SPSR
+	MOVW		$0, R0
+	RET
+
+/* Entered after a resume from suspend state.
+ * The bootldr jumps here after a processor reset.
+ */ 
+TEXT sa1100_power_resume(SB), $-4
+	MOVW	$setR12(SB), R12		/* load the SB */
+	/* SVC mode, interrupts disabled */
+	MOVW	$(PsrDirq|PsrDfiq|PsrMsvc), R1
+	MOVW	R1, CPSR
+	/* flush caches */
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
+	/* drain prefetch */
+	MOVW	R0,R0						
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	/* drain write buffer */
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
+	/* gotopowerlabel() */
+	/* svc */
+	MOVW	$power_resume+0(SB), R0
+	MOVW	56(R0), R1		/* R1: SPSR, R2: CPSR */
+	MOVW	60(R0), R2
+	/* copro */
+	MOVW		148(R0), R3
+	MCR		CpMMU, 0, R3, C(CpTTB), C(0x0)
+	MOVW		144(R0), R3
+	MCR		CpMMU, 0, R3, C(CpDAC), C(0x0)
+	MOVW		152(R0), R3
+	MCR		CpMMU, 0, R3, C(CpControl), C(0x0)
+	MOVW		156(R0), R3
+	MCR		CpMMU, 0, R3, C(CpFSR), C(0x0)
+	MOVW		160(R0), R3
+	MCR		CpMMU, 0, R3, C(CpFAR), C(0x0)
+	MOVW		164(R0), R3
+	MCR		CpMMU, 0, R3, C(CpPID), C(0x0)
+	MCR		CpMMU, 0, R0, C(CpTLBFlush), C(0x7)
+	/* irq */
+	BIC	$(PsrMask), R2, R3
+	ORR	$(PsrDirq|PsrMirq), R3
+	MOVW	R3, CPSR
+	MOVW	64(R0), R11
+	MOVW	68(R0), R12
+	MOVW	72(R0), R13
+	MOVW	76(R0), R14
+	MOVW	R11, SPSR
+	/* und */
+	BIC	$(PsrMask), R2, R3
+	ORR	$(PsrDirq|PsrMund), R3
+	MOVW	R3, CPSR
+	MOVW	80(R0), R11
+	MOVW	84(R0), R12
+	MOVW	88(R0), R13
+	MOVW	92(R0), R14
+	MOVW	R11, SPSR
+	/* abt */
+	BIC	$(PsrMask), R2, R3
+	ORR	$(PsrDirq|PsrMabt), R3
+	MOVW	R3, CPSR
+	MOVW	96(R0), R11
+	MOVW	100(R0), R12
+	MOVW	104(R0), R13
+	MOVW	108(R0), R14
+	MOVW	R11, SPSR
+	/* fiq */
+	BIC	$(PsrMask), R2, R3
+	ORR	$(PsrDirq|PsrMfiq), R3
+	MOVW	R3, CPSR
+	MOVW	112(R0), R7
+	MOVW	116(R0), R8
+	MOVW	120(R0), R9
+	MOVW	124(R0), R10
+	MOVW	128(R0), R11
+	MOVW	132(R0), R12
+	MOVW	136(R0), R13
+	MOVW	140(R0), R14
+	MOVW	R7, SPSR
+	/* svc */
+	MOVW	56(R0), R1
+	MOVW	60(R0), R2
+	MOVW	R1, SPSR
+	MOVW	R2, CPSR
+	MOVW	0(R0), R1
+	MOVW	4(R0), R2
+	MOVW	8(R0), R3
+	MOVW	12(R0),R4
+	MOVW	16(R0),R5
+	MOVW	20(R0),R6
+	MOVW	24(R0),R7
+	MOVW	28(R0),R8
+	MOVW	32(R0),R9
+	MOVW	36(R0),R10
+	MOVW	40(R0),R11
+	MOVW	44(R0),R12
+	MOVW	48(R0),R13
+	MOVW	52(R0),R14
+	RET
+loop:
+	B	loop
+
+
 
 /* The first MCR instruction of this function needs to be on a cache-line
  * boundary; to make this happen, it will be copied (in trap.c).

@@ -9,73 +9,188 @@
 
 /* Power management for the bitsy */
 
-#ifdef NOTDEF
-enum {
-	pmcr_sf		= 0,
+/* saved state during power down. 
+ * it's only used up to 164/4.
+ * it's only used by routines in l.s
+ */
+ulong power_resume[200/4];
 
-	pcfr_opde	= 0,
-	pcfr_fp		= 1,
-	pcfr_fs		= 2,
-	pcfr_fo		= 3,
-};
+extern void sa1100_power_resume(void);
+extern int setpowerlabel(void);
 
-jmp_buf power_resume;
+
+GPIOregs savedgpioregs;
+Uartregs saveduart3regs;
+Uartregs saveduart1regs;
+Intrregs savedintrregs;
+
 
 static void
-onoffintr(Ureg*, void *x)
+dumpitall(void)
 {
-	/* On/off button interrupt */
-	int i;
+	iprint("intr: icip %lux iclr %lux iccr %lux icmr %lux\n",
+		intrregs->icip,
+		intrregs->iclr, intrregs->iccr, intrregs->icmr );
+	iprint("gpio: lvl %lux dir %lux, re %lux, fe %lux sts %lux alt %lux\n",
+		gpioregs->level,
+		gpioregs->direction, gpioregs->rising, gpioregs->falling,
+		gpioregs->edgestatus, gpioregs->altfunc);
+	iprint("uart1: %lux %lux %lux \nuart3: %lux %lux %lux\n", 
+		uart1regs->ctl[0], uart1regs->status[0], uart1regs->status[1], 
+		uart3regs->ctl[0], uart3regs->status[0], uart3regs->status[1]); 
+	iprint("tmr: osmr %lux %lux %lux %lux oscr %lux ossr %lux oier %lux\n",
+		timerregs->osmr[0], timerregs->osmr[1],
+		timerregs->osmr[2], timerregs->osmr[3],
+		timerregs->oscr, timerregs->ossr, timerregs->oier);
+	iprint("dram: mdcnfg %lux mdrefr %lux cas %lux %lux %lux %lux %lux %lux\n",
+		memconfregs->mdcnfg, memconfregs->mdrefr,
+		memconfregs->mdcas00, memconfregs->mdcas01,memconfregs->mdcas02,
+		memconfregs->mdcas20, memconfregs->mdcas21,memconfregs->mdcas22); 
+	iprint("dram: mdcnfg msc %lux %lux %lux mecr %lux\n",
+		memconfregs->msc0, memconfregs->msc1,memconfregs->msc2,
+		memconfregs->mecr);
 
-	/* debounce, 50 ms*/
-	for (i = 0; i < 50; i++) {
-		delay(1);
-		if ((gpioregs->level & GPIO_PWR_ON_i) == 0)
-			return;	/* bounced */
-	}
-	if (i = setjmp(power_resume)) {
-		/* power back up */
-		rs232power(1);
-		lcdpower(1);
-		audiopower(1);
-		irpower(1);
-		return;
-	}
-	/* Power down */
-	irpower(0);
-	audiopower(0);
-	lcdpower(0);
-	rs232power(0);
-	sa1100_power_off();
-	/* no return */
+	
+}
+
+static void
+intrcpy(Intrregs *to, Intrregs *from)
+{
+	to->iclr = from->iclr;
+	to->iccr = from->iccr;
+	to->icmr = from->icmr;	// interrupts enabled
+}
+
+static  void
+uartcpy(Uartregs *to, Uartregs *from)
+{
+	to->ctl[0] = from->ctl[0];
+//	to->ctl[1] = from->ctl[1];
+//	to->ctl[2] = from->ctl[2];
+	to->ctl[3] = from->ctl[3];
+
+}
+
+static void
+gpiocpy(GPIOregs *to, GPIOregs *from)
+{
+	to->rising = from->rising;		// gpio intrs enabled
+	to->falling= from->falling;		// gpio intrs enabled
+	to->altfunc = from->altfunc;
+	to->direction = from->direction;
 }
 
 static void
 sa1100_power_off(void)
 {
-	delay(100);
-	splhi();
 	/* enable wakeup by µcontroller, on/off switch or real-time clock alarm */
-	powerregs->pwer = 0x80000003;
+	powerregs->pwer =  1 << IRQrtc | 1 << IRQgpio0 | 1 << IRQgpio1;
+
+	/* clear previous reset status */
+	resetregs->rcsr =  RCSR_all;
+
 	/* disable internal oscillator, float CS lines */
-	powerregs->pcfr = 1<<pcfr_opde | 1<<pcfr_fp | 1<<pcfr_fs;
-	/* set lowest clock */
+	powerregs->pcfr = PCFR_opde | PCFR_fp | PCFR_fs;
+	powerregs->pgsr = 0;
+	/* set resume address. The loader jumps to it */
+	powerregs->pspr = (ulong)sa1100_power_resume;
+	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
+	delay(90);
 	powerregs->ppcr = 0;
-	/* set all GPIOs to input mode */
+	delay(90);
+
+	/* set all GPIOs to input mode  */
 	gpioregs->direction = 0;
+	delay(100);
 	/* enter sleep mode */
-	powerregs->pmcr = 1<<pmcr_sf;
+	powerregs->pmcr = PCFR_suspend;
+	for(;;);
 }
+
+void
+onoffintr(Ureg* , void*)
+{
+	static int power_pl;
+	int i;
+	for (i = 0; i < 100; i++) {
+		delay(1);
+		if ((gpioregs->level & GPIO_PWR_ON_i) == 0)
+			return;	/* bounced */
+	}
+	power_pl = splhi();
+	cachewb();
+	delay(500);
+	if (setpowerlabel()) {
+		mmuinvalidate();
+		mmuenable();
+		cacheflush();
+		trapresume();
+		rs232power(1);
+		irpower(1);
+		audiopower(1);
+		clockpower(1);
+		gpclkregs->r0 = 1<<0;
+		gpiocpy(gpioregs, &savedgpioregs);
+		intrcpy(intrregs, &savedintrregs);
+		if (intrregs->icip & (1<<IRQgpio0)){
+			// don't want to sleep now. clear on/off irq.
+			gpioregs->edgestatus = (1<<IRQgpio0);
+			intrregs->icip = (1<<IRQgpio0);
+		}
+		uartcpy(uart3regs,&saveduart3regs);
+		uart3regs->status[0] = uart3regs->status[0];
+		uartcpy(uart1regs,&saveduart1regs);
+		uart1regs->status[0] = uart1regs->status[0];
+		µcpower(1);
+		screenpower(1);
+		iprint("\nresuming execution\n");
+//		dumpitall();
+		delay(800);
+		splx(power_pl);
+		return;
+	}
+	/* Power down */
+	iprint("\nentering suspend mode\n");
+	gpiocpy(&savedgpioregs, gpioregs);
+	intrcpy(&savedintrregs, intrregs);
+	uartcpy(&saveduart3regs, uart3regs);
+	uartcpy(&saveduart1regs, uart1regs);
+	delay(400);
+	clockpower(0);
+	irpower(0);
+	audiopower(0);
+	screenpower(0);
+	µcpower(0);
+	rs232power(0);
+	sa1100_power_off();
+	/* no return */
+}
+
+
+
+static int
+bitno(ulong x)
+{
+	int i;
+
+	for(i = 0; i < 8*sizeof(x); i++)
+		if((1<<i) & x)
+			break;
+	return i;
+}
+
+void
+powerinit(void)
+{
+	intrenable(GPIOrising, bitno(GPIO_PWR_ON_i), onoffintr, (void*)0x12344321, "on/off");
+}
+
+
 
 void
 idlehands(void)
 {
-}
-#endif
-
-void
-idlehands(void)
-{
+#ifdef notdef
 	char *msgb = "idlehands called with splhi\n";
 	char *msga = "doze returns with splhi\n";
 
@@ -88,4 +203,6 @@ idlehands(void)
 		serialputs(msgb, strlen(msgb));
 		spllo();
 	}
+#endif
 }
+

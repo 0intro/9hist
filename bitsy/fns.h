@@ -9,10 +9,12 @@ void	dcacheinvalidate(void);
 int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
 void	clockinit(void);
+void	clockpower(int);
 #define	coherence()
 #define	dcflush(a, b)
 void	delay(int);
 void	µdelay(ulong);
+void	µcpower(int);
 void	dmainit(void);
 void	_doze(void);
 void	(*doze)(void);
@@ -67,6 +69,7 @@ PCMmap*	pcmmap(int, ulong, int, int);
 void	pcmunmap(int, PCMmap*);
 void	penbutton(int, int);
 void	pentrackxy(int x, int y);
+void	powerinit(void);
 #define	procrestore(p)
 void	procsave(Proc*);
 void	procsetup(Proc*);
@@ -78,6 +81,7 @@ void	rs232power(int);
 void	uartspecial(Uart*, int, Queue**, Queue**, int (*)(Queue*, int));
 void	sa1110_uartsetup(int);
 void	screeninit(void);
+void	screenpower(int);
 int	screenprint(char*, ...);			/* debugging */
 void	serialµcputs(uchar *str, int n);
 void	setr13(int, ulong*);
@@ -85,6 +89,7 @@ uchar*	tarlookup(uchar*, char*, int*);
 void	touser(void*);
 void	trapdump(char *tag);
 void	trapinit(void);
+void	trapresume(void);
 int	tas(void*);
 int	uartstageoutput(Uart*);
 void	uartkick(void*);

@@ -379,6 +379,20 @@ static long
 	return n;
 }
 
+void 
+µcpower(int on)
+{
+	uchar data[16];
+	if (on == 0)
+		return;
+	/* maybe dangerous, not holding the lock */
+	data[0]= 2;
+	data[1]= 1;
+	data[2]= 0x80;
+	_sendmsg(0xd, data, 3);
+	wakeup(&ctlr.r);
+}
+
 Dev µcdevtab = {
 	'r',
 	"µc",

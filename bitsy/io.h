@@ -130,7 +130,8 @@ struct Uartregs
 	ulong	dummyb;
 	ulong	status[2];
 };
-Uartregs *uart3regs;
+extern Uartregs *uart3regs;
+extern Uartregs *uart1regs;
 
 /* general purpose I/O lines control registers */
 typedef struct GPIOregs GPIOregs;
@@ -246,6 +247,17 @@ extern MemConfRegs *memconfregs;
 /*
  *  power management
  */
+
+/* Power management ops */
+enum {
+	PCFR_suspend	= 1,
+
+	PCFR_opde	= 1,
+	PCFR_fp		= 2,
+	PCFR_fs		= 4,
+	PCFR_fo		= 8,
+};
+
 typedef struct PowerRegs PowerRegs;
 struct PowerRegs
 {
@@ -259,3 +271,59 @@ struct PowerRegs
 	ulong	posr;	/* Power manager oscillator status register */
 };
 extern PowerRegs *powerregs;
+
+/*
+ *  reset controller
+ */
+
+enum 
+{
+	RCSR_hwr = 0x00000001,	/* hw reset */
+	RCSR_swr = 0x00000002,	/* sw reset */
+	RCSR_wdr = 0x00000004,	/* watch dog */
+	RCSR_smr = 0x00000008,	/* sleep mode reset */
+	RCSR_all = 0x0000000f,
+};
+
+typedef struct ResetRegs ResetRegs;
+struct ResetRegs
+{
+	ulong	rsrr;	/* reset controller software reset register */
+	ulong	rcsr;	/* reset controller status register */
+};
+extern ResetRegs *resetregs;
+
+typedef  struct OSTimerRegs OSTimerRegs;
+struct OSTimerRegs
+{
+	ulong	osmr[4];	/* match registers */
+	ulong	oscr;		/* counter register */
+	ulong	ossr;		/* status register */
+	ulong	ower;		/* watchdog enable register */
+	ulong	oier;		/* timer interrupt enable register */
+};
+extern OSTimerRegs* timerregs;
+
+typedef struct Intrregs Intrregs;
+struct Intrregs
+{
+	ulong	icip;	/* pending IRQs */
+	ulong	icmr;	/* IRQ mask */
+	ulong	iclr;	/* IRQ if bit == 0, FRIQ if 1 */
+	ulong	iccr;	/* control register */
+	ulong	icfp;	/* pending FIQs */
+	ulong	dummy1[3];
+	ulong	icpr;	/* pending interrupts */
+};
+extern Intrregs *intrregs;
+
+typedef struct Gpclkregs Gpclkregs;
+struct Gpclkregs
+{
+	ulong	r0;
+	ulong	r1;
+	ulong	dummya;
+	ulong	r2;
+	ulong	r3;
+};
+extern Gpclkregs *gpclkregs;
