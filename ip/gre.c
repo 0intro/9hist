@@ -121,26 +121,13 @@ static void
 grekick(Conv *c, int l)
 {
 	GREhdr *ghp;
-	Block *bp, *f;
-	int dlen;
+	Block *bp;
 
 	USED(l);
 
 	bp = qget(c->wq);
 	if(bp == nil)
 		return;
-
-	/* Round packet up to even number of bytes */
-	dlen = blocklen(bp);
-	if(dlen & 1) {
-		for(f = bp; f->next; f = f->next)
-			;
-		if(f->wp >= f->lim) {
-			f->next = allocb(1);
-			f = f->next;
-		}
-		*f->wp++ = 0;
-	}
 
 	/* Make space to fit ip header (gre header already there) */
 	bp = padblock(bp, GRE_IPHDRSIZE);

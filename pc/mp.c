@@ -207,9 +207,18 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vector)
 		break;
 
 	case PcmpExtINT:
-po = PcmpHIGH;
-el = PcmpEDGE;
 		v |= ApicExtINT;
+		/*
+		 * The AMI Goliath doesn't boot successfully with it's LINTR0 entry
+		 * which decodes to low+level. The PPro manual says ExtINT should be
+		 * level, whereas the Pentium is edge. Setting the Goliath to edge+high
+		 * seems to cure the problem. Other PPro MP tables (e.g. ASUS P/I-P65UP5
+		 * have a entry which decodes to edge+high, so who knows.
+		 * Perhaps it would be best just to not set an ExtINT entry at all,
+		 * it shouldn't be needed for SMP mode.
+		 */
+		po = PcmpHIGH;
+		el = PcmpEDGE;
 		break;
 	}
 
@@ -587,7 +596,7 @@ mpintrenable(int v, int tbdf, Irqctl* irqctl)
 	int r;
 
 	r = mpintrenablex(v, tbdf, irqctl);
-	if(r == -1 && tbdf != BUSUNKNOWN && _mp_->specrev == 1)
+	if(r == -1 && tbdf != BUSUNKNOWN /*&& _mp_->specrev == 1*/)
 		return mpintrenablex(v, BUSUNKNOWN, irqctl);
 	return r;
 }
