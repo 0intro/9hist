@@ -395,7 +395,6 @@ lookpage(Image *i, ulong daddr)
 		}
 	}
 	unlock(&palloc.hashlock);
-print("#");
 	return 0;
 }
 
