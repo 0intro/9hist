@@ -174,14 +174,22 @@ void
 dumpstack(void)
 {
 	ulong l, v;
+	int i;
 	extern ulong etext;
+print("no dumpstack\n");
+return;
 
-	if(u)
+	if(u){
+		i = 0;
 		for(l=(ulong)&l; l<USERADDR+BY2PG; l+=4){
 			v = *(ulong*)l;
 			if(KTZERO < v && v < (ulong)&etext)
-				print("%lux=%lux\n", l, v);
+				print("%lux=%lux  ", l, v);
+			++i;
+			if((i&7) == 0)
+				print("\n");
 		}
+	}
 }
 
 void
@@ -316,11 +324,13 @@ syscall(Ureg *aur)
 	Ureg *ur;
 	char *msg;
 
-	u->p->insyscall = 1;
 	ur = aur;
-	u->p->pc = ur->pc;
-	if(ur->psr & PSRPSUPER)
+	if(ur->psr & PSRPSUPER){
+		dumpregs(ur);
 		panic("recursive system call");
+	}
+	u->p->insyscall = 1;
+	u->p->pc = ur->pc;
 
 	/*
 	 * since the system call interface does not
@@ -330,8 +340,9 @@ syscall(Ureg *aur)
 		u->p->fpstate = FPinit;
 		ur->psr &= ~PSREF;
 	}
-
+print("syscall %d\n", ur->r7);
 	spllo();
+print("got low in syscall\n");
 	r7 = ur->r7;
 	sp = ur->usp;
 
@@ -349,6 +360,10 @@ syscall(Ureg *aur)
 			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 			msg = "sys: odd stack";
 			goto Bad;
+		}
+		if(((ulong*)ur->pc)[-2] != 0x82206004){	/* new calling convention: look for ADD $-4, SP */
+			pprint("new system call linkage\n");
+			sp -= BY2WD;
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(2+MAXSYSARG)*BY2WD))
 			validaddr(sp, ((2+MAXSYSARG)*BY2WD), 0);

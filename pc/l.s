@@ -103,33 +103,43 @@ TEXT	mode32bit(SB),$0
 
 	/*
 	 *  make a bottom level page table page that maps the first
-	 *  4 meg of physical memory
+	 *  16 meg of physical memory
 	 */
 	LEAL	tpt-KZERO(SB),AX	/* get phys addr of temporary page table */
 	ADDL	$(BY2PG-1),AX		/* must be page alligned */
 	ANDL	$(~(BY2PG-1)),AX	/* ... */
-	MOVL	$1024,CX		/* pte's per page */
-	MOVL	$(((1024-1)<<12)|PTEVALID|PTEKERNEL|PTEWRITE),BX
+	MOVL	$(4*1024),CX		/* pte's per page */
+	MOVL	$((((4*1024)-1)<<PGSHIFT)|PTEVALID|PTEKERNEL|PTEWRITE),BX
 setpte:
 	MOVL	BX,-4(AX)(CX*4)
-	SUBL	$(1<<12),BX
+	SUBL	$(1<<PGSHIFT),BX
 	LOOP	setpte
 
 	/*
 	 *  make a top level page table page that maps the first
-	 *  4 meg of memory to 0 thru 4meg and to KZERO thru KZERO+4meg
+	 *  16 meg of memory to 0 thru 16meg and to KZERO thru KZERO+16meg
 	 */
 	MOVL	AX,BX
-	ADDL	$BY2PG,AX
+	ADDL	$(4*BY2PG),AX
+	ADDL	$(PTEVALID|PTEKERNEL|PTEWRITE),BX
 	MOVL	BX,0(AX)
-	MOVL	BX,((KZERO>>22)&(BY2PG-1))(AX)
+	MOVL	BX,((((KZERO>>1)&0x7FFFFFFF)>>(2*PGSHIFT-1-4))+0)(AX)
+	ADDL	$BY2PG,BX
+	MOVL	BX,4(AX)
+	MOVL	BX,((((KZERO>>1)&0x7FFFFFFF)>>(2*PGSHIFT-1-4))+4)(AX)
+	ADDL	$BY2PG,BX
+	MOVL	BX,8(AX)
+	MOVL	BX,((((KZERO>>1)&0x7FFFFFFF)>>(2*PGSHIFT-1-4))+8)(AX)
+	ADDL	$BY2PG,BX
+	MOVL	BX,12(AX)
+	MOVL	BX,((((KZERO>>1)&0x7FFFFFFF)>>(2*PGSHIFT-1-4))+12)(AX)
 
 	/*
 	 *  point processor to top level page & turn on paging
 	 */
 	MOVL	AX,CR3
 	MOVL	CR0,AX
-	ORL	$1,AX
+	ORL	$0X80000000,AX
 	MOVL	AX,CR0
 
 	/*
@@ -149,7 +159,7 @@ loop:
 GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	u(SB), $4
 GLOBL	m(SB), $4
-GLOBL	tpt(SB), $(BY2PG*3)
+GLOBL	tpt(SB), $(BY2PG*6)
 
 /*
  *  gdt to get us to 32-bit/segmented/unpaged mode
@@ -406,4 +416,7 @@ TEXT	setlabel(SB),$0
 	MOVL	SP,0(AX)	/* store sp */
 	MOVL	0(SP),BX	/* store return pc */
 	MOVL	BX,4(AX)
+	RET
+
+TEXT	touser(SB),$0
 	RET

@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"ureg.h"
+#include	"io.h"
 
 void
 faultinit(void)

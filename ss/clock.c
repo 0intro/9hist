@@ -59,7 +59,10 @@ clock(Ureg *ur)
 	if((ur->psr&SPL(0xF))==0 && p && p->state==Running){
 		if(anyready())
 			sched();
-		if(u->nnote && (ur->psr&PSRPSUPER)==0)
-			notify(ur);
+		if((ur->psr&PSRPSUPER) == 0){
+			*(ulong*)(USTKTOP-BY2WD) += TK2MS(1);
+			if(u->nnote)
+				notify(ur);
+		}
 	}
 }

@@ -124,7 +124,7 @@ void
 trap(Ureg *ur)
 {
 	if(ur->trap>=256 || ivec[ur->trap] == 0)
-		panic("bad trap type %d\n", ur->trap);
+		panic("bad trap type %d %lux\n", ur->trap, ur->pc);
 
 	/*
 	 *  call the trap routine
@@ -147,25 +147,13 @@ syscall(Ureg *ur)
 	panic("syscall");
 }
 
-#include "errstr.h"
-
 void
-error(int code)
+dumpstack(void)
 {
-	strncpy(u->error, errstrtab[code], ERRLEN);
-	nexterror();
 }
 
 void
-errors(char *err)
+execpc(ulong entry)
 {
-	strncpy(u->error, err, ERRLEN);
-	nexterror();
-}
-
-
-void
-nexterror(void)
-{
-	gotolabel(&u->errlab[--u->nerrlab]);
+	((Ureg*)UREGADDR)->pc = entry;
 }

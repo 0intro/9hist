@@ -103,7 +103,7 @@
 #define TLBPID(n)	(((n)>>6)&0x3F)
 #define PTEMAPMEM	(1024*1024)	
 #define	PTEPERTAB	(PTEMAPMEM/BY2PG)
-#define STLBLOG		11
+#define STLBLOG		13
 #define STLBSIZE	(1<<STLBLOG)
 
 #define SEGMAPSIZE	64

@@ -158,7 +158,7 @@ userinit(void)
 	 * Kernel Stack
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = USERADDR+BY2PG-20;	/* BUG */
+	p->sched.sp = USERADDR+BY2PG-MAXSYSARG*BY2WD;
 	p->sched.sr = SUPER|SPL(0);
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 

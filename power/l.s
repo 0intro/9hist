@@ -243,26 +243,30 @@ TEXT	vector0(SB), $-4
 
 	MOVW	$utlbmiss(SB), R26
 	MOVW	M(TLBVIRT), R27
-	SRL	$(6-3), R27			/* delay slot fodder, right adjust */
 	JMP	(R26)
 
 TEXT	utlbmiss(SB), $-4
 
-	SRL	$6, R27, R26			/* right adjusted vpn */
-	SLL	$(STLBLOG-6), R27		/* left adjusted pid */
+	MOVW	R27, R26
+	SLL	$1, R26
+	SRL	$12, R27
 	XOR	R26, R27
-	AND	$((STLBSIZE-1)<<3), R27
+	AND	$(STLBSIZE-1), R27
+	SLL	$8, R27
+	/* R27 = (((tlbvirt<<1)^(tlbvirt>>12)) & (STLBSIZE-1)) << 8 (8 to clear zero in TLBPHYS) */
 	MOVW	R27, M(TLBPHYS)			/* scratch register, store */
 
-	MOVW	$((MACHADDR+4) & 0xffff0000), R26
-	MOVW	$MPID, R27
+	MOVW	$((MACHADDR+4) & 0xffff0000), R26	/* get &mach[0].stb BUG */	
+	OR	$((MACHADDR+4) & 0xffff), R26
+	MOVW	$MPID, R27				/* add BY2PG*machno */
 	MOVB	3(R27), R27
 	AND	$7, R27
 	SLL	$PGSHIFT, R27
 	ADDU	R27, R26
 	
 	MOVW	M(TLBPHYS), R27			/* scratch register, load */
-	MOVW	((MACHADDR+4) & 0xffff)(R26), R26
+	MOVW	(R26), R26
+	SRL	$5, R27				/* R27 is now index * 8 */
 	ADDU	R26, R27
 	MOVW	4(R27), R26
 	MOVW	R26, M(TLBPHYS)
@@ -278,6 +282,7 @@ TEXT	utlbmiss(SB), $-4
 stlbm:	
 	MOVW	$exception(SB), R26
 	JMP	(R26)
+
 
 TEXT	exception(SB), $-4
 

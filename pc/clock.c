@@ -43,12 +43,14 @@ void
 clock(Ureg *ur)
 {
 	Proc *p;
-	static int last;
 
 	m->ticks++;
+
+	checkalarms();
+
 	p = m->proc;
 	if(p){
-		p->pc = ur->eip;
+		p->pc = ur->pc;
 		if (p->state==Running)
 			p->time[p->insyscall]++;
 	}

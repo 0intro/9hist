@@ -10,7 +10,7 @@
 #define	BY2WD		4			/* bytes per word */
 #define	BY2PG		4096			/* bytes per page */
 #define	WD2PG		(BY2PG/BY2WD)		/* words per page */
-#define	PGSHIFT		13			/* log(BY2PG) */
+#define	PGSHIFT		12			/* log(BY2PG) */
 #define PGROUND(s)	(((s)+(BY2PG-1))&~(BY2PG-1))
 
 #define	MAXMACH		1			/* max # cpus system can run */
@@ -47,7 +47,7 @@
 
 #define	MACHSIZE	4096
 
-#define isphys(x) ((x)&KZERO)
+#define isphys(x) (((ulong)x)&KZERO)
 
 /*
  *  known 80386 segments (in GDT) and their selectors
@@ -101,11 +101,11 @@
 #define PTEMAPMEM	(1024*1024)	/* ??? */	
 #define SEGMAPSIZE	16		/* ??? */
 #define	PTEPERTAB	(PTEMAPMEM/BY2PG)	/* ??? */
+#define PPN(x)		((x)&~(BY2PG-1))
 
 /*
  *  physical MMU
  */
-#define PPN(x)		((x)&~(BY2PG-1))
 #define	PTEVALID	(1<<0)
 #define	PTEUNCACHED	0		/* everything is uncached */
 #define PTEWRITE	(1<<1)

@@ -136,7 +136,7 @@ struct Mach
 	Proc	*pidproc[NTLBPID];	/* process that owns this tlbpid on this mach */
 	Page	*ufreeme;		/* address of upage of exited process */
 
-	int	tlbfault;
+	int	tlbfault;		/* this offset known in l.s/utlbmiss() */
 	int	tlbpurge;
 	int	pfault;
 	int	cs;

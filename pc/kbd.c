@@ -241,14 +241,6 @@ kbdinit(void)
 	setvec(Kbdvec, kbdintr, SEGIG);
 }
 
-int
-kbdputc(IOQ* q, int c)
-{
-	if(c==0x10)
-		panic("^p");
-	putc(q, c);
-}
-
 /*
  *  keyboard interrupt
  */

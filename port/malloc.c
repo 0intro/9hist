@@ -423,7 +423,7 @@ cached(Store *p)
 void *calloc(ulong n, ulong size){
 	void *p;
 
-	size *= n;
+	size = size*n;
 	p = malloc(size);
 	memset(p, 0, size);
 	return p;

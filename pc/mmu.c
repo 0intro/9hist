@@ -67,12 +67,40 @@ Segdesc gdt[] =
 [RESEG]		E16SEG(0),		/* reboot code */
 };
 
+extern ulong tpt[];
+
 void
 mmuinit(void)
 {
+
 	gdt[SYSGATE].d0 = ((ulong)systrap)&0xFFFF|(KESEL<<16);
 	gdt[SYSGATE].d1 = ((ulong)systrap)&0xFFFF0000|SEGP|SEGPL(3)|SEGCG;
 	lgdt(gdt, sizeof gdt);
+}
+
+void
+mapstack(Proc *p)
+{
+}
+
+void
+flushmmu(void)
+{
+}
+
+void
+mmurelease(Proc *p)
+{
+}
+
+void
+putmmu(ulong x, ulong y, Page*z)
+{
+}
+
+void
+invalidateu(void)
+{
 }
 
 void

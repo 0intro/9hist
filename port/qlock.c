@@ -17,6 +17,8 @@ qlock(QLock *q)
 		unlock(&q->queue);
 		return;
 	}
+	if(u == 0)
+		panic("qlock");
 	p = q->tail;
 	if(p == 0)
 		q->head = u->p;

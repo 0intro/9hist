@@ -31,9 +31,21 @@ struct Label
 	ulong	pc;
 };
 
-struct	FPsave
+
+/*
+ * FPsave.fpstatus
+ */
+enum
 {
-	int	type;
+	FPinit,
+	FPactive,
+	FPinactive,
+};
+
+struct	FPsave	/* ??? needs to be fixed ??? */
+{
+	long	fpreg[32];
+	long	fpstatus;
 };
 
 struct Conf
@@ -41,14 +53,13 @@ struct Conf
 	ulong	nmach;		/* processors */
 	ulong	nproc;		/* processes */
 	ulong	npgrp;		/* process groups */
-	ulong	npage0;		/* total physical pages of memory, bank 0 */
-	ulong	npage1;		/* total physical pages of memory, bank 1 */
-	ulong	base0;		/* base of bank 0 */
-	ulong	base1;		/* base of bank 1 */
+	ulong	npage0;		/* total physical pages in bank0 */
+	ulong	npage1;		/* total physical pages in bank1 */
 	ulong	npage;		/* total physical pages of memory */
-	ulong	norig;		/* origins */
-	ulong	npte;		/* contiguous page table entries */
-	ulong	nmod;		/* single (modifying) page table entries */
+	ulong	nseg;		/* number of segments */
+	ulong	nimage;		/* number of page cache image headers */
+	ulong 	npagetab;	/* number of pte tables */
+	ulong	nswap;		/* number of swap pages */
 	ulong	nalarm;		/* alarms */
 	ulong	nchan;		/* channels */
 	ulong	nenv;		/* distinct environment values */
@@ -66,16 +77,19 @@ struct Conf
 	ulong	nbitmap;	/* bitmap structs (devbit.c) */
 	ulong	nbitbyte;	/* bytes of bitmap data (devbit.c) */
 	ulong	nfont;		/* font structs (devbit.c) */
+	ulong	nnoifc;		/* number of nonet interfaces */
+	ulong	nnoconv;	/* number of nonet conversations/ifc */
 	ulong	nurp;		/* max urp conversations */
 	ulong	nasync;		/* number of async protocol modules */
 	ulong	npipe;		/* number of pipes */
-	ulong	nservice;	/* number of services */
-	ulong	nfsyschan;	/* number of filsys open channels */
 	ulong	maxialloc;	/* maximum bytes used by ialloc */
+	ulong	base0;		/* base of bank 0 */
+	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
-	ulong	portispaged;	/* ??? */
-	ulong	nnoifc;
-	ulong	nnoconv;
+	ulong	ipif;		/* Ip protocol interfaces */
+	ulong	ip;		/* Ip conversations per interface */
+	ulong	arp;		/* Arp table size */
+	ulong	frag;		/* Ip fragment assemble queue size */
 	ulong	cntrlp;		/* panic on ^P */
 };
 

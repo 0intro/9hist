@@ -546,8 +546,8 @@ syscall(Ureg *aur)
 			pprint("old system call linkage; recompile\n");
 			sp += BY2WD;
 		}
-		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-6*BY2WD))
-			validaddr(sp, 6*BY2WD, 0);
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
+			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
 		ret = (*systab[r1])((ulong*)(sp+BY2WD));
 	}
 	ur->pc += 4;

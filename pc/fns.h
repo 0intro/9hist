@@ -1,13 +1,15 @@
 #include "../port/portfns.h"
 
+#define	clearmmucache()		/* 386 doesn't have one */
 void	clock(Ureg*);
 void	clockinit(void);
 void	delay(int);
+#define	evenaddr(x)		/* 386 doesn't care */
 void	fault386(Ureg*);
 void	floppyinit(void);
 void	floppyintr(Ureg*);
-void	floppystart(int);
-void	floppystop(int);
+long	floppyseek(int, ulong);
+#define	flushvirt();
 void	idle(void);
 int	inb(int);
 void	intr0(void);
@@ -43,11 +45,15 @@ void	lidt(Segdesc*, int);
 void	mmuinit(void);
 void	outb(int, int);
 void	prhex(ulong);
+#define	procrestore(x,y)
+#define	procsave(x,y)
+#define	procsetup(p)	((p)->fpstate = FPinit)
 void	screeninit(void);
 void	screenputc(int);
 void	screenputs(char*, int);
 void	setvec(int, void (*)(Ureg*), int);
 void	systrap(void);
+void	touser(void);
 void	trapinit(void);
 int	tas(Lock*);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
