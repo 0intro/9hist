@@ -53,7 +53,10 @@ qunlock(QLock *q)
 		unlock(&q->queue);
 		ready(p);
 	}else{
+		/* horrible botch because clock does a canqlock */
+		int s = splhi();
 		unlock(&q->use);
 		unlock(&q->queue);
+		splx(s);
 	}
 }

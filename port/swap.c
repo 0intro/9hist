@@ -114,6 +114,8 @@ pager(void *junk)
 
 			sleep(&swapalloc.r, needpages, 0);
 
+			if(p->state == Dead || p->kp)
+				continue;
 			if(swapimage.c) {
 				for(i = 0; i < NSEG; i++)
 					if(s = p->seg[i]) {

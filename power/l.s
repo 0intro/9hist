@@ -146,6 +146,11 @@ TEXT	gotolabel(SB), $-4
 	MOVW	4(R2), R29
 	RET
 
+TEXT	getcallerpc(SB), $0
+
+	MOVW	(SP), R1
+	RET
+
 TEXT	gotopc(SB), $8
 
 	MOVW	$(64*1024), R1

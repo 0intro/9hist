@@ -107,20 +107,19 @@ checkalarms(void)
 					(*f)(alist[i]);
 				alist[i]->busy = 0;
 			}
-		} else
+		}else
 			unlock(&m->alarmlock);
 	}
 
-	if(m == MACHP(0) && canqlock(&alarms)) {
+	if(m == MACHP(0) && canqlock(&alarms)){
 		now = MACHP(0)->ticks;
-		while((rp = alarms.head) && rp->alarm <= now) {
-			if(rp->alarm != 0L) {
-				if(canlock(&rp->debug)) {
+		while((rp = alarms.head) && rp->alarm <= now){
+			if(rp->alarm != 0L){
+				if(canlock(&rp->debug)){
 					postnote(rp, 0, "alarm", NUser);
 					unlock(&rp->debug);
 					rp->alarm = 0L;
-				}
-				else
+				}else
 					break;
 			}
 			alarms.head = rp->palarm;
@@ -137,7 +136,7 @@ procalarm(ulong time)
 
 	when = MS2TK(time);
 	old = u->p->alarm - MACHP(0)->ticks;
-	if(when == 0) {
+	if(when == 0){
 		u->p->alarm = 0;
 		return TK2MS(old);
 	}
@@ -146,8 +145,8 @@ procalarm(ulong time)
 
 	qlock(&alarms);
 	l = &alarms.head;
-	for(f = *l; f; f = f->palarm) {
-		if(u->p == f) {
+	for(f = *l; f; f = f->palarm){
+		if(u->p == f){
 			*l = f->palarm;
 			break;
 		}
@@ -155,10 +154,10 @@ procalarm(ulong time)
 	}
 
 	u->p->palarm = 0;
-	if(alarms.head) {
+	if(alarms.head){
 		l = &alarms.head;
-		for(f = *l; f; f = f->palarm) {
-			if(f->alarm > when) {
+		for(f = *l; f; f = f->palarm){
+			if(f->alarm > when){
 				u->p->palarm = f;
 				*l = u->p;
 				goto done;

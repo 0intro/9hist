@@ -94,19 +94,25 @@ putseg(Segment *s)
 	Pte **pp, **emap;
 	Image *i;
 
-	if(s && decref(s) == 0) {
+	if(s == 0)
+		return;
+
+	i = s->image;
+	if(i && i->s == s && s->ref == 1){
+		lock(i);
+		if(s->ref == 1)
+			i->s = 0;
+		unlock(i);
+	}
+
+	if(decref(s) == 0) {
+		if(i)
+			putimage(i);
+
 		emap = &s->map[SEGMAPSIZE];
 		for(pp = s->map; pp < emap; pp++)
 			if(*pp)
 				freepte(s, *pp);
-
-		if(i = s->image) {
-			lock(i);
-			if(i->s == s)
-				i->s = 0;
-			unlock(i);
-			putimage(i);
-		}
 
 		lock(&segalloc);
 		s->next = segalloc.free;		
@@ -395,10 +401,10 @@ mfreeseg(Segment *s, ulong start, int pages)
 					goto done;
 				j++;
 			}
-			j = 0;
 		}
 		else
-			pages -= PTEMAPMEM/BY2PG;
+			pages -= PTEPERTAB-j;
+		j = 0;
 	}
 done:
 	flushmmu();
