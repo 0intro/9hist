@@ -345,3 +345,6 @@ void		hnputs(void*, ushort);
 vlong		nhgetv(void*);
 ulong		nhgetl(void*);
 ushort		nhgets(void*);
+
+/* this does not belong in portfns.h, but the system pool.h is for a different allocator */
+void		poolsetparam(char*, ulong, int, int, void (*)(void*, void*));

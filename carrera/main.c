@@ -474,7 +474,7 @@ confinit(void)
 
 	if(top > 16*MB/BY2PG){
 		conf.upages = (conf.npage*60)/100;
-		poolconfig(imagmem, 0, 4*1024*1024, 0, nil);
+		poolsetparam("Image", 0, 0, 4*1024*1024, nil);
 	}else
 		conf.upages = (conf.npage*40)/100;
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
