@@ -14,6 +14,7 @@ void		authreply(Session*, ulong, Fcall*);
 ulong		authrequest(Session*, Fcall*);
 long		authwrite(Chan*, char*, int);
 Page*		auxpage(void);
+Block*		bpad(Block*, int);
 void		buzz(int, int);
 void		cachedel(Image*, ulong);
 void		cachepage(Page*, Image*);
