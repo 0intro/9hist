@@ -15,6 +15,9 @@ enum
 	 Cvre=		 0x11,		/*  vertical retrace end */
 	ARW=		0x3C0,		/* attribute registers (writing) */
 	ARR=		0x3C1,		/* attribute registers (reading) */
+	CMRX=		0x3C7,		/* color map read index */
+	CMWX=		0x3C8,		/* color map write index */
+	CM=		0x3C9,		/* color map data reg */
 };
 
 #define SCREENMEM	(0xA0000 | KZERO)

@@ -642,12 +642,12 @@ TEXT	config(SB),$0
 TEXT	l0update(SB),$0
 	XORL	AX,AX
 	MOVL	len+8(FP),CX
-	MOVL	from+0(FP),BX
-	MOVL	to+4(FP),DX
+	MOVL	from+0(FP),SI
+	MOVL	to+4(FP),DI
 l00:
-	MOVB	-1(BX)(CX*1),AL
+	MOVB	-2(SI)(CX*2),AL
 	MOVB	bitrevtab(SB)(AX*1),AL
-	MOVB	AL,-1(DX)(CX*1)
+	MOVB	AL,-1(DI)(CX*1)
 	LOOP	l00
 	RET
 

@@ -241,7 +241,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	else
 		vgascreen.ldepth = 0;
 	vgascreen.base = (void*)SCREENMEM;
-	vgascreen.width = (maxx*(1<<ldepth))/32;
+	vgascreen.width = (maxx*(1<<vgascreen.ldepth))/32;
 	vgascreen.r.max = Pt(maxx, maxy);
 	vgascreen.clipr.max = vgascreen.r.max;
 
@@ -252,7 +252,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	gscreen.width = (maxx*(1<<ldepth))/32;
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr.max = gscreen.r.max;
-	len = gscreen.width * 4 * maxy;
+	len = gscreen.width * BY2WD * maxy;
 	if(gscreen.base){
 		free(gscreen.base);
 		gscreen.base = ((ulong*)smalloc(len+2*1024))+256;
@@ -271,7 +271,7 @@ setscreen(int maxx, int maxy, int ldepth)
 void
 screeninit(void)
 {
-	int i;
+	int i, x;
 	ulong *l;
 
 	setmode(&mode12);
@@ -300,8 +300,18 @@ screeninit(void)
 		conf.maxx = MAXX;
 	if(conf.maxy == 0)
 		conf.maxy = MAXY;
-
 	setscreen(conf.maxx, conf.maxy, conf.ldepth);
+
+	/*
+	 *  set up default grey scale color map
+	 */
+	outb(CMWX, 0);
+	for(i = 0; i < 16; i++){
+		x = (i*63)/15;
+		outb(CM, x);
+		outb(CM, x);
+		outb(CM, x);
+	}
 }
 
 /*
@@ -341,7 +351,7 @@ void
 screenupdate(void)
 {
 	uchar *sp, *hp;
-	int y, len, incs, inch, bits;
+	int y, len, incs, inch, bits, off;
 	Rectangle r;
 
 	r = mbb;
@@ -360,10 +370,11 @@ screenupdate(void)
 		r.max.y = gscreen.r.max.y;
 
 	bits = 1<<vgascreen.ldepth;
-	sp = (uchar*)gaddr(&gscreen, r.min);
-	hp = (uchar*)gaddr(&vgascreen, r.min);
-	len = (r.max.x*bits + 31)/32 - (r.min.x*bits)/32;
-	len *= BY2WD;
+	off = (r.min.x*bits)>>(3-vgascreen.ldepth);
+	hp = (uchar*)(vgascreen.base+(r.min.y*vgascreen.width)) + off;
+	off <<= gscreen.ldepth - vgascreen.ldepth;
+	sp = (uchar*)(gscreen.base+(r.min.y*gscreen.width)) + off;
+	len = (r.max.x*bits + 7)/8 - (r.min.x*bits)/8;
 	if(len <= 0)
 		return;
 
@@ -446,7 +457,6 @@ screenputs(char *s, int n)
 		}
 	}
 	rs.max = Pt(gscreen.r.max.x, out.pos.y+defont0.height);
-	unlock(&screenlock);
 	mbbrect(rs);
 	screenupdate();
 }
@@ -454,7 +464,7 @@ screenputs(char *s, int n)
 int
 screenbits(void)
 {
-	return 1;	/* bits per pixel */
+	return 1<<gscreen.ldepth;	/* bits per pixel */
 }
 
 
