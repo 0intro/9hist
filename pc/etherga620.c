@@ -276,6 +276,7 @@ typedef struct Ctlr {
 	int	sci[3];			/* Send Consumer Index ([2] is host) */
 
 	int	interrupts;		/* statistics */
+	int	mi;
 	uvlong	ticks;
 
 	int	coalupdateonly;		/* tuning */
@@ -343,6 +344,7 @@ ga620ifstat(Ether* edev, void* a, long n, ulong offset)
 	}
 
 	l += snprint(p+l, READSTR-l, "interrupts: %ud\n", ctlr->interrupts);
+	l += snprint(p+l, READSTR-l, "mi: %ud\n", ctlr->mi);
 	l += snprint(p+l, READSTR-l, "ticks: %llud\n", ctlr->ticks);
 	l += snprint(p+l, READSTR-l, "coalupdateonly: %d\n", ctlr->coalupdateonly);
 	l += snprint(p+l, READSTR-l, "hardwarecksum: %d\n", ctlr->hardwarecksum);
@@ -468,13 +470,13 @@ ga620ctl(Ether* edev, void* buf, long n)
 	return r;
 }
 
-static void
-ga620transmit(Ether* edev)
+static int
+_ga620transmit(Ether* edev)
 {
 	Sbd *sbd;
 	Block *bp;
 	Ctlr *ctlr;
-	int sci, spi;
+	int sci, spi, work;
 
 	/*
 	 * For now there are no smarts here, just empty the
@@ -489,11 +491,13 @@ ga620transmit(Ether* edev)
 	 * Ctlr->sci[2] is where the host has got to tidying up after the
 	 * NIC has done with the packets.
 	 */
+	work = 0;
 	for(sci = ctlr->sci[2]; sci != ctlr->sci[0]; sci = NEXT(sci, Nsr)){
 		if(ctlr->srb[sci] == nil)
 			continue;
 		freeb(ctlr->srb[sci]);
 		ctlr->srb[sci] = nil;
+		work++;
 	}
 	ctlr->sci[2] = sci;
 
@@ -507,10 +511,19 @@ ga620transmit(Ether* edev)
 		sbd->lenflags = (BLEN(bp)<<16)|Fend;
 
 		ctlr->srb[spi] = bp;
+		work++;
 	}
 	csr32w(ctlr, Spi, spi);
 
 	iunlock(&ctlr->srlock);
+
+	return work;
+}
+
+static void
+ga620transmit(Ether* edev)
+{
+	_ga620transmit(edev);
 }
 
 static void
@@ -604,7 +617,7 @@ ga620receive(Ether* edev)
 static void
 ga620interrupt(Ureg*, void* arg)
 {
-	int csr;
+	int csr, ie, work;
 	Ctlr *ctlr;
 	Ether *edev;
 	uvlong tsc0, tsc1;
@@ -619,19 +632,32 @@ ga620interrupt(Ureg*, void* arg)
 	ctlr->interrupts++;
 	csr32w(ctlr, Hi, 1);
 
-	if(ctlr->rrrci != ctlr->rrrpi[0])
-		ga620receive(edev);
+	ie = 0;
+	work = 0;
+	while(ie < 2){
+		if(ctlr->rrrci != ctlr->rrrpi[0]){
+			ga620receive(edev);
+			work = 1;
+		}
 
-	ga620transmit(edev);
+		if(_ga620transmit(edev) != 0)
+			work = 1;
 
-	csr = csr32r(ctlr, Eci);
-	if(csr != ctlr->epi[0])
-		ga620event(ctlr, csr, ctlr->epi[0]);
+		csr = csr32r(ctlr, Eci);
+		if(csr != ctlr->epi[0]){
+			ga620event(ctlr, csr, ctlr->epi[0]);
+			work = 1;
+		}
 
-	if(ctlr->nrsr <= NrsrLO)
-		ga620replenish(ctlr);
-
-	csr32w(ctlr, Hi, 0);
+		if(ctlr->nrsr <= NrsrLO)
+			ga620replenish(ctlr);
+		if(work == 0){
+			if(ie == 0)
+				csr32w(ctlr, Hi, 0);
+			ie++;
+		}
+		work = 0;
+	}
 
 	rdtsc(&tsc1);
 	ctlr->ticks += tsc1-tsc0;
@@ -808,7 +834,7 @@ ga620init(Ether* edev)
 	 * These defaults are based on the tuning hints in the Alteon
 	 * Host/NIC Software Interface Definition and example software.
 	 */
-	ctlr->rct = 100;
+	ctlr->rct = 1/*100*/;
 	csr32w(ctlr, Rct, ctlr->rct);
 	ctlr->sct = 0;
 	csr32w(ctlr, Sct, ctlr->sct);
@@ -816,7 +842,7 @@ ga620init(Ether* edev)
 	csr32w(ctlr, St, ctlr->st);
 	ctlr->smcbd = Nsr/4;
 	csr32w(ctlr, SmcBD, ctlr->smcbd);
-	ctlr->rmcbd = 6;
+	ctlr->rmcbd = 4/*6*/;
 	csr32w(ctlr, RmcBD, ctlr->rmcbd);
 
 	/*
