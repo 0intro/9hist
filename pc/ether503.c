@@ -109,12 +109,12 @@ static Table table[] = {
 	{ 0x300, Irq2, 0, },		/* external transceiver */
 	{ 0x310, Irq3, 0, },
 	{ 0x330, Irq4, 0, },
-	{ 0x350, Irq5, 0, },
 
-	{ 0x250, Irq2, 1, },		/* BNC */
-	{ 0x280, Irq3, 1, },
-	{ 0x2A0, Irq4, 1, },
-	{ 0x2E0, Irq5, 1, },
+	{ 0x350, Irq5, Xsel, },		/* BNC */
+	{ 0x250, Irq2, Xsel, },
+	{ 0x280, Irq3, Xsel, },
+	{ 0x2A0, Irq4, Xsel, },
+	{ 0x2E0, Irq5, Xsel, },
 
 	{ 0 },
 };

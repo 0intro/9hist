@@ -213,7 +213,7 @@ dp8390reset(Ctlr *ctlr)
 
 	/*
 	 * Leave the chip initialised,
-	 * but in internal loopback mode.
+	 * but in monitor mode.
 	 */
 	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Sta);
 }
@@ -224,9 +224,11 @@ dp8390attach(Ctlr *ctlr)
 	/*
 	 * Enable the chip for transmit/receive.
 	 * The init routine leaves the chip in monitor
-	 * mode.
+	 * mode. Clear the missed-packet counter, it
+	 * increments while in monitor mode.
 	 */
 	dp8390outb(ctlr->card.dp8390+Rcr, Ab);
+	dp8390inb(ctlr->card.dp8390+Cntr2);
 }
 
 void
@@ -393,6 +395,31 @@ getcurr(Ctlr *ctlr)
 	return curr;
 }
 
+static void
+cldaquiet(Ctlr *ctlr)
+{
+	uchar a, b, c;
+
+	/*
+	 * Hack to keep away from the card's memory while it is receiving
+	 * a packet. This is only a problem on the NCR 3170 Safari.
+	 *
+	 * We peek at the current local DMA registers and, if they are
+	 * changing, wait.
+	 */
+	
+	for(;;delay(10)){
+		a = dp8390inb(ctlr->card.dp8390+Clda0);
+		b = dp8390inb(ctlr->card.dp8390+Clda0);
+		if(a != b)
+			continue;
+		c = dp8390inb(ctlr->card.dp8390+Clda0);
+		if(c != b)
+			continue;
+		break;
+	}
+}
+
 void
 dp8390receive(Ctlr *ctlr)
 {
@@ -402,27 +429,8 @@ dp8390receive(Ctlr *ctlr)
 	ulong data, len;
 
 	for(curr = getcurr(ctlr); ctlr->card.nxtpkt != curr; curr = getcurr(ctlr)){
-		/*
-		 * Hack to keep away from the card's memory while it is receiving
-		 * a packet. This is only a problem on the NCR 3170 Safari.
-		 *
-		 * We peek at the current local DMA registers and, if they are
-		 * changing, wait.
-		 */
-		if(strcmp(arch->id, "NCRD.0") == 0){
-			uchar a, b, c;
-		
-			for(;;delay(10)){
-				a = dp8390inb(ctlr->card.dp8390+Clda0);
-				b = dp8390inb(ctlr->card.dp8390+Clda0);
-				if(a != b)
-					continue;
-				c = dp8390inb(ctlr->card.dp8390+Clda0);
-				if(c != b)
-					continue;
-				break;
-			}
-		}
+		if(strcmp(arch->id, "NCRD.0") == 0)
+			cldaquiet(ctlr);
 
 		ctlr->inpackets++;
 
@@ -506,11 +514,14 @@ dp8390transmit(Ctlr *ctlr)
 
 	ring = &ctlr->tb[ctlr->ti];
 	if(ctlr->tbusy == 0 && ring->owner == Interface){
+
+		ctlr->tbusy = 1;
+
 		(*ctlr->card.write)(ctlr, ctlr->card.tstart*Dp8390BufSz, ring->pkt, ring->len);
+
 		dp8390outb(ctlr->card.dp8390+Tbcr0, ring->len & 0xFF);
 		dp8390outb(ctlr->card.dp8390+Tbcr1, (ring->len>>8) & 0xFF);
 		dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Txp|Sta);
-		ctlr->tbusy = 1;
 	}
 }
 
