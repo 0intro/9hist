@@ -66,7 +66,7 @@ static int
 reset(Ether *ether)
 {
 	int i;
-	uchar ic[8], sum;
+	uchar ea[Eaddrlen], ic[8], sum;
 	ulong port;
 	Dp8390 *dp8390;
 
@@ -95,7 +95,7 @@ reset(Ether *ether)
 	port = ether->port;
 	sum = 0;
 	for(i = 0; i < sizeof(ether->ea); i++){
-		ether->ea[i] = inb(port+Lar+i);
+		ea[i] = inb(port+Lar+i);
 		sum += ether->ea[i];
 		ic[i] = inb(port+i);
 	}
@@ -184,6 +184,10 @@ reset(Ether *ether)
 	 * ethernet address.
 	 */
 	dp8390reset(ether);
+	if((ether->ea[0]|ether->ea[1]|ether->ea[2]|ether->ea[3]|ether->ea[4]|ether->ea[5]) == 0){
+		for(i = 0; i < sizeof(ether->ea); i++)
+			ether->ea[i] = ea[i];
+	}
 	dp8390setea(ether);
 
 	return 0;

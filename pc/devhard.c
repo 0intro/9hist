@@ -44,6 +44,11 @@ enum
 	Csetbuf=	0xEF,
 	Cinitparam=	0x91,
 
+	/* conner specific commands */
+	Cstandby=	0xE0,
+	Cidle=		0xE1,
+	Cpowerdown=	0xE3,
+
 	/* file types */
 	Qdir=		0,
 
@@ -86,12 +91,22 @@ struct Drive
 	int	npart;		/* number of real partitions */
 	Partition p[Npart];
 	Repl	repl;
+	ulong	usetime;
+	int	state;
 
 	ulong	cap;		/* total bytes */
 	int	bytes;		/* bytes/sector */
 	int	sectors;	/* sectors/track */
 	int	heads;		/* heads/cyl */
 	long	cyl;		/* cylinders/drive */
+};
+
+enum
+{
+	Sspinning,
+	Sstandby,
+	Sidle,
+	Spowerdown,
 };
 
 /*
@@ -120,6 +135,7 @@ struct Controller
 
 Controller	*hardc;
 Drive		*hard;
+static int	spindowntime;
 
 static void	hardintr(Ureg*, void*);
 static long	hardxfer(Drive*, Partition*, int, long, long, char*);
@@ -170,9 +186,14 @@ hardreset(void)
 	Controller *cp;
 	int drive;
 	uchar equip;
+	char *p;
 
 	hard = xalloc(conf.nhard * sizeof(Drive));
 	hardc = xalloc(((conf.nhard+1)/2) * sizeof(Controller));
+	
+	p = getconf("spindowntime");
+	if(p)
+		spindowntime = atoi(p);
 	
 	/*
 	 *  read nvram for number of hard drives (2 max)
@@ -418,7 +439,7 @@ cmdreadywait(Controller *cp)
 
 	start = m->ticks;
 	while((inb(cp->pbase+Pstatus) & (Sready|Sbusy)) != Sready)
-		if(TK2MS(m->ticks - start) > 5){
+		if(TK2MS(m->ticks - start) > 10){
 			DPRINT("cmdreadywait failed\n");
 			error(Eio);
 		}
@@ -526,6 +547,8 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 		}
 	}
 	sleep(&cp->r, cmddone, cp);
+	dp->state = Sspinning;
+	dp->usetime = m->ticks;
 	poperror();
 	if(loop)
 		nexterror();
@@ -1009,5 +1032,37 @@ hardintr(Ureg *ur, void *arg)
 		print("weird disk interrupt, cmd=%.2ux, lastcmd= %.2ux status=%.2ux\n",
 			cp->cmd, cp->lastcmd, cp->status);
 		break;
+	}
+}
+
+void
+hardclock(void)
+{
+	int drive;
+	Drive *dp;
+	Controller *cp;
+	int diff;
+
+	if(spindowntime <= 0)
+		return;
+
+	for(drive = 0; drive < conf.nhard; drive++){
+		dp = &hard[drive];
+		cp = dp->cp;
+		if(canqlock(cp) == 0)
+			continue;
+
+		diff = TK2SEC(m->ticks - dp->usetime);
+		switch(dp->state){
+		case Sspinning:
+			if(diff >= spindowntime){
+				cp->cmd = Cstandby;
+				outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | 0);
+				outb(cp->pbase+Pcmd, cp->cmd);
+				dp->state = Sstandby;
+			}
+			break;
+		}
+		qunlock(dp->cp);
 	}
 }

@@ -27,6 +27,7 @@ ulong	getcr0(void);
 ulong	getcr2(void);
 char*	getconf(char*);
 ulong	getstatus(void);
+void	hardclock(void);
 void	i8042a20(void);
 void	i8042reset(void);
 void	ident(void);

@@ -54,6 +54,7 @@ clock(Ureg *ur, void *arg)
 
 	checkalarms();
 	mouseclock();
+	hardclock();
 
 	/*
 	 *  process time accounting

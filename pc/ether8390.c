@@ -228,7 +228,7 @@ dp8390getea(Ether *ether)
 	dp8390outb(port+Cr, cr);
 }
 
-static void*
+void*
 dp8390read(Dp8390 *dp8390, void *to, ulong from, ulong len)
 {
 	ulong port = dp8390->dp8390;
@@ -279,7 +279,7 @@ dp8390read(Dp8390 *dp8390, void *to, ulong from, ulong len)
 	return to;
 }
 
-static void*
+void*
 dp8390write(Dp8390 *dp8390, ulong to, void *from, ulong len)
 {
 	ulong port = dp8390->dp8390;
