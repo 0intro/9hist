@@ -84,7 +84,7 @@ enum {
 #define COMMAND(hw, cmd, a)	outs(hw->addr+Command, ((cmd)<<11)|(a))
 
 /*
- *  Write two 0 bytes to idnetify the IDport and them reset the
+ *  Write two 0 bytes to identify the IDport and them reset the
  *  ID sequence.  Then send the ID sequenced to the card to get
  *  the card it into command state.
  */
