@@ -55,7 +55,7 @@ enum
  */
 Dirtab procdir[] =
 {
-	"args",	{Qargs},		0,			0440,
+	"args",		{Qargs},	0,			0440,
 	"ctl",		{Qctl},		0,			0000,
 	"fd",		{Qfd},		0,			0444,
 	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
@@ -76,21 +76,21 @@ Dirtab procdir[] =
 
 static
 Cmdtab proccmd[] = {
-	CMclose,		"close",		2,
+	CMclose,	"close",	2,
 	CMclosefiles,	"closefiles",	1,
-	CMfixedpri,	"fixedpri",		2,
+	CMfixedpri,	"fixedpri",	2,
 	CMhang,		"hang",		1,
-	CMnohang,	"nohang",		1,
-	CMnoswap,	"noswap",		1,
+	CMnohang,	"nohang",	1,
+	CMnoswap,	"noswap",	1,
 	CMkill,		"kill",		1,
-	CMpri,		"pri",			2,
-	CMprivate,	"private",		1,
-	CMprofile,	"profile",		1,
-	CMstart,		"start",		1,
+	CMpri,		"pri",		2,
+	CMprivate,	"private",	1,
+	CMprofile,	"profile",	1,
+	CMstart,	"start",	1,
 	CMstartstop,	"startstop",	1,
 	CMstop,		"stop",		1,
 	CMwaitstop,	"waitstop",	1,
-	CMwired,		"wired",		2,
+	CMwired,	"wired",	2,
 };
 
 /* Segment type from portdat.h */
