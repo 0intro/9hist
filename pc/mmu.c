@@ -91,6 +91,7 @@ static ulong	*upt;		/* 2nd level page table for struct User */
 
 struct
 {
+	Lock;
 	ulong addr; 	/* next available address for isa bus memory */
 	ulong end;	/* one past available isa bus memory */
 } isamemalloc;
