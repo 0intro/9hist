@@ -37,6 +37,7 @@ int	devno(int, int);
 Chan*	devopen(Chan*, int, Dirtab*, int, Devgen*);
 void	devstat(Chan*, char*, Dirtab*, int, Devgen*);
 int	devwalk(Chan*, char*, Dirtab*, int, Devgen*);
+void*	dmaalloc(ulong);
 void	dumpqueues(void);
 void	dumpregs(Ureg*);
 void	dumpstack(void);

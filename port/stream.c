@@ -1269,9 +1269,6 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 
 	s = c->stream;
 
-	if(n == 1 && *((char*)a) == 1)
-		print("u->p->pid %d %s\n", u->p->pid, u->p->text);
-
 	/*
 	 *  decode the qid
 	 */
