@@ -311,6 +311,7 @@ enum{
 	Qppid,
 	Qtime,
 	Quser,
+	Qvmereset,
 };
 
 Dirtab consdir[]={
@@ -324,6 +325,7 @@ Dirtab consdir[]={
 	"ppid",		Qppid,		12,	0600,
 	"time",		Qtime,		12,	0600,
 	"user",		Quser,		0,	0600,
+	"vmereset",	Qvmereset,	0,	0600,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
@@ -579,6 +581,13 @@ conswrite(Chan *c, void *va, long n)
 
 	case Qnull:
 		break;
+
+	case Qvmereset:
+		if(strcmp(u->p->pgrp->user, "bootes") != 0)
+			error(0, Eperm);
+		vmereset();
+		break;
+
 	default:
 		error(0, Egreg);
 	}

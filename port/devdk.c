@@ -6,7 +6,7 @@
 #include	"io.h"
 #include	"errno.h"
 
-#define	DPRINT	if(0)	/*kprint*/
+#define	DPRINT	if(0) print
 
 #define	NOW	(MACHP(0)->ticks)
 
@@ -1668,6 +1668,7 @@ dktimer(void *a)
 		/*
 		 * send keep alive
 		 */
+		DPRINT("keep alive\n");
 		dkmesg(c, T_ALIVE, D_CONTINUE, 0, 0);
 
 		/*

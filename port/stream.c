@@ -652,10 +652,10 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	 */
 	for(s = slist; s < &slist[conf.nstream]; s++) {
 		if(s->inuse == 0){
-			if(canlock(s)){
+			if(canqlock(s)){
 				if(s->inuse == 0)
 					break;
-				unlock(s);
+				qunlock(s);
 			}
 		}
 	}
@@ -664,7 +664,7 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 		error(0, Enostream);
 	}
 	if(waserror()){
-		unlock(s);
+		qunlock(s);
 		streamclose1(s);
 		nexterror();
 	}
@@ -697,7 +697,7 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	if(qi->open)
 		(*qi->open)(RD(s->devq), s);
 
-	unlock(s);
+	qunlock(s);
 	poperror();
 	return s;
 }
@@ -717,17 +717,17 @@ streamopen(Chan *c, Qinfo *qi)
 	for(s = slist; s < &slist[conf.nstream]; s++) {
 		if(s->inuse && s->type == c->type && s->dev == c->dev
 		   && s->id == STREAMID(c->qid)){
-			lock(s);
+			qlock(s);
 			if(s->inuse && s->type == c->type
 			&& s->dev == c->dev
 		 	&& s->id == STREAMID(c->qid)){
 				s->inuse++;
 				s->opens++;
 				c->stream = s;
-				unlock(s);
+				qunlock(s);
 				return;
 			}
-			unlock(s);
+			qunlock(s);
 		}
 	}
 
@@ -744,13 +744,13 @@ streamopen(Chan *c, Qinfo *qi)
 int
 streamenter(Stream *s)
 {
-	lock(s);
+	qlock(s);
 	if(s->opens == 0){
-		unlock(s);
+		qunlock(s);
 		return -1;
 	}
 	s->inuse++;
-	unlock(s);
+	qunlock(s);
 	return 0;
 }
 
@@ -767,7 +767,7 @@ streamexit(Stream *s, int locked)
 	char *name;
 
 	if(!locked)
-		lock(s);
+		qlock(s);
 	if(s->inuse == 1){
 		if(s->opens != 0)
 			panic("streamexit %d %s\n", s->opens, s->devq->info->name);
@@ -784,7 +784,7 @@ streamexit(Stream *s, int locked)
 	s->inuse--;
 	rv = s->inuse;
 	if(!locked)
-		unlock(s);
+		qunlock(s);
 	return rv;
 }
 
@@ -801,24 +801,24 @@ streamclose1(Stream *s)
 	/*
 	 *  decrement the reference count
 	 */
-	lock(s);
+	qlock(s);
 	if(s->opens == 1){
-		if(!waserror()){
-			/*
-			 *  descend the stream closing the queues
-			 */
-			for(q = s->procq; q; q = q->next){
+		/*
+		 *  descend the stream closing the queues
+		 */
+		for(q = s->procq; q; q = q->next){
+			if(!waserror()){
 				if(q->info->close)
 					(*q->info->close)(q->other);
-				WR(q)->put = nullput;
-
-				/*
-				 *  this may be 2 streams joined device end to device end
-				 */
-				if(q == s->devq->other)
-					break;
+				poperror();
 			}
-			poperror();
+			WR(q)->put = nullput;
+
+			/*
+			 *  this may be 2 streams joined device end to device end
+			 */
+			if(q == s->devq->other)
+				break;
 		}
 	
 		/*
@@ -835,7 +835,7 @@ streamclose1(Stream *s)
 	 *  leave it and free it
 	 */
 	streamexit(s, 1);
-	unlock(s);
+	qunlock(s);
 }
 void
 streamclose(Chan *c)

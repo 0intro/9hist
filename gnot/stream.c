@@ -810,9 +810,9 @@ streamclose1(Stream *s)
 			if(!waserror()){
 				if(q->info->close)
 					(*q->info->close)(q->other);
-				WR(q)->put = nullput;
+				poperror();
 			}
-			poperror();
+			WR(q)->put = nullput;
 
 			/*
 			 *  this may be 2 streams joined device end to device end
@@ -820,14 +820,14 @@ streamclose1(Stream *s)
 			if(q == s->devq->other)
 				break;
 		}
-	}
 	
-	/*
-	 *  ascend the stream flushing the queues
-	 */
-	for(q = s->devq; q; q = nq){
-		nq = q->next;
-		flushq(q);
+		/*
+		 *  ascend the stream flushing the queues
+		 */
+		for(q = s->devq; q; q = nq){
+			nq = q->next;
+			flushq(q);
+		}
 	}
 	s->opens--;
 
@@ -1013,6 +1013,8 @@ streamread(Chan *c, void *vbuf, long n)
  *	hangup			-- send an M_HANGUP up the stream
  *	push ldname		-- push the line discipline named ldname
  *	pop			-- pop a line discipline
+ *
+ *  This routing is entrered with s->wrlock'ed and must unlock.
  */
 static long
 streamctlwrite(Chan *c, void *a, long n)

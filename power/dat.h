@@ -454,7 +454,7 @@ struct Queue {
  *  a stream head
  */
 struct Stream {
-	Lock;			/* structure lock */
+	QLock;			/* structure lock */
 	short	inuse;		/* number of processes in stream */
 	short	opens;		/* number of processes with stream open */
 	ushort	hread;		/* number of reads after hangup */

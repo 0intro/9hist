@@ -103,6 +103,25 @@ vecinit(void)
 }
 
 /*
+ *  reset the vme bus
+ */
+void
+vmereset(void)
+{
+	long i;
+	int noforce;
+
+	if(ioid >= IO3R1)
+		noforce = 1;
+	else
+		noforce = 0;
+	MODEREG->resetforce = (1<<1) | noforce;
+	for(i=0; i<1000000; i++)
+		;
+	MODEREG->resetforce = noforce;
+}
+
+/*
  *  We have to program both the IO2 board to generate interrupts
  *  and the SBCC on CPU 0 to accept them.
  */
@@ -110,25 +129,15 @@ void
 ioboardinit(void)
 {
 	long i;
-	int noforce;
 	int maxlevel;
 
 	ioid = *IOID;
-	if(ioid >= IO3R1){
+	if(ioid >= IO3R1)
 		maxlevel = 11;
-		noforce = 1;
-	} else {
+	else
 		maxlevel = 8;
-		noforce = 0;
-	}
 
-	/*
-	 *  reset VME bus (MODEREG is on the IO2)
-	 */
-	MODEREG->resetforce = (1<<1) | noforce;
-	for(i=0; i<1000000; i++)
-		;
-	MODEREG->resetforce = noforce;
+	vmereset();
 	MODEREG->masterslave = (SLAVE<<4) | MASTER;
 
 	/*

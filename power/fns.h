@@ -198,6 +198,7 @@ void	validaddr(ulong, ulong, int);
 void	vecinit(void);
 void	vector80(void);
 void*	vmemchr(void*, int, int);
+void	vmereset(void);
 void	wakeme(Alarm*);
 void	wakeup(Rendez*);
 void	wbflush(void);

@@ -178,7 +178,7 @@ pipeopen(Chan *c, int omode)
 		 *  pointer from the other stream.
 		 */
 		if(streamenter(local)<0)
-			panic("pipeattach");
+			panic("pipeopen");
 	}
 	unlock(p);
 	poperror();
@@ -208,43 +208,29 @@ pipewstat(Chan *c, char *db)
 }
 
 void
-pipeexit(Pipe *p)
+pipeclose(Chan *c)
 {
-	if(decref(p) < 0)
-		panic("pipeexit");
-	if(p->ref == 0){
+	Pipe *p;
+
+	p = &pipealloc.pipe[STREAMID(c->qid)/2];
+
+	/*
+	 *  take care of associated streams
+	 */
+	if(c->stream)
+		streamclose(c);		/* close this stream */
+
+	/*
+	 *  free the structure
+	 */
+	if(decref(p) == 0){
 		lock(&pipealloc);
 		p->next = pipealloc.free;
 		pipealloc.free = p;
 		unlock(&pipealloc);
 	}
-}
-
-void
-pipeclose(Chan *c)
-{
-	Stream *remote;
-	Stream *local;
-	Pipe *p;
-
-	p = &pipealloc.pipe[STREAMID(c->qid)/2];
-	lock(p);
-	if(waserror()){
-		unlock(p);
-		nexterror();
-	}
-
-	/*
-	 *  take care of associated streams
-	 */
-	if(local = c->stream){
-		remote = (Stream *)c->stream->devq->ptr;
-		streamclose(c);		/* close this stream */
-		streamexit(remote, 0);	/* release stream for other half of pipe */
-	}
-	unlock(p);
-	poperror();
-	pipeexit(p);
+	if(p->ref < 0)
+		panic("pipeexit");
 }
 
 long
@@ -315,6 +301,7 @@ static void
 pipestclose(Queue *q)
 {
 	Block *bp;
+	Stream *remote;
 
 	/*
 	 *  point to the bit-bucket and let any in-progress
@@ -330,4 +317,10 @@ pipestclose(Queue *q)
 	bp = allocb(0);
 	bp->type = M_HANGUP;
 	PUTNEXT(q, bp);
+
+	/*
+	 *  release stream for other half of pipe
+	 */
+	remote = RD(q)->ptr;
+	streamexit(remote, 0);
 }
