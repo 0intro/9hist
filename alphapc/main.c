@@ -27,6 +27,7 @@ main(void)
 	confinit();
 	archinit();
 	savefpregs(&initfp);
+	fpenab(0);
 	mmuinit();
 	xinit();
 	printinit();
@@ -273,19 +274,16 @@ char *confname[] =
 {
 	"ether0",
 	"scsi0",
-	"scsi1",
-	"scsi2",
 	"audio0",
-
+	"ether1",
 };
 
 char *confval[] =
 {
 	"type=2114x",
 	"type=ata",
-	"type=ata",
-	"type=ata",
 	"type=sb16",
+	"type=2114x",
 };
 
 int	nconf = nelem(confname);

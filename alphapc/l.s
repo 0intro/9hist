@@ -2,12 +2,12 @@
 
 #define SP		R30
 
-#define	HI_IPL	6	/* use 7 to disable mchecks */
+#define	HI_IPL	6			/* use 7 to disable mchecks */
 
 TEXT	_main(SB), $-8
 	MOVQ	$setSB(SB), R29
 	MOVQ	R29, R16
-	CALL_PAL	$PALwrkgp
+	CALL_PAL $PALwrkgp
 	MOVQ	$mach0(SB), R(MACH)
 	MOVQ	$(BY2PG-8)(R(MACH)), R30
 	MOVQ	R31, R(USER)
@@ -18,31 +18,63 @@ clrbss:
 	MOVQ	R31, (R1)
 	ADDQ	$8, R1
 	CMPUGT	R1, R2, R3
-	BEQ		R3, clrbss
+	BEQ	R3, clrbss
 
-	MOVL	R0, bootconf(SB)		/* passed in from boot loader */
+	MOVL	R0, bootconf(SB)	/* passed in from boot loader */
 
-	TRAPB
+_fpinit:
+	MOVQ	R0, R16
+	CALL_PAL $PALwrfen
 	MOVQ	$1, R1
-	SLLQ		$59, R1		/* normal rounding mode */
+	SLLQ	$59, R1			/* normal rounding mode */
 	MOVQ	R1, (R30)
 	MOVT	(R30), F1
+	EXCB
 	MOVT	F1, FPCR
-	TRAPB
+	EXCB
 
 	MOVT	$0.5, F28
 	ADDT	F28, F28, F29
 	ADDT	F29, F29, F30
 
+	SUBT	F28, F28, F0
+	MOVT	F0, F1
+	MOVT	F0, F2
+	MOVT	F0, F3
+	MOVT	F0, F4
+	MOVT	F0, F5
+	MOVT	F0, F6
+	MOVT	F0, F7
+	MOVT	F0, F8
+	MOVT	F0, F9
+	MOVT	F0, F10
+	MOVT	F0, F11
+	MOVT	F0, F12
+	MOVT	F0, F13
+	MOVT	F0, F14
+	MOVT	F0, F15
+	MOVT	F0, F16
+	MOVT	F0, F17
+	MOVT	F0, F18
+	MOVT	F0, F19
+	MOVT	F0, F20
+	MOVT	F0, F21
+	MOVT	F0, F22
+	MOVT	F0, F23
+	MOVT	F0, F24
+	MOVT	F0, F25
+	MOVT	F0, F26
+	MOVT	F0, F27
+
 	JSR	main(SB)
 	MOVQ	$_divq(SB), R31		/* touch _divq etc.; doesn't need to execute */
-	MOVQ	$_divl(SB), R31			/* touch _divl etc.; doesn't need to execute */
+	MOVQ	$_divl(SB), R31		/* touch _divl etc.; doesn't need to execute */
 	RET
 
 TEXT	setpcb(SB), $-8
 	MOVQ	R30, (R0)
-	AND		$0x7FFFFFFF, R0, R16		/* make address physical */
-	CALL_PAL	$PALswpctx
+	AND	$0x7FFFFFFF, R0, R16	/* make address physical */
+	CALL_PAL $PALswpctx
 	RET
 
 GLOBL	mach0(SB), $(MAXMACH*BY2PG)
@@ -53,7 +85,7 @@ TEXT	firmware(SB), $-8
 
 TEXT	splhi(SB), $0
 
-	MOVL	R26, 4(R(MACH))	/* save PC in m->splpc */
+	MOVL	R26, 4(R(MACH))		/* save PC in m->splpc */
 	MOVQ	$HI_IPL, R16
 	CALL_PAL $PALswpipl
 	RET
@@ -64,9 +96,9 @@ TEXT	spllo(SB), $0
 	RET
 
 TEXT	splx(SB), $0
-	MOVL	R26, 4(R(MACH))	/* save PC in m->splpc */
+	MOVL	R26, 4(R(MACH))		/* save PC in m->splpc */
 
-TEXT splxpc(SB), $0				/* for iunlock */
+TEXT splxpc(SB), $0			/* for iunlock */
 	MOVQ	R0, R16
 	CALL_PAL $PALswpipl
 	RET
@@ -76,8 +108,8 @@ TEXT	spldone(SB), $0
 
 TEXT	islo(SB), $0
 	CALL_PAL $PALrdps
-	AND		$IPL, R0
-	XOR		$IPL, R0
+	AND	$IPL, R0
+	XOR	$IPL, R0
 	RET
 
 TEXT	mb(SB), $-8
@@ -96,7 +128,7 @@ TEXT	tlbflush(SB), $-8
 
 TEXT	swpctx(SB), $-8
 	MOVQ	R0, R16
-	AND		$0x7FFFFFFF, R16		/* make address physical */
+	AND	$0x7FFFFFFF, R16	/* make address physical */
 	CALL_PAL $PALswpctx
 	RET
 
@@ -108,24 +140,22 @@ TEXT	wrent(SB), $-8
 
 TEXT	wrvptptr(SB), $-8
 	MOVQ	R0, R16
-	CALL_PAL	$PALwrvptptr
+	CALL_PAL $PALwrvptptr
 	RET
 
 TEXT	cserve(SB), $-8
 	MOVQ	R0, R16
 	MOVL	4(FP), R17
-	CALL_PAL	$PALcserve
+	CALL_PAL $PALcserve
 	RET
 
 TEXT	setlabel(SB), $-8
-
 	MOVL	R30, 0(R0)
 	MOVL	R26, 4(R0)
 	MOVQ	$0, R0
 	RET
 
 TEXT	gotolabel(SB), $-8
-
 	MOVL	0(R0), R30
 	MOVL	4(R0), R26
 	MOVQ	$1, R0
@@ -238,14 +268,14 @@ trapcommon:
 	CALL_PAL $PALswpipl
 
 	CALL_PAL	$PALrdusp
-	MOVQ	R0, (4*BY2WD+30*BY2V)(R30)		/* save USP */
+	MOVQ	R0, (4*BY2WD+30*BY2V)(R30)	/* save USP */
 
 	MOVQ	$mach0(SB), R(MACH)
 	MOVQ	$(4*BY2WD)(R30), R0
 	JSR		trap(SB)
 trapret:
 	MOVQ	(4*BY2WD+30*BY2V)(R30), R16	/* USP */
-	CALL_PAL	$PALwrusp			/* ... */
+	CALL_PAL $PALwrusp			/* ... */
 	MOVQ	(4*BY2WD+4*BY2V)(R30), R0
 	MOVQ	(4*BY2WD+5*BY2V)(R30), R1
 	MOVQ	(4*BY2WD+6*BY2V)(R30), R2
@@ -286,14 +316,14 @@ TEXT	syscall0(SB), $-8
 	MOVQ	$HI_IPL, R16
 	CALL_PAL $PALswpipl
 	MOVQ	$mach0(SB), R(MACH)
-	CALL_PAL	$PALrdusp
-	MOVQ	R0, (4*BY2WD+30*BY2V)(R30)		/* save USP */
+	CALL_PAL $PALrdusp
+	MOVQ	R0, (4*BY2WD+30*BY2V)(R30)	/* save USP */
 	MOVQ	R26, (4*BY2WD+27*BY2V)(R30)	/* save last return address */
-	MOVQ	$(4*BY2WD)(R30), R0			/* pass address of Ureg */
-	JSR		syscall(SB)
+	MOVQ	$(4*BY2WD)(R30), R0		/* pass address of Ureg */
+	JSR	syscall(SB)
 systrapret:
 	MOVQ	(4*BY2WD+30*BY2V)(R30), R16	/* USP */
-	CALL_PAL	$PALwrusp					/* consider doing this in execregs... */
+	CALL_PAL $PALwrusp		/* consider doing this in execregs... */
 	MOVQ	(4*BY2WD+27*BY2V)(R30), R26	/* restore last return address */
 	ADDQ	$(4*BY2WD+31*BY2V), R30
 	CALL_PAL	$PALretsys
@@ -305,15 +335,15 @@ systrapret:
 
 TEXT	touser(SB), $-8
 	MOVQ	R0, R16
-	CALL_PAL	$PALwrusp					/* set USP to value passed */
-	SUBQ	$(6*BY2V), R30					/* create frame for retsys */
-	MOVQ	$(UTZERO+32), R26				/* header appears in text */
-	MOVQ	R26, (1*BY2V)(R30)				/* PC -- only reg that matters */
+	CALL_PAL $PALwrusp			/* set USP to value passed */
+	SUBQ	$(6*BY2V), R30			/* create frame for retsys */
+	MOVQ	$(UTZERO+32), R26		/* header appears in text */
+	MOVQ	R26, (1*BY2V)(R30)		/* PC -- only reg that matters */
 	CALL_PAL	$PALretsys
 
 TEXT	rfnote(SB), $0
-	SUBL		$(2*BY2WD), R0, SP
-	JMP		trapret
+	SUBL	$(2*BY2WD), R0, SP
+	JMP	trapret
 
 TEXT	savefpregs(SB), $-8
 	MOVT	F0, 0x00(R0)

@@ -3,6 +3,9 @@
 
 #define uartpower(x, y)
 
+void ns16552setup(ulong, ulong, char*, int);
+void ns16552intr(int);
+
 /*
  *  handle an interrupt to a single uart
  */
@@ -21,9 +24,9 @@ ns16552install(void)
 		return;
 	already = 1;
 
-	ns16552setup(Uart0, UartFREQ, "eia0");
+	ns16552setup(Uart0, UartFREQ, "eia0", Ns550);
 	intrenable(VectorUART0, ns16552intrx, (void*)0, BUSUNKNOWN);
-	ns16552setup(Uart1, UartFREQ, "eia1");
+	ns16552setup(Uart1, UartFREQ, "eia1", Ns550);
 	intrenable(VectorUART1, ns16552intrx, (void*)0, BUSUNKNOWN);
 }
 

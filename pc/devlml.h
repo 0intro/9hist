@@ -38,47 +38,47 @@
 // The following are the datastructures needed by the device.
 #define ZR36057_I2C_BUS		0x044
 // which bit of ZR36057_I2C_BUS is which
-#define ZR36057_I2C_SCL                 1
-#define ZR36057_I2C_SDA                 2
-#define ZR36057_INTR_JPEGREP            0x08000000
-#define ZR36057_INTR_STAT               0x03c
+#define ZR36057_I2C_SCL		1
+#define ZR36057_I2C_SDA		2
+#define ZR36057_INTR_JPEGREP	0x08000000
+#define ZR36057_INTR_STAT	0x03c
 
 // A Device records the properties of the various card types supported.
 typedef struct {
-	int		number;			// The H33_CARDTYPE_ assigned
-	char	*card_name;		// A string name
-	int		zr060addr;		// Which guest bus address for the ZR36060
+	int	number;		// The H33_CARDTYPE_ assigned
+	char	*card_name;	// A string name
+	int	zr060addr;	// Which guest bus address for the ZR36060
 } Device;
 
 // An entry in the fragment table
 typedef struct {
-	ulong	address;		// bus address of page
-	int		length;			// length of page
+	ulong	address;	// bus address of page
+	int	length;		// length of page
 } RingPage;
 
 // The structure that we will use to tell the '57 about the buffers
 // The sizeof(RingData) should not exceed page size
 typedef struct {
-	void			*buffer[4];
-	ulong			i_stat_com[4];
-	RingPage		ring_pages[4][PAGES];
+	void		*buffer[4];
+	ulong		i_stat_com[4];
+	RingPage	ring_pages[4][PAGES];
 } RingData;
 
 typedef struct {
-	int		expect;			// the buffer the int routine expects next
-	int		which;			// which ring buffer the read or write uses
-	int		filled;			// the current number of filled buffers
-	int		pages;			// the number of complete pages
-	int		remainder;		// the number of bytes in incomplete page
+	int	expect;		// the buffer the int routine expects next
+	int	which;		// which ring buffer the read or write uses
+	int	filled;		// the current number of filled buffers
+	int	pages;		// the number of complete pages
+	int	remainder;	// the number of bytes in incomplete page
 } RingPtr;
 
 // The remainder of the #defs are constants which should not need changing.
 
 // The PCI vendor and device ids of the zoran chipset on the dc30
 // these really belong in pci.h
-#define PCI_VENDOR_ZORAN				0x11de
-#define PCI_DEVICE_ZORAN_36057			0x6057
-#define PCI_DEVICE_ZORAN_36067			PCI_DEVICE_ZORAN_36057
+#define PCI_VENDOR_ZORAN		0x11de
+#define PCI_DEVICE_ZORAN_36057		0x6057
+#define PCI_DEVICE_ZORAN_36067		PCI_DEVICE_ZORAN_36057
 
 #define BT819Addr 0x8a
 #define BT856Addr 0x88
@@ -89,19 +89,19 @@ typedef struct {
 #define FRAGM_FINAL_B 1
 #define STAT_BIT 1
 
-#define writel(v, a)	(*(ulong *)(a) = (v))
+#define writel(v, a)	(*(ulong  *)(a) = (v))
 #define writew(v, a)	(*(ushort *)(a) = (v))
-#define writeb(v, a)	(*(uchar *)(a) = (v))
-#define readl(a)		(*(ulong *)(a))
-#define readw(a)		(*(ushort *)(a))
-#define readb(a)		(*(uchar *)(a))
+#define writeb(v, a)	(*(uchar  *)(a) = (v))
+#define readl(a)	(*(ulong  *)(a))
+#define readw(a)	(*(ushort *)(a))
+#define readb(a)	(*(uchar  *)(a))
 
-typedef struct FrameHeader			FrameHeader;
-typedef struct MjpgDrv				MjpgDrv;
-typedef struct Fragment				Fragment;
+typedef struct FrameHeader		FrameHeader;
+typedef struct MjpgDrv			MjpgDrv;
+typedef struct Fragment			Fragment;
 typedef struct FragmentTable		FragmentTable;
-typedef struct CodeData				CodeData;
-typedef struct ML33Board			LML33Board;
+typedef struct CodeData			CodeData;
+typedef struct ML33Board		LML33Board;
 
 #define FRAGSIZE (MB/NBUF)
 

@@ -376,7 +376,6 @@ fault386(Ureg* ureg, void*)
 	n = fault(addr, read);
 	if(n < 0){
 		if(!user){
-print("fault pc %luX addr %luX\n", ureg->pc, addr);
 			dumpregs(ureg);
 			panic("fault: 0x%lux\n", addr);
 		}

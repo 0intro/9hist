@@ -55,10 +55,8 @@ ulong 	meminit(void);
 void		mmuinit(void);
 #define	mmunewpage(x)
 void		mntdump(void);
-void		ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
-void		ns16552setup(ulong, ulong, char*);
 void		ns16552install(void);
-void		ns16552intr(int);
+void		ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
 ulong	pcibarsize(Pcidev*, int);
 int	pcicfgr8(Pcidev*, int);
 int	pcicfgr16(Pcidev*, int);

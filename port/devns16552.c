@@ -313,7 +313,6 @@ ns16552mflow(Uart *p, int n)
 
 	ilock(&p->tlock);
 	if(n){
-print("mflow type %d\n", p->type);
 		if(p->type == Ns650){
 			outb(p->port + Format, 0xbf);
 			outb(p->port + Efr, Eena|Arts|Acts);

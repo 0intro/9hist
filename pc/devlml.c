@@ -642,9 +642,10 @@ print("reading %lux at %lux (%lux)\n", v, pciBaseAddr + off, off);
 }
 
 static long
-lmlwrite(Chan *c, void *va, long n, vlong off) {
+lmlwrite(Chan *c, void *va, long n, vlong voff) {
 	int i;
 	uchar *buf = va;
+	long off = voff;
 
 	switch(c->qid.path & ~CHDIR){
 
@@ -686,6 +687,7 @@ lmlwrite(Chan *c, void *va, long n, vlong off) {
 			writew(*(short *)buf, pciBaseAddr + off);
 			break;
 		case 4:
+print("writing %lux to %lux (%lux)\n", *(long *)buf, pciBaseAddr + off, off);
 			writel(*(long *)buf, pciBaseAddr + off);
 			break;
 		default:
