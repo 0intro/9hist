@@ -485,7 +485,7 @@ resetscsi(void)
 	outb(port+Rc, Srst|Scrst);
 	delay(500);
 	if((rs = inb(port+Rs)) != (Init|Idle)){
-		print("adaptec%d: reset status #%2.2ux\n", 0, rs);
+		/*print("adaptec%d: reset status #%2.2ux\n", 0, rs);/**/
 		return;
 	}
 

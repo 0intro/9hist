@@ -43,6 +43,7 @@ int	int1mask = 0xff;	/* interrupts enabled for second 8259 */
  *  trap/interrupt gates
  */
 Segdesc ilt[256];
+int	badtrap[256];
 
 typedef struct Handler	Handler;
 struct Handler
@@ -261,7 +262,9 @@ trap(Ureg *ur)
 				panic("%s pc=0x%lux", excname[v], ur->pc);
 			}
 		}
-		print("bad trap type %d pc=0x%lux\n", v, ur->pc);
+		if(badtrap[v]++ < 10 || (badtrap[v]%1000) == 0)
+			print("bad trap type %d pc=0x%lux: total %d\n", v, ur->pc,
+				badtrap[v]);
 		return;
 	}
 

@@ -208,20 +208,20 @@ struct Tctl
 	uchar	type;			/* Listening or active connection */
 	uchar	code;			/* Icmp code */		
 	struct {
-		int	una;		/* Unacked data pointer */
-		int	nxt;		/* Next sequence expected */
-		int	ptr;		/* Data pointer */
+		ulong	una;		/* Unacked data pointer */
+		ulong	nxt;		/* Next sequence expected */
+		ulong	ptr;		/* Data pointer */
 		ushort	wnd;		/* Tcp send window */
-		int	up;		/* Urgent data pointer */
-		int	wl1;
-		int	wl2;
+		ulong	up;		/* Urgent data pointer */
+		ulong	wl1;
+		ulong	wl2;
 	} snd;
 	struct {
 		ulong	nxt;		/* Receive pointer to next byte slot */
 		ushort	wnd;		/* Receive window incoming */
-		int	up;		/* Urgent pointer */
+		ulong	up;		/* Urgent pointer */
 	} rcv;
-	int	iss;			/* Initial sequence number */
+	ulong	iss;			/* Initial sequence number */
 	ushort	cwind;			/* Congestion window */
 	ushort	ssthresh;		/* Slow start threshold */
 	int	resent;			/* Bytes just resent */
@@ -248,7 +248,7 @@ struct Tctl
 	Timer	timer;			/* Activity timer */
 	Timer	acktimer;		/* Acknoledge timer */
 	Timer	rtt_timer;		/* Round trip timer */
-	int	rttseq;			/* Round trip sequence */
+	ulong	rttseq;			/* Round trip sequence */
 	int	srtt;			/* Shortened round trip */
 	int	mdev;			/* Mean deviation of round trip */
 };
@@ -264,8 +264,8 @@ struct	Tcp
 {
 	Port	source;
 	Port	dest;
-	int	seq;
-	int	ack;
+	ulong	seq;
+	ulong	ack;
 	char	flags;
 	ushort	wnd;
 	ushort	up;
@@ -477,13 +477,13 @@ ushort	ptcl_csum(Block*bp, int, int);
 int	pullb(Block **, int);
 void	reset(Ipaddr, Ipaddr, char, ushort, Tcp*);
 void	tcpsndsyn(Tcpctl*);
-int	seq_ge(int, int);
-int	seq_gt(int, int);
-int	seq_gt(int, int);
-int	seq_le(int, int);
-int	seq_lt(int, int);
-int	seq_within(int, int, int);
-int	seq_within(int, int, int);
+int	seq_ge(ulong, ulong);
+int	seq_gt(ulong, ulong);
+int	seq_gt(ulong, ulong);
+int	seq_le(ulong, ulong);
+int	seq_lt(ulong, ulong);
+int	seq_within(ulong, ulong, ulong);
+int	seq_within(ulong, ulong, ulong);
 void	tcpsetstate(Ipconv *, char);
 void	tcpgo(Timer *);
 void	tcphalt(Timer *);

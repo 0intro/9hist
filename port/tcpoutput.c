@@ -112,7 +112,7 @@ tcpoutput(Ipconv *s)
 		/*
 		 * keep track of balance of resent data */
 		if(tcb->snd.ptr < tcb->snd.nxt)
-			tcb->resent += MIN((int)tcb->snd.nxt - (int)tcb->snd.ptr,(int)ssize);
+			tcb->resent += MIN(tcb->snd.nxt - tcb->snd.ptr,(int)ssize);
 
 		tcb->snd.ptr += ssize;
 
