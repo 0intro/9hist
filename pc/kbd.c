@@ -261,7 +261,9 @@ i8042intr(Ureg*, void*)
 	keyup = c&0x80;
 	c &= 0x7f;
 	if(c > sizeof kbtab){
-		print("unknown key %ux\n", c|keyup);
+		c |= keyup;
+		if(c != 0xFF)	/* these come fairly often: CAPSLOCK U Y */
+			print("unknown key %ux\n", c);
 		return;
 	}
 
