@@ -417,18 +417,15 @@ drawlookup(Client *client, int id, int checkname)
 {
 	DImage *d;
 
-//	print("drawlookup %d", id);
 	d = client->dimage[id&HASHMASK];
 	while(d){
 		if(d->id == id){
 			if(checkname && !drawgoodname(d))
 				error(Eoldname);
-//			print(" %p...", d);
 			return d;
 		}
 		d = d->next;
 	}
-//	print(" nil...");
 	return 0;
 }
 
