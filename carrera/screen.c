@@ -169,13 +169,13 @@ dacinit(void)
 		d->cr2 = 0xff;
 
 	for(i = 0; i<256; i++) {
-		r = ~rep((i>>5) & 7, 3);
-		g = ~rep((i>>2) & 7, 3);
-		b = ~rep(i & 3, 2);
+		r = rep((i>>5) & 7, 3);
+		g = rep((i>>2) & 7, 3);
+		b = rep(i & 3, 2);
 		setcolor(i, r, g, b);
 	}
-	setcolor(85, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
-	setcolor(170, 0x55555555, 0x55555555, 0x55555555);
+	setcolor(170, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
+	setcolor(85, 0x55555555, 0x55555555, 0x55555555);
 
 	/* Overlay Palette Ram */
 	d->cr0 = 0x00;
@@ -199,24 +199,12 @@ dacinit(void)
 void
 screeninit(void)
 {
-	int i;
-	ulong r, g, b;
-
 	dacinit();
 
 	bitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
-
-	for(i = 0; i<256; i++) {
-		r = ~rep((i>>5) & 7, 3);
-		g = ~rep((i>>2) & 7, 3);
-		b = ~rep(i & 3, 2);
-		setcolor(i, r, g, b);
-	}
-	setcolor(85, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
-	setcolor(170, 0x55555555, 0x55555555, 0x55555555);
 
 	screenwin();
 }
@@ -348,7 +336,7 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 
 	d = DAC;
 
-	d->cr0 = revtab0[p & 0xFF];
+	d->cr0 = revtab0[255 - (p & 0xFF)];
 	d->cr1 = 0;
 	r = d->cr3;
 	g = d->cr3;
@@ -366,7 +354,7 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 
 	d = DAC;
 
-	d->cr0 = revtab0[p & 0xFF];
+	d->cr0 = revtab0[255 - (p & 0xFF)];
 	d->cr1 = 0;
 	d->cr3 = r >> 24;
 	d->cr3 = g >> 24;

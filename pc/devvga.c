@@ -58,7 +58,7 @@ struct Vgacard
 	void	(*setpage)(int);	/* routine to page though display memory */
 };
 
-static void	nopage(int), tsengpage(int), tridentpage(int);
+static void	nopage(int), et4000page(int), tridentpage(int);
 static void	atipage(int), cirruspage(int);
 extern void	s3page(int);
 
@@ -71,7 +71,8 @@ Vgacard vgachips[] =
 	{ "pvga1a", cirruspage, },
 	{ "s3", s3page, },
 	{ "trident", tridentpage, },
-	{ "tseng", tsengpage, },
+	{ "et4000", et4000page, },
+	{ "tseng", et4000page, },
 	{ 0, 0, },
 };
 
@@ -1105,7 +1106,7 @@ tridentpage(int page)
 	vgaxo(Seqx, 0x0E, seq0E|(page^0x02));
 }
 static void
-tsengpage(int page)
+et4000page(int page)
 {
 	outb(0x3cd, (page<<4)|page);
 }
