@@ -167,26 +167,25 @@ screeninit(void)
 	srout(Smmask, 0x0f);	/* enable all 4 color planes for writing */
 
 	/*
-	 *  zero out display
+	 *  swizzle the font longs.
+	 *  we do it here since the font is initialized with big endian longs.
 	 */
-	defont = &defont0;	/* save space; let bitblt do the conversion work */
-	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0); /**/
+	defont = &defont0;
+	l = defont->bits->base;
+	for(i = defont->bits->width*Dy(defont->bits->r); i > 0; i--, l++)
+		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
 
 	/*
-	 *  stick print at the top
+	 *  zero out display
+	 */
+	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
+
+	/*
+	 *  start printing at the top of screen
 	 */
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
-
-	/*
-	 *  swizzle the damn font longs.
-	 *  we do it here since the font is in a machine independent (i.e.
-	 *  made for the 68020) format.
-	 */
-	l = defont->bits->base;
-	for(i = defont->bits->width*Dy(defont->bits->r); i > 0; i--, l++)
-		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
 }
 
 void
@@ -201,7 +200,7 @@ screenputc(int c)
 		if(out.pos.y > gscreen.r.max.y-defont0.height)
 			out.pos.y = gscreen.r.min.y;
 		gbitblt(&gscreen, Pt(0, out.pos.y), &gscreen,
-		    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), 0);
+		    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), flipD[0]);
 	}else if(c == '\t'){
 		out.pos.x += (8-((out.pos.x-MINX)/out.bwid&7))*out.bwid;
 		if(out.pos.x >= gscreen.r.max.x)
@@ -217,7 +216,7 @@ screenputc(int c)
 			screenputc('\n');
 		buf[0] = c&0x7F;
 		buf[1] = 0;
-		out.pos = gstring(&gscreen, out.pos, defont, buf, S);
+		out.pos = gstring(&gscreen, out.pos, defont, buf, flipD[S]);
 	}
 }
 

@@ -69,14 +69,13 @@ clock(Ureg *ur)
 		if (p->state==Running)
 			p->time[p->insyscall]++;
 	}
-/*
-	if(u && (ur->flags&IFLAG) && p && p->state==Running){
+
+/*	if(u && p && p->state==Running){
 		if(anyready()){
 			if(p->hasspin)
 				p->hasspin = 0;
 			else
 				sched();
 		}
-	}
-/**/
+	}/**/
 }

@@ -294,9 +294,7 @@ kbdinit(void)
 	mousecmd(0xF4, -1);
 
 	/* resolution */
-	mousecmd(0xE8, 0x03);
-print("res set\n");
-delay(5000);
+/*	mousecmd(0xE8, 0x03); /**/
 }
 
 /*
@@ -333,7 +331,6 @@ mymouseputc(int c)
 		mouse.newbuttons = b[msg[0]&7];
 		mouse.dx = msg[1];
 		mouse.dy = -msg[2];
-print("%d %d\n", mouse.dx, mouse.dy);
 		mouse.track = 1;
 		mouseclock();
 	}

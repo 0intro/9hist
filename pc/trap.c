@@ -177,13 +177,9 @@ trap(Ureg *ur)
 		panic("bad trap type %d %lux\n", v, ur->pc);
 
 	/*
-	 *  call the trap routine
-	 */
-	(*ivec[v])(ur);
-
-	/*
 	 *  tell the 8259 that we're done with the
-	 *  highest level interrupt
+	 *  highest level interrupt (interrupts are still
+	 *  off at this point)
 	 */
 	c = v&~0x7;
 	if(c==Int0vec || c==Int1vec){
@@ -191,6 +187,11 @@ trap(Ureg *ur)
 		if(c == Int1vec)
 			outb(Int1ctl, EOI);
 	}
+
+	/*
+	 *  call the trap routine
+	 */
+	(*ivec[v])(ur);
 }
 
 /*
@@ -268,10 +269,10 @@ syscall(Ureg *ur)
 		panic("error stack");
 	}
 	u->p->insyscall = 0;
+	ur->ax = ret;
 	if(ax == NOTED)
 		noted(ur, *(ulong*)(sp+BY2WD));
 	else if(u->nnote && ax!=FORK){
-		ur->ax = ret;
 		notify(ur);
 	}
 	return ret;

@@ -218,7 +218,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 	Proc *p;
 	int i = 0;
 
-print("putmmu %lux %lux\n", va, pa); /**/
+/*print("putmmu %lux %lux\n", va, pa); /**/
 	if(u==0)
 		panic("putmmu");
 	p = u->p;
@@ -238,21 +238,21 @@ print("putmmu %lux %lux\n", va, pa); /**/
 	 *  if bottom level page table missing, allocate one
 	 */
 	pg = p->mmu[i];
-print("toppt[%d] was %lux\n", topoff, toppt[topoff]);
+/*print("toppt[%d] was %lux\n", topoff, toppt[topoff]);/**/
 	if(pg == 0){
 		pg = p->mmu[i] = newpage(1, 0, 0);
 		p->mmue[i] = PPN(pg->pa) | PTEVALID | PTEUSER | PTEWRITE;
 		toppt[topoff] = p->mmue[i];
-print("toppt[%d] now %lux\n", topoff, toppt[topoff]);
+/*print("toppt[%d] now %lux\n", topoff, toppt[topoff]);/**/
 	}
 
 	/*
 	 *  fill in the bottom level page table
 	 */
 	pt = (ulong*)(p->mmu[i]->pa|KZERO);
-print("%lux[%d] was %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);
+/*print("%lux[%d] was %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);/**/
 	pt[BTMOFF(va)] = pa | PTEUSER;
-print("%lux[%d] now %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);
+/*print("%lux[%d] now %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);/**/
 
 	/* flush cached mmu entries */
 	putcr3(((ulong)toppt)&~KZERO);

@@ -189,3 +189,5 @@ struct
 
 extern Mach	*m;
 extern User	*u;
+
+extern int	flipD[];	/* for flipping bitblt destination polarity */

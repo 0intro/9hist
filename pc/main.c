@@ -28,7 +28,9 @@ main(void)
 	grpinit();
 	chaninit();
 	alarminit();
+print("chandevreset\n"); delay(1000);
 	chandevreset();
+print("streaminit\n"); delay(1000);
 	streaminit();
 	swapinit();
 	pageinit();
@@ -65,7 +67,6 @@ init0(void)
 	u->p->state = Running;
 	u->p->mach = m;
 
-print("go low\n");
 	spllo();
 
 	/*
@@ -76,9 +77,6 @@ print("go low\n");
 	u->dot = clone(u->slash, 0);
 
 	chandevinit();
-
-print("going to user\n");
-delay(1000);
 
 	touser();
 }
@@ -183,7 +181,7 @@ confinit(void)
 	conf.base1 = 1024*1024;
 
 	conf.npage = conf.npage0 + conf.npage1;
-	conf.maxialloc = (conf.npage0*BY2PG-PGROUND((ulong)&end));
+	conf.maxialloc = 2*1024*1024;
 
 	mul = 1;
 	conf.nproc = 20 + 20*mul;

@@ -65,6 +65,9 @@ ialloc(ulong n, int align)
 	if(align)
 		palloc.addr = PGROUND(palloc.addr);
 
+	if(palloc.addr+n > conf.base0 + conf.npage0*BY2PG)
+		palloc.addr = conf.base1;
+
 	memset((void*)(palloc.addr|KZERO), 0, n);
 	p = palloc.addr;
 	palloc.addr += n;

@@ -20,8 +20,6 @@ fault386(Ureg *ur)
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
 	addr = getcr2();
-print("fault386 %lux ur %lux\n", addr, ur);
-dumpregs(ur);
 	if(faulting)
 		panic("double fault\n");
 	faulting = 1;
@@ -37,7 +35,7 @@ dumpregs(ur);
 		}
 		u->p->state = MMUing;
 		dumpregs(ur);
-		panic("fault: 0x%lux", addr);
+		panic("fault: 0x%lux 0x%lux", addr);
 	}
 	faulting = 0;
 	u->p->insyscall = insyscall;
