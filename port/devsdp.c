@@ -36,7 +36,8 @@ enum
 
 	Maxconv= 256,		// power of 2
 	Nfs= 4,				// number of file systems
-	Maxretries=	4,
+	MaxRetries=	8,
+	KeepAlive = 60,		// keep alive in seconds
 	KeyLength= 32,
 };
 
@@ -70,7 +71,8 @@ struct OneWay
 // conv states
 enum {
 	CInit,
-	COpening,
+	CDial,
+	CAccept,
 	COpen,
 	CClosing,
 	CClosed,
@@ -127,11 +129,11 @@ enum {
 };
 
 enum {
-	ConOpen,
+	ConOpenRequest,
 	ConOpenAck,
-	ConOpenNack,
 	ConClose,
 	ConCloseAck,
+	ConReset,
 };
 
 struct ConnectPkt
@@ -181,7 +183,8 @@ static Dirtab	*dirtab[MaxQ];
 static Sdp sdptab[Nfs];
 static char *convstatename[] = {
 	[CInit] "Init",
-	[COpening] "Opening",
+	[CDial] "Dial",
+	[CAccept] "Accept",
 	[COpen] "Open",
 	[CClosing] "Closing",
 	[CClosed] "Closed",
@@ -325,7 +328,6 @@ sdpopen(Chan* ch, int omode)
 		if(strcmp(up->user, c->owner) != 0 || (perm & c->perm) != perm)
 				error(Eperm);
 		c->ref++;
-print(c->ref = %d\n", c->ref);
 		if(TYPE(ch->qid) == Qdata)
 			c->dataopen++;
 		qunlock(c);
@@ -373,6 +375,7 @@ print("close c->ref = %d\n", c->ref);
 			default:
 				convsetstate(c, CClosed);
 				break;
+			case CAccept:
 			case COpen:
 				convsetstate(c, CClosing);
 				break;
@@ -391,7 +394,6 @@ sdpread(Chan *ch, void *a, long n, vlong off)
 {
 	char buf[256];
 	Sdp *sdp = sdptab + ch->dev;
-	char *s;
 	Conv *c;
 	Block *b;
 
@@ -408,23 +410,7 @@ sdpread(Chan *ch, void *a, long n, vlong off)
 	case Qstatus:
 		c = sdp->conv[CONV(ch->qid)];
 		qlock(c);
-		switch(c->state) {
-		default:
-			panic("unknown state");
-		case CClosed:
-			s = "closed";
-			break;
-		case COpening:
-			s = "opening";
-			break;
-		case COpen:
-			s = "open";
-			break;
-		case CClosing:
-			s = "closing";
-			break;
-		}
-		n = readstr(off, a, n, s);
+		n = readstr(off, a, n, convstatename[c->state]);
 		qunlock(c);
 		return n;
 	case Qctl:
@@ -498,11 +484,11 @@ print("cmd = %s\n", arg0);
 			if(cb->nf != 2)
 				error("usage: accect id");
 			c->dialid = atoi(cb->f[1]);
-			convsetstate(c, COpen);
+			convsetstate(c, CAccept);
 		} else if(strcmp(arg0, "dial") == 0) {
 			if(cb->nf != 1)
 				error("usage: dial");
-			convsetstate(c, COpening);
+			convsetstate(c, CDial);
 		} else if(strcmp(arg0, "drop") == 0) {
 			if(cb->nf != 2)
 				error("usage: drop permil");
@@ -620,16 +606,25 @@ sdpclone(Sdp *sdp)
 }
 
 // assume c is locked
+static void
+convretryinit(Conv *c)
+{
+	c->retries = 0;
+	// +2 to avoid rounding effects.
+	c->timeout = TK2SEC(m->ticks) + 2;
+};
+
+// assume c is locked
 static int
 convretry(Conv *c)
 {
 	c->retries++;
-	if(c->retries > Maxretries) {
+	if(c->retries > MaxRetries) {
 print("convretry: giving up\n");
 		convsetstate(c, CClosed);
 		return 0;
 	}
-	c->timeout = TK2SEC(m->ticks) + (1<<c->retries);
+	c->timeout = TK2SEC(m->ticks) + (c->retries+1);
 	return 1;
 }
 
@@ -643,17 +638,20 @@ convtimer(Conv *c, ulong sec)
 		qunlock(c);
 		nexterror();
 	}
+print("convtimer: %s\n", convstatename[c->state]);
 	switch(c->state) {
-	case COpening:
-print("COpening timeout\n");
+	case CDial:
 		if(convretry(c))
-			convoput2(c, ConOpen, c->dialid, 0);
+			convoput2(c, ConOpenRequest, c->dialid, 0);
+		break;
+	case CAccept:
+		if(convretry(c))
+			convoput2(c, ConOpenAck, c->dialid, c->acceptid);
 		break;
 	case COpen:
-		// check for control packet
+		// check for control packet and keepalive
 		break;
 	case CClosing:
-print("CClosing timeout\n");
 		if(convretry(c))
 			convoput2(c, ConClose, c->dialid, c->acceptid);
 		break;
@@ -716,31 +714,30 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 	switch(state) {
 	default:
 		panic("setstate: bad state: %d", state);
-	case COpening:
-		if(c->state != CInit)
-			error("convsetstate: illegal transition");
+	case CDial:
+		assert(c->state == CInit);
 		c->dialid = (rand()<<16) + rand();
-		c->timeout = TK2SEC(m->ticks) + 2;
-		c->retries = 0;
-		convoput2(c, ConOpen, c->dialid, 0);
+		convretryinit(c);
+		convoput2(c, ConOpenRequest, c->dialid, 0);
+		break;
+	case CAccept:
+		assert(c->state == CInit);
+		c->acceptid = (rand()<<16) + rand();
+		convretryinit(c);
+		convoput2(c, ConOpenAck, c->dialid, c->acceptid);
 		break;
 	case COpen:
-		switch(c->state) {
-		default:
-			error("convsetstate: illegal transition");
-		case CInit:
-			c->acceptid = (rand()<<16) + rand();
+		assert(c->state == CDial || c->state == CAccept);
+		if(c->state == CDial) {
+			convretryinit(c);
 			convoput2(c, ConOpenAck, c->dialid, c->acceptid);
-			break;
-		case COpening:
-			break;
 		}
 		// setup initial key and auth method
 		break;
 	case CClosing:
+		assert(c->state == COpen);
+		convretryinit(c);
 		convoput2(c, ConClose, c->dialid, c->acceptid);
-		c->timeout = TK2SEC(m->ticks) + 2;
-		c->retries = 0;
 		break;
 	case CClosed:
 		if(c->readproc)
@@ -900,32 +897,59 @@ conviput2(Conv *c, Block *b)
 
 print("conviput2: %d %uld %uld\n", con->op, dialid, acceptid);
 	switch(con->op) {
-	case ConOpen:
-		if(c->state != COpen || dialid != c->dialid || acceptid != c->acceptid)
-			convoput2(c, ConOpenNack, dialid, acceptid);
-		else
-			convoput2(c, ConOpenAck, dialid, acceptid);
+	case ConOpenRequest:
+		switch(c->state) {
+		default:
+			convoput2(c, ConReset, dialid, acceptid);
+			break;
+		case CInit:
+			c->dialid = dialid;
+			convsetstate(c, CAccept);
+			break;
+		case CAccept:
+		case COpen:
+			if(dialid != c->dialid || acceptid != c->acceptid)
+				convoput2(c, ConReset, dialid, acceptid);
+			break;
+		}
 		break;
 	case ConOpenAck:
-		if(c->state != COpening || dialid != c->dialid)
+		switch(c->state) {
+		case CDial:
+			if(dialid != c->dialid) {
+				convoput2(c, ConReset, dialid, acceptid);
+				break;
+			}
+			c->acceptid = acceptid;
+			convsetstate(c, COpen);
 			break;
-		c->acceptid = acceptid;
-		convsetstate(c, COpen);
-		break;
-	case ConOpenNack:
-		if(c->state != COpening || dialid != c->dialid)
-			break;
-		convsetstate(c, CClosed);
+		case CAccept:
+			if(dialid != c->dialid || acceptid != c->acceptid) {
+				convoput2(c, ConReset, dialid, acceptid);
+				break;
+			}
+			convsetstate(c, COpen);
+		}
 		break;
 	case ConClose:
-		if(dialid != c->dialid || acceptid != c->acceptid)
+		convoput2(c, ConCloseAck, dialid, acceptid);
+		// fall though
+	case ConReset:
+		switch(c->state) {
+		case CDial:
+			if(dialid == c->dialid)
+				convsetstate(c, CClosed);
 			break;
-		convsetstate(c, CClosed);
-		break;
+		case CAccept:
+		case COpen:
+		case CClosing:
+			if(dialid == c->dialid && acceptid == c->acceptid)
+				convsetstate(c, CClosed);
+			break;
+		}
 	case ConCloseAck:
-		if(c->state != CClosing || dialid != c->dialid || acceptid != c->acceptid)
-			break;
-		convsetstate(c, CClosed);
+		if(c->state == CClosing && dialid == c->dialid && acceptid == c->acceptid)
+			convsetstate(c, CClosed);
 		break;
 	}
 }

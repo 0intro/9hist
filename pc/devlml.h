@@ -71,7 +71,7 @@ struct FrameHeader {	// Don't modify this struct, used by h/w
 	char nm[4];
 	ushort frameNo;
 	ulong sec;
-	ulong usec;
+	ulong nsec;
 	ulong frameSize;
 	ulong frameSeqNo;
 };

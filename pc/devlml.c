@@ -351,7 +351,7 @@ lmlintr(Ureg *, void *) {
 		}
 		thetime = todget(nil);
 		jpgheader[fno].sec  = (ulong)(thetime / 1000000000LL);
-		jpgheader[fno].usec = (ulong)(thetime % 1000000000LL) / 1000;
+		jpgheader[fno].nsec = (ulong)(thetime % 1000000000LL);
 		jpgheader[fno].frameSize =
 			(codeData->statCom[fno] & 0x00ffffff) >> 1;
 		jpgheader[fno].frameSeqNo = codeData->statCom[fno] >> 24;

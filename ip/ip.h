@@ -333,6 +333,7 @@ enum
 	Runi=		(1<<3),		/* a unicast self address */
 	Rbcast=		(1<<4),		/* a broadcast self address */
 	Rmulti=		(1<<5),		/* a multicast self address */
+	Rproxy=		(1<<6),		/* this route should be proxied */
 };
 
 struct Routewalk

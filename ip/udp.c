@@ -234,7 +234,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 {
 	int len, olen, ottl;
 	Udphdr *uh;
-	Conv *c, **p;
+	Conv *c, **p, *gc;
 	Udpcb *ucb;
 	uchar raddr[IPaddrlen], laddr[IPaddrlen];
 	ushort rport, lport;
@@ -272,8 +272,12 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 
 	qlock(udp);
 
-	/* Look for a conversation structure for this port */
-	c = nil;
+	/*
+	 *  Look for a conversation structure for this port.  One
+	 *  with headers off wins over one with headers on, i.e.,
+	 *  specific wins over generic.
+	 */
+	gc = c = nil;
 	for(p = udp->conv; *p; p++) {
 		c = *p;
 		if(c->inuse == 0)
@@ -282,8 +286,10 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 			ucb = (Udpcb*)c->ptcl;
 
 			/* with headers turned on, descriminate only on local port */
-			if(ucb->headers)
-				break;
+			if(ucb->headers && gc == nil){
+				gc = c;
+				continue;
+			}
 
 			/* otherwise discriminate on lport, rport, and raddr */
 			if(c->rport == 0 || c->rport == rport)
@@ -292,17 +298,20 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 				break;
 		}
 	}
-
-	if(*p == nil) {
-		upriv->ustats.udpNoPorts++;
-		qunlock(udp);
-		netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
-			laddr, lport);
-		uh->Unused = ottl;
-		hnputs(uh->udpplen, olen);
-		icmpnoconv(f, bp);
-		freeblist(bp);
-		return;
+	if(*p == nil){
+		if(gc != nil)
+			c = gc;
+		else {
+			upriv->ustats.udpNoPorts++;
+			qunlock(udp);
+			netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
+				laddr, lport);
+			uh->Unused = ottl;
+			hnputs(uh->udpplen, olen);
+			icmpnoconv(f, bp);
+			freeblist(bp);
+			return;
+		}
 	}
 
 	ucb = (Udpcb*)c->ptcl;

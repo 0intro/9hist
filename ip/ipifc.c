@@ -345,10 +345,15 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 
 	f = ifc->conv->p->f;
 
+	type = Rifc;
 	memset(ip, 0, IPaddrlen);
 	memset(mask, 0, IPaddrlen);
 	memset(rem, 0, IPaddrlen);
 	switch(argc){
+	case 6:
+		if(strcmp(argv[5], "proxy") == 0)
+			type |= Rproxy;
+		/* fall through */
 	case 5:
 		mtu = strtoul(argv[4], 0, 0);
 		if(mtu >= ifc->m->minmtu && mtu <= ifc->m->maxmtu)
@@ -396,7 +401,6 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 	*l = lifc;
 
 	/* add a route for the local network */
-	type = Rifc;
 	if(ipcmp(mask, IPallbits) == 0){
 		/* point to point networks are a hack */
 		if(ipcmp(ip, rem) == 0)
@@ -410,7 +414,7 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 
 	addselfcache(f, ifc, lifc, ip, Runi);
 
-	if(type & Rptpt){
+	if((type & (Rptpt|Rproxy)) == (Rptpt|Rproxy)){
 		ipifcregisterproxy(f, ifc, rem);
 		goto out;
 	}
@@ -1088,9 +1092,7 @@ ipproxyifc(Fs *f, Ipifc *ifc, uchar *ip)
 	r = v6lookup(f, ip);
 	if(r == nil)
 		return 0;
-	if((r->type & Rifc) == 0)
-		return 0;
-	if((r->type & Rptpt) == 0)
+	if((r->type & (Rifc|Rptpt|Rproxy)) != (Rifc|Rptpt|Rproxy))
 		return 0;
 
 	/* see if this is on the right interface */
