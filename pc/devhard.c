@@ -35,6 +35,7 @@ enum
 	Cread=		0x20,
 	Cwrite=		0x30,
 	Cident=		0xEC,
+	Cident2=	0xFF,	/* pseudo command for post Cident interrupt */
 	Csetbuf=	0xEF,
 
 	/* file types */
@@ -587,7 +588,16 @@ hardident(Drive *dp)
 		error(Eio);
 	}
 	memmove(&dp->id, cp->buf, dp->bytes);
-
+	/*
+	 * this function appears to respond with an extra interrupt after
+	 * the indent information is read, except on the safari.  The following
+	 * delay gives this extra interrupt a chance to happen while we are quiet.
+	 * Otherwise, the interrupt may come during a subsequent read or write,
+	 * causing a panic and much confusion.
+	 */
+	if (cp->cmd == Cident2)
+		tsleep(&cp->r, return0, 0, 10);
+	cp->cmd = 0;
 	poperror();
 	qunlock(cp);
 }
@@ -735,7 +745,10 @@ hardintr(Ureg *ur)
 		cp->sofar++;
 		if(cp->sofar >= cp->nsecs){
 			cp->lastcmd = cp->cmd;
-			cp->cmd = 0;
+			if (cp->cmd == Cread)
+				cp->cmd = 0;
+			else
+				cp->cmd = Cident2;
 			wakeup(&cp->r);
 		}
 		break;
@@ -743,6 +756,10 @@ hardintr(Ureg *ur)
 		cp->lastcmd = cp->cmd;
 		cp->cmd = 0;
 		wakeup(&cp->r);
+		break;
+	case Cident2:
+		cp->lastcmd = cp->cmd;
+		cp->cmd = 0;
 		break;
 	case 0:
 		print("interrupt cmd=0, lastcmd=%02x status=%02x\n",

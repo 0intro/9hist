@@ -89,7 +89,7 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		ksetterm("at&t %s");
+		ksetpcinfo();
 		ksetenv("cputype", "386");
 		poperror();
 	}
@@ -206,7 +206,7 @@ confinit(void)
 	/*
 	 *  the first 640k is the standard useful memory
 	 *  the next 128K is the display
-	 *  the last 256k belongs to the roms
+	 *  the last 256k belongs to the roms and other devices
 	 */
 	conf.npage0 = 640/4;
 	conf.base0 = 0;
@@ -275,9 +275,10 @@ confinit(void)
 	conf.arp = 32;
 	conf.frag = 32;
 	conf.cntrlp = 0;
-	conf.nfloppy = 1;
+	conf.nfloppy = 2;
 	conf.nhard = 1;
 	conf.dkif = 1;
+	confinit1();
 }
 
 char *mathmsg[] =
