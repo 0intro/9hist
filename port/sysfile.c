@@ -477,7 +477,7 @@ syswrite(ulong *arg)
 	poperror();
 	cclose(c);
 
-	return n;
+	return m;
 }
 
 static void
