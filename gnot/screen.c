@@ -16,12 +16,14 @@
 extern	GSubfont	defont0;
 GSubfont		*defont;
 
+
 struct{
 	Point	pos;
 	int	bwid;
 }out;
 
 Lock	screenlock;
+void	screenupdate(void);
 
 GBitmap	gscreen =
 {

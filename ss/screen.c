@@ -22,6 +22,7 @@ struct{
 
 static ulong	rep(ulong, int);
 void		(*kprofp)(ulong);
+void	screenupdate(void);
 
 typedef struct	Video Video;
 struct Video
