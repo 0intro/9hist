@@ -1170,7 +1170,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 * load font from subfont
 			 *	'y'		1
 			 *	id		2
-			 *	cache pos	2
+			 *	cache index	2
 			 *	subfont id	2
 			 *	subfont index	2
 			 */

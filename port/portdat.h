@@ -669,7 +669,7 @@ struct Network
 #define MINOR(q) ((q) & 0xff)
 #define DEVICE(a,i) (((a)<<8) | (i))
 
-#define MAXSYSARG	6		/* for mount(fd, mpt, flag, arg, srv, crypt) */
+#define MAXSYSARG	5		/* for mount(fd, mpt, flag, arg, srv) */
 #define	PRINTSIZE	256
 #define	NUMSIZE		12		/* size of formatted number */
 

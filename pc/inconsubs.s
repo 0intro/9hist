@@ -42,6 +42,7 @@ TEXT	Irdnext(SB),$0
 	MOVL	$(Finitbar|Faf|Fsi),AX
 	ADDL	$1,DX		/* points to control register */
 	OUTB
+	OUTB
 	ANDL	$0xf8,CX
 	SHLL	$2,CX
 	SUBL	$1,DX		/* points to status register */
