@@ -31,7 +31,7 @@ clockinit(void)
 
 	/* enable interrupts on match register 0, turn off all others */
 	timerregs->ossr |= 1<<0;
-	intrenable(IRQtimer0, clockintr, nil, "clock");
+	intrenable(IRQ, IRQtimer0, clockintr, nil, "clock");
 	timerregs->oier = 1<<0;
 
 	/* figure out processor frequency */

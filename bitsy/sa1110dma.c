@@ -74,7 +74,7 @@ dmainit(void) {
 	if (debug) print("dma: dmaalloc registers 0x%ux mapped at 0x%p\n",
 		DMAREGS, dmaregs);
 	for (i = 0; i < NDMA; i++) {
-		intrenable(IRQdma0+i, dmaintr, &dmaregs[i], "DMA");
+		intrenable(IRQ, IRQdma0+i, dmaintr, &dmaregs[i], "DMA");
 	}
 }
 

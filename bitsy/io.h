@@ -110,13 +110,14 @@ enum
 };
 
 /*
- *  edge argument for gpiointrenable
+ *  types of interrupts
  */
 enum
 {
 	GPIOrising,
 	GPIOfalling,
 	GPIOboth,
+	IRQ,
 };
 
 /* hardware registers */

@@ -5,7 +5,10 @@ enum {
 
 typedef struct Ether Ether;
 struct Ether {
+	DevConf;
+
 	int	ctlrno;
+	int	tbdf;			/* type+busno+devno+funcno */
 	int	mbps;			/* Mbps */
 	int	minmtu;
 	int 	maxmtu;

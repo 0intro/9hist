@@ -411,21 +411,27 @@ tentry(PCMslot *pp, Cisdat *cis, int )
 static void
 tvers1(PCMslot *pp, Cisdat *cis, int )
 {
-	uchar c, major, minor;
+	uchar c, major, minor, last;
 	int  i;
 
 	if(readc(cis, &major) != 1)
 		return;
 	if(readc(cis, &minor) != 1)
 		return;
+	last = 0;
 	for(i = 0; i < sizeof(pp->verstr)-1; i++){
 		if(readc(cis, &c) != 1)
 			return;
 		if(c == 0)
-			c = '\n';
+			c = ';';
+		if(c == '\n')
+			c = ';';
 		if(c == 0xff)
 			break;
+		if(c == ';' && last == ';')
+			continue;
 		pp->verstr[i] = c;
+		last = c;
 	}
 	pp->verstr[i] = 0;
 }

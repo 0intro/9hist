@@ -23,6 +23,17 @@ enum
 	Nents = 3,
 };
 
+enum
+{
+	/*
+	 *  configuration registers - they start at an offset in attribute
+	 *  memory found in the CIS.
+	 */
+	Rconfig=	0,
+	 Creset=	 (1<<7),	/*  reset device */
+	 Clevel=	 (1<<6),	/*  level sensitive interrupt line */
+};
+
 #define SLOTNO(c)	((c->qid.path>>8)&0xff)
 #define TYPE(c)		(c->qid.path&0xff)
 #define QID(s,t)	(((s)<<8)|(t))
@@ -39,7 +50,7 @@ pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 	int slotno;
 	Qid qid;
 	long len;
-	PCMslot *pp;
+	PCMslot *sp;
 	char name[NAMELEN];
 
 	if(i == DEVDOTDOT){
@@ -51,18 +62,18 @@ pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 		return -1;
 
 	slotno = i/Nents;
-	pp = slot + slotno;
+	sp = slot + slotno;
 	len = 0;
 	switch(i%Nents){
 	case 0:
 		qid.path = QID(slotno, Qmem);
 		sprint(name, "pcm%dmem", slotno);
-		len = pp->memlen;
+		len = sp->memlen;
 		break;
 	case 1:
 		qid.path = QID(slotno, Qattr);
 		sprint(name, "pcm%dattr", slotno);
-		len = pp->memlen;
+		len = sp->memlen;
 		break;
 	case 2:
 		qid.path = QID(slotno, Qctl);
@@ -72,6 +83,17 @@ pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 	qid.vers = 0;
 	devdir(c, qid, name, len, eve, 0660, dp);
 	return 1;
+}
+
+static int
+bitno(ulong x)
+{
+	int i;
+
+	for(i = 0; i < 8*sizeof(x); i++)
+		if((1<<i) & x)
+			break;
+	return i;
 }
 
 /*
@@ -88,9 +110,13 @@ pcmciareset(void)
 	slottiming(0, 300, 300, 300, 0);
 	slottiming(1, 300, 300, 300, 0);
 
-	/* interrupt on card insertion/removal */
-	gpiointrenable(GPIO_CARD_IND1_i, GPIOboth, slotinfo, nil, "pcmcia slot1 status");
-	gpiointrenable(GPIO_CARD_IND0_i, GPIOboth, slotinfo, nil, "pcmcia slot0 status");
+	/* if there's no pcmcia sleave, no interrupts */
+	if(gpioregs->level & GPIO_OPT_IND_i)
+		return;
+
+	/* sleave there, interrupt on card removal */
+	intrenable(GPIOrising, bitno(GPIO_CARD_IND1_i), slotinfo, nil, "pcmcia slot1 status");
+	intrenable(GPIOrising, bitno(GPIO_CARD_IND0_i), slotinfo, nil, "pcmcia slot0 status");
 }
 
 static Chan*
@@ -160,18 +186,25 @@ memmoves(uchar *to, uchar *from, int n)
 }
 
 static long
-pcmread(void *a, long n, ulong off, uchar *start, ulong len)
+pcmread(void *a, long n, ulong off, PCMslot *sp, uchar *start, ulong len)
 {
+	rlock(sp);
+	if(waserror()){
+		runlock(sp);
+		nexterror();
+	}
 	if(off > len)
 		return 0;
 	if(off + n > len)
 		n = len - off;
 	memmoveb(a, start+off, n);
+	runlock(sp);
+	poperror();
 	return n;
 }
 
 static long
-pcmctlread(void *a, long n, ulong off, PCMslot *pp)
+pcmctlread(void *a, long n, ulong off, PCMslot *sp)
 {
 	char *p, *buf, *e;
 
@@ -183,10 +216,10 @@ pcmctlread(void *a, long n, ulong off, PCMslot *pp)
 	e = p + READSTR;
 
 	buf[0] = 0;
-	if(pp->occupied){
+	if(sp->occupied){
 		p = seprint(p, e, "occupied\n");
-		if(pp->verstr[0])
-			p = seprint(p, e, "version %s\n", pp->verstr);
+		if(sp->verstr[0])
+			p = seprint(p, e, "version %s\n", sp->verstr);
 	}
 	USED(p);
 
@@ -199,70 +232,137 @@ pcmctlread(void *a, long n, ulong off, PCMslot *pp)
 static long
 pcmciaread(Chan *c, void *a, long n, vlong off)
 {
-	PCMslot *pp;
+	PCMslot *sp;
 	ulong offset = off;
 
-	pp = slot + SLOTNO(c);
+	sp = slot + SLOTNO(c);
 
 	switch(TYPE(c)){
 	case Qdir:
 		return devdirread(c, a, n, 0, 0, pcmgen);
 	case Qmem:
-		if(!pp->occupied)
+		if(!sp->occupied)
 			error(Eio);
-		return pcmread(a, n, offset, pp->mem, 64*OneMeg);
+		return pcmread(a, n, offset, sp, sp->mem, 64*OneMeg);
 	case Qattr:
-		if(!pp->occupied)
+		if(!sp->occupied)
 			error(Eio);
-		return pcmread(a, n, offset, pp->attr, OneMeg);
+		return pcmread(a, n, offset, sp, sp->attr, OneMeg);
 	case Qctl:
-		return pcmctlread(a, n, offset, pp);
+		return pcmctlread(a, n, offset, sp);
 	}
 	error(Ebadarg);
 	return -1;	/* not reached */
 }
 
 static long
-pcmwrite(void *a, long n, ulong off, uchar *start, ulong len)
+pcmwrite(void *a, long n, ulong off, PCMslot *sp, uchar *start, ulong len)
 {
+	rlock(sp);
+	if(waserror()){
+		runlock(sp);
+		nexterror();
+	}
 	if(off > len)
 		error(Eio);
 	if(off + n > len)
 		error(Eio);
 	memmoveb(start+off, a, n);
+	poperror();
+	runlock(sp);
 	return n;
 }
 
 static long
-pcmctlwrite(char *p, long n, ulong off, PCMslot *pp)
+pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 {
-	/* nothing yet */
-	USED(p, n, off, pp);
-	error(Ebadarg);
+	Cmdbuf *cmd;
+	uchar *cp;
+	int index, i, dtx;
+	Rune r;
+	DevConf cf;
+
+	cmd = parsecmd(p, n);
+	if(strcmp(cmd->f[0], "configure") == 0){
+		wlock(sp);
+		if(waserror()){
+			wunlock(sp);
+			nexterror();
+		}
+
+		/* see if driver exists and is configurable */
+		if(cmd->nf < 3)
+			error(Ebadarg);
+		p = cmd->f[1];
+		if(*p++ != '#')
+			error(Ebadarg);
+		p += chartorune(&r, p);
+		dtx = devno(r, 1);
+		if(dtx < 0)
+			error("no such device type");
+		if(devtab[dtx]->config == nil)
+			error("not a dynamicly configurable device");
+
+		/* set pcmcia card configuration */
+		index = 0;
+		if(sp->def != nil)
+			index = sp->def->index;
+		if(cmd->nf > 3){
+			i = atoi(cmd->f[3]);
+			if(i < 0 || i >= sp->nctab)
+				error("bad configuration index");
+			index = i;
+		}
+		if(sp->cpresent & (1<<Rconfig)){
+			cp = sp->attr;
+			cp += sp->caddr + Rconfig;
+print("writing configuration register (%lux) with index %d\n", cp, index);
+			*cp = index;
+		}
+
+		/* configure device */
+		strncpy(cf.type, cmd->f[2], sizeof(cf.type)-1);
+		cf.type[sizeof(cf.type)-1] = 0;
+		cf.mem = (ulong)sp->mem;
+		cf.port = (ulong)sp->regs;
+		cf.itype = GPIOfalling;
+		cf.interrupt = bitno(sp == slot ? GPIO_CARD_IRQ0_i : GPIO_CARD_IRQ1_i);
+		cf.size = 0;
+		if(devtab[dtx]->config(1, p, &cf) < 0)
+			error("couldn't configure device");
+
+		wunlock(sp);
+		poperror();
+
+		/* don't let the power turn off */
+		increfp(sp);
+	}
+	free(cmd);
+
 	return 0;
 }
 
 static long
 pcmciawrite(Chan *c, void *a, long n, vlong off)
 {
-	PCMslot *pp;
+	PCMslot *sp;
 	ulong offset = off;
 
-	pp = slot + SLOTNO(c);
+	sp = slot + SLOTNO(c);
 
 	switch(TYPE(c)){
 	case Qmem:
-		if(!pp->occupied)
+		if(!sp->occupied)
 			error(Eio);
-		return pcmwrite(a, n, offset, pp->mem, 64*OneMeg);
+		return pcmwrite(a, n, offset, sp, sp->mem, 64*OneMeg);
 	case Qattr:
-		if(!pp->occupied)
+		if(!sp->occupied)
 			error(Eio);
-		return pcmwrite(a, n, offset, pp->attr, OneMeg);
+		return pcmwrite(a, n, offset, sp, sp->attr, OneMeg);
 	case Qctl:
-		if(!pp->occupied)
+		if(!sp->occupied)
 			error(Eio);
-		return pcmctlwrite(a, n, offset, pp);
+		return pcmctlwrite(a, n, offset, sp);
 	}
 	error(Ebadarg);
 	return -1;	/* not reached */
@@ -303,71 +403,85 @@ slotinfo(Ureg*, void*)
 		if(x & GPIO_CARD_IND0_i){
 			slot[0].occupied = 0;
 			slot[0].cisread = 0;
-		} else if(slot[0].occupied == 0){
+		} else {
+			if(slot[0].occupied == 0)
+				slot[0].cisread = 0;
 			slot[0].occupied = 1;
-			slot[0].cisread = 0;
 		}
 		if(x & GPIO_CARD_IND1_i){
 			slot[1].occupied = 0;
 			slot[1].cisread = 0;
-		} else if(slot[1].occupied == 0){
+		} else {
+			if(slot[1].occupied == 0)
+				slot[1].cisread = 0;
 			slot[1].occupied = 1;
-			slot[1].cisread = 0;
 		}
 	}
 }
 
 /* use reference card to turn cards on and off */
 static void
-increfp(PCMslot *pp)
+increfp(PCMslot *sp)
 {
+	wlock(sp);
+	if(waserror()){
+		wunlock(sp);
+		nexterror();
+	}
+
 	if(incref(&pcmcia) == 1){
 		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 1);
+		delay(200);
+		egpiobits(EGPIO_pcmcia_reset, 1);
+		delay(100);
 		egpiobits(EGPIO_pcmcia_reset, 0);
-		delay(200);	/* time to power up */
+		delay(500);
 	}
-	incref(&pp->ref);
-	if(pp->occupied && pp->cisread == 0)
-		pcmcisread(pp);
+	incref(&sp->ref);
+	slotinfo(nil, nil);
+	if(sp->occupied && sp->cisread == 0)
+		pcmcisread(sp);
+
+	wunlock(sp);
+	poperror();
 }
 
 static void
-decrefp(PCMslot *pp)
+decrefp(PCMslot *sp)
 {
-	decref(&pp->ref);
+	decref(&sp->ref);
 	if(decref(&pcmcia) == 0)
 		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 0);
 }
 
 /*
- *  the regions are staticly mapped
+ *  the regions are staticly masped
  */
 static void
 slotmap(int slotno, ulong regs, ulong attr, ulong mem)
 {
-	PCMslot *pp;
+	PCMslot *sp;
 
-	pp = &slot[slotno];
-	pp->slotno = slotno;
-	pp->memlen = 64*OneMeg;
-	pp->msec = ~0;
-	pp->verstr[0] = 0;
+	sp = &slot[slotno];
+	sp->slotno = slotno;
+	sp->memlen = 64*OneMeg;
+	sp->verstr[0] = 0;
 
-	pp->mem = mapmem(mem, 64*OneMeg, 0);
-	pp->memmap.ca = 0;
-	pp->memmap.cea = 64*MB;
-	pp->memmap.isa = (ulong)mem;
-	pp->memmap.len = 64*OneMeg;
-	pp->memmap.attr = 0;
+	sp->mem = mapmem(mem, 64*OneMeg, 0);
+	sp->memmap.ca = 0;
+	sp->memmap.cea = 64*MB;
+	sp->memmap.isa = (ulong)mem;
+	sp->memmap.len = 64*OneMeg;
+	sp->memmap.attr = 0;
 
-	pp->attr = mapmem(attr, OneMeg, 0);
-	pp->attrmap.ca = 0;
-	pp->attrmap.cea = MB;
-	pp->attrmap.isa = (ulong)attr;
-	pp->attrmap.len = OneMeg;
-	pp->attrmap.attr = 1;
+	sp->attr = mapmem(attr, OneMeg, 0);
+	sp->attrmap.ca = 0;
+	sp->attrmap.cea = MB;
+	sp->attrmap.isa = (ulong)attr;
+	sp->attrmap.len = OneMeg;
+	sp->attrmap.attr = 1;
 
-	pp->regs = mapspecial(regs, 32*1024);
+	sp->regs = mapspecial(regs, 32*1024);
 }
 PCMmap*
 pcmmap(int slotno, ulong, int, int attr)

@@ -222,7 +222,7 @@ TEXT vtable(SB), $-4
 	WORD	$_vfiq(SB)			/* FIQ, switch to svc mode */
 
 TEXT _vrst(SB), $-4
-	BL	reset(SB)
+	BL	resettrap(SB)
 
 TEXT _vsvc(SB), $-4			/* SWI */
 	MOVW.W	R14, -4(R13)		/* ureg->pc = interupted PC */

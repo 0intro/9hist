@@ -12,6 +12,97 @@
 
 static Ether *etherxx[MaxEther];
 
+static struct {
+	char*	type;
+	int	(*reset)(Ether*);
+} cards[MaxEther+1];
+
+void
+addethercard(char* t, int (*r)(Ether*))
+{
+	static int ncard;
+
+	if(ncard == MaxEther)
+		panic("too many ether cards");
+	cards[ncard].type = t;
+	cards[ncard].reset = r;
+	ncard++;
+}
+
+int
+etherconfig(int on, char *spec, DevConf *cf)
+{
+	Ether *ether;
+	int n, ctlrno;
+	char name[NAMELEN], buf[128];
+	char *p, *e;
+
+	/* can't unconfigure yet */
+	if(on == 0)
+		return -1;
+
+	ctlrno = atoi(spec);
+	if(etherxx[ctlrno] != nil)
+		return -1;
+
+	ether = malloc(sizeof(Ether));
+	if(ether == nil)
+		panic("etherconfig");
+	memset(ether, 0, sizeof(Ether));
+	*(DevConf*)ether = *cf;
+
+print("looking for card type %s\n", ether->type);
+	for(n = 0; cards[n].type; n++){
+		if(strcmp(cards[n].type, ether->type) != 0)
+			continue;
+print("found card type %s\n", ether->type);
+		if(cards[n].reset(ether))
+			break;
+		sprint(name, "ether%d", ctlrno);
+
+		if(ether->mbps >= 100){
+			netifinit(ether, name, Ntypes, 256*1024);
+			if(ether->oq == 0)
+				ether->oq = qopen(256*1024, 1, 0, 0);
+		}
+		else{
+			netifinit(ether, name, Ntypes, 65*1024);
+			if(ether->oq == 0)
+				ether->oq = qopen(65*1024, 1, 0, 0);
+		}
+		if(ether->oq == 0)
+			panic("etherreset %s", name);
+		ether->alen = Eaddrlen;
+		memmove(ether->addr, ether->ea, Eaddrlen);
+		memset(ether->bcast, 0xFF, Eaddrlen);
+
+		if(ether->interrupt != nil)
+			intrenable(cf->itype, cf->interrupt, ether->interrupt, ether, name);
+
+		p = buf;
+		e = buf+sizeof(buf);
+		p = seprint(p, e, "#l%d: %s: %dMbps port 0x%luX",
+			ctlrno, ether->type, ether->mbps, ether->port);
+		if(ether->mem)
+			p = seprint(p, e, " addr 0x%luX", PADDR(ether->mem));
+		if(ether->size)
+			p = seprint(p, e, " size 0x%luX", ether->size);
+		p = seprint(p, e, ": %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX",
+			ether->ea[0], ether->ea[1], ether->ea[2],
+			ether->ea[3], ether->ea[4], ether->ea[5]);
+		seprint(p, e, "\n");
+		print(buf);
+
+		etherxx[ctlrno] = ether;
+		return 0;
+	}
+
+	free(ether);
+	return -1;
+}
+
+
+
 Chan*
 etherattach(char* spec)
 {
@@ -302,23 +393,6 @@ etherbwrite(Chan* chan, Block* bp, ulong)
 	return etheroq(ether, bp);
 }
 
-static struct {
-	char*	type;
-	int	(*reset)(Ether*);
-} cards[MaxEther+1];
-
-void
-addethercard(char* t, int (*r)(Ether*))
-{
-	static int ncard;
-
-	if(ncard == MaxEther)
-		panic("too many ether cards");
-	cards[ncard].type = t;
-	cards[ncard].reset = r;
-	ncard++;
-}
-
 int
 parseether(uchar *to, char *from)
 {
@@ -345,83 +419,6 @@ parseether(uchar *to, char *from)
 static void
 etherreset(void)
 {
-	Ether *ether;
-	int i, n, ctlrno;
-	char name[NAMELEN], buf[128];
-
-	for(ether = 0, ctlrno = 0; ctlrno < MaxEther; ctlrno++){
-		if(ether == 0)
-			ether = malloc(sizeof(Ether));
-		memset(ether, 0, sizeof(Ether));
-		ether->ctlrno = ctlrno;
-		ether->tbdf = BUSUNKNOWN;
-		ether->mbps = 10;
-		ether->minmtu = ETHERMINTU;
-		ether->maxmtu = ETHERMAXTU;
-		if(isaconfig("ether", ctlrno, ether) == 0)
-			continue;
-		for(n = 0; cards[n].type; n++){
-			if(cistrcmp(cards[n].type, ether->type))
-				continue;
-			for(i = 0; i < ether->nopt; i++){
-				if(strncmp(ether->opt[i], "ea=", 3))
-					continue;
-				if(parseether(ether->ea, &ether->opt[i][3]) == -1)
-					memset(ether->ea, 0, Eaddrlen);
-			}	
-			if(cards[n].reset(ether))
-				break;
-
-			/*
-			 * IRQ2 doesn't really exist, it's used to gang the interrupt
-			 * controllers together. A device set to IRQ2 will appear on
-			 * the second interrupt controller as IRQ9.
-			 */
-			if(ether->irq == 2)
-				ether->irq = 9;
-			snprint(name, sizeof(name), "ether%d", ctlrno);
-
-			/* If ether->irq is less than 0, it is a hack to indicate no interrupt
-			 * used for the second logical ethernet for the wavelan card
-			 */
-			if(ether->irq >= 0)
-				intrenable(ether->irq, ether->interrupt, ether, ether->tbdf, name);
-
-			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %lud",
-				ctlrno, ether->type, ether->mbps, ether->port, ether->irq);
-			if(ether->mem)
-				i += sprint(buf+i, " addr 0x%luX", PADDR(ether->mem));
-			if(ether->size)
-				i += sprint(buf+i, " size 0x%luX", ether->size);
-			i += sprint(buf+i, ": %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX",
-				ether->ea[0], ether->ea[1], ether->ea[2],
-				ether->ea[3], ether->ea[4], ether->ea[5]);
-			sprint(buf+i, "\n");
-			print(buf);
-
-			if(ether->mbps >= 100){
-				netifinit(ether, name, Ntypes, 256*1024);
-				if(ether->oq == 0)
-					ether->oq = qopen(256*1024, 1, 0, 0);
-			}
-			else{
-				netifinit(ether, name, Ntypes, 65*1024);
-				if(ether->oq == 0)
-					ether->oq = qopen(65*1024, 1, 0, 0);
-			}
-			if(ether->oq == 0)
-				panic("etherreset %s", name);
-			ether->alen = Eaddrlen;
-			memmove(ether->addr, ether->ea, Eaddrlen);
-			memset(ether->bcast, 0xFF, Eaddrlen);
-
-			etherxx[ctlrno] = ether;
-			ether = 0;
-			break;
-		}
-	}
-	if(ether)
-		free(ether);
 }
 
 #define POLY 0xedb88320
@@ -463,4 +460,6 @@ Dev etherdevtab = {
 	etherbwrite,
 	etherremove,
 	etherwstat,
+	nil,		/* no power management */
+	etherconfig,
 };

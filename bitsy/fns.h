@@ -10,6 +10,7 @@ int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
 void	clockinit(void);
 #define	coherence()
+#define	dcflush(a, b)
 void	delay(int);
 void	µdelay(int);
 void	dmainit(void);
@@ -30,7 +31,10 @@ void	h3650uartsetup(void);
 void	icacheinvalidate(void);
 void	idle(void);
 void	idlehands(void);
-void	intrenable(int, void (*)(Ureg*, void*), void*, char*);
+uchar	inb(ulong);
+ushort	ins(ulong);
+ulong	inl(ulong);
+void	intrenable(int, int, void (*)(Ureg*, void*), void*, char*);
 int	iprint(char*, ...);
 void	irpower(int);
 void	lcdpower(int);
@@ -49,6 +53,9 @@ ulong	mmu_paddr(ulong);
 int	µcputc(Queue*, int);
 void	noted(Ureg*, ulong);
 int	notify(Ureg*);
+void	outb(ulong, uchar);
+void	outs(ulong, ushort);
+void	outl(ulong, ulong);
 void	pcmcisread(PCMslot*);
 int	pcmcistuple(int, int, int, void*, int);
 PCMmap*	pcmmap(int, ulong, int, int);
@@ -62,7 +69,6 @@ void	putdac(ulong);
 void	putttb(ulong);
 void	putpid(ulong);
 void	qpanic(char *, ...);
-void	reset(void);
 void	rs232power(int);
 Uart*	uartsetup(PhysUart*, void*, ulong, char*);
 void	uartspecial(Uart*, int, Queue**, Queue**, int (*)(Queue*, int));
@@ -89,5 +95,3 @@ void	wbflush(void);
 #define PADDR(a) mmu_paddr((ulong)(a))
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
-
-#define	dcflush(a, b)

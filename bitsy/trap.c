@@ -114,10 +114,10 @@ warnregs(Ureg *ur, char *tag)
 }
 
 /*
- *  enable an interrupt and attach a function to it
+ *  enable an irq interrupt
  */
 void
-intrenable(int irq, void (*f)(Ureg*, void*), void* a, char *name)
+irqenable(int irq, IntrHandler *f, void* a, char *name)
 {
 	Vctl *v;
 
@@ -138,28 +138,29 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, char *name)
 }
 
 /*
- *  enable an interrupt on gpio line.  edge is encoded as follows
+ *  enable an interrupt
  */
 void
-gpiointrenable(ulong mask, int edge, void (*f)(Ureg*, void*), void* a, char *name)
+intrenable(int type, int which, IntrHandler *f, void* a, char *name)
 {
-	int irq, bit;
+	int irq;
 	Vctl *v;
 
-	/* figure out which bit */
-	for(bit = 0; bit < 32; bit++)
-		if((1<<bit) == mask)
-			break;
+	if(type == IRQ){
+		irqenable(which, f, a, name);
+		return;
+	}
 
-	irq = bit;
-	if(bit >= nelem(gpiovctl) || bit < 0)
+	/* from here down, it must be a GPIO edge interrupt */
+	irq = which;
+	if(which >= nelem(gpiovctl) || which < 0)
 		panic("gpiointrenable");
-	if(bit > 11)
+	if(which > 11)
 		irq = 11;
 
 	/* the pin had better be configured as input */
-	if((1<<bit) & gpioregs->direction)
-		panic("gpiointrenable of output pin %d", bit);
+	if((1<<which) & gpioregs->direction)
+		panic("gpiointrenable of output pin %d", which);
 
 	/* create a second level vctl for the gpio edge interrupt */
 	v = xalloc(sizeof(Vctl));
@@ -169,26 +170,27 @@ gpiointrenable(ulong mask, int edge, void (*f)(Ureg*, void*), void* a, char *nam
 	v->name[NAMELEN-1] = 0;
 
 	lock(&vctllock);
-	v->next = gpiovctl[bit];
-	gpiovctl[bit] = v;
+	v->next = gpiovctl[which];
+	gpiovctl[which] = v;
 	unlock(&vctllock);
 
 	/* set edge register to enable interrupt */
-	switch(edge){
+	switch(type){
 	case GPIOboth:
-		gpioregs->rising |= mask;
-		gpioregs->falling |= mask;
+		gpioregs->rising |= 1<<which;
+		gpioregs->falling |= 1<<which;
 		break;
 	case GPIOfalling:
-		gpioregs->falling |= mask;
+		gpioregs->falling |= 1<<which;
 		break;
 	case GPIOrising:
-		gpioregs->rising |= mask;
+		gpioregs->rising |= 1<<which;
 		break;
 	}
 
+	/* point the irq to the gpio interrupt handler */
 	if(gpioirqref[irq]++ == 0)
-		intrenable(irq, gpiointr, nil, "gpio edge");
+		irqenable(irq, gpiointr, nil, "gpio edge");
 }
 
 /*
@@ -375,8 +377,6 @@ gpiointr(Ureg *ur, void*)
 
 	va = gpioregs->edgestatus;
 	gpioregs->edgestatus = va;
-
-iprint("gpio intr %lux\n", va);
 
 	for(i = 0; i < 27; i++){
 		if(((1<<i) & va) == 0)
@@ -791,13 +791,4 @@ evenaddr(ulong addr)
 		postnote(up, 1, "sys: odd address", NDebug);
 		error(Ebadarg);
 	}
-}
-
-
-/*
- *  here on a hardware reset
- */
-void
-reset(void)
-{
 }

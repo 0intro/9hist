@@ -4,6 +4,7 @@ typedef struct Cycintr		Cycintr;
 typedef struct FPU		FPU;
 typedef struct FPenv		FPenv;
 typedef struct FPsave		FPsave;
+typedef struct DevConf		DevConf;
 typedef struct Label		Label;
 typedef struct Lock		Lock;
 typedef struct MMU		MMU;
@@ -20,6 +21,8 @@ typedef struct Uart		Uart;
 typedef struct Ureg		Ureg;
 typedef struct Vctl		Vctl;
 typedef struct Uart		Uart;
+
+typedef void IntrHandler(Ureg*, void*);
 
 /*
  *  parameters for sysproc.c
@@ -316,6 +319,8 @@ struct Cisdat
  */
 struct PCMslot
 {
+	RWlock;
+
 	Ref	ref;
 
 	long	memlen;		/* memory length */
@@ -325,19 +330,11 @@ struct PCMslot
 	void	*attr;		/* attribute memory */
 
 	/* status */
-	uchar	special;	/* in use for a special device */
-	uchar	already;	/* already inited */
-	uchar	occupied;
-	uchar	battery;
-	uchar	wrprot;
-	uchar	powered;
-	uchar	configed;
-	uchar	enabled;
-	uchar	busy;
+	uchar	occupied;	/* card in the slot */
+	uchar	configed;	/* card configured */
 
 	/* cis info */
 	int	cisread;	/* set when the cis has been read */
-	ulong	msec;		/* time of last slotinfo call */
 	char	verstr[512];	/* version string */
 	uchar	cpresent;	/* config registers present */
 	ulong	caddr;		/* relative address of config registers */
@@ -351,4 +348,17 @@ struct PCMslot
 	/* maps are fixed */
 	PCMmap memmap;
 	PCMmap attrmap;
+};
+
+/*
+ *  hardware info about a device
+ */
+struct DevConf
+{
+	ulong	mem;		/* mapped memory address */
+	ulong	port;		/* mapped i/o regs */
+	int	size;		/* access size */
+	int	itype;		/* type of interrupt */
+	ulong	interrupt;	/* interrupt number */
+	char	type[NAMELEN];	/* card type */
 };

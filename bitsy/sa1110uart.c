@@ -424,7 +424,7 @@ sa1100_uartsetup(int console)
 	/* external serial port (eia0) */
 	uart3regs = mapspecial(UART3REGS, 64);
 	p = uartsetup(&sa1100_uart, uart3regs, ClockFreq, "serialport3");
-	intrenable(IRQuart3, sa1100_uartintr, p, p->name);
+	intrenable(IRQ, IRQuart3, sa1100_uartintr, p, p->name);
 
 	/* set eia0 up as a console */
 	if(console)
@@ -436,5 +436,5 @@ sa1100_uartsetup(int console)
 	uart1regs = mapspecial(UART1REGS, 64);
 	p = uartsetup(&sa1100_uart, uart1regs, ClockFreq, "serialport1");
 	uartspecial(p, 115200, 0, 0, µcputc);
-	intrenable(IRQuart1b, sa1100_uartintr, p, p->name);
+	intrenable(IRQ, IRQuart1b, sa1100_uartintr, p, p->name);
 }
