@@ -506,7 +506,7 @@ syscall(Ureg* ureg)
 	int	i, scallnr;
 
 	if((ureg->cs & 0xFFFF) != UESEL)
-		panic("syscall: cs 0x%4.4uX\n", ureg->cs);
+		panic("syscall: cs 0x%4.4luX\n", ureg->cs);
 
 	m->syscall++;
 	up->insyscall = 1;

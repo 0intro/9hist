@@ -127,7 +127,7 @@ ilock(Lock *l)
 	if(conf.nmach < 2)
 {
 dumplockmem("ilock:", l);
-		panic("ilock: no way out: pc %uX\n", pc);
+		panic("ilock: no way out: pc %luX\n", pc);
 }
 
 	for(;;){

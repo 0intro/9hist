@@ -319,7 +319,7 @@ trap(Ureg *ureg)
 		case 0xa:
 		case 0xc:
 		case 0xe:
-			panic("external abort 0x%ux pc 0x%lux addr 0x%lux\n", fsr, ureg->pc, va);
+			panic("external abort 0x%lux pc 0x%lux addr 0x%lux\n", fsr, ureg->pc, va);
 			break;
 		case 0x5:
 		case 0x7:
@@ -432,7 +432,7 @@ syscall(Ureg* ureg)
 	int	i, scallnr;
 
 	if((ureg->psr & PsrMask) != PsrMusr) {
-		panic("syscall: pc 0x%lux r14 0x%lux cs 0x%ux\n", ureg->pc, ureg->r14, ureg->psr);
+		panic("syscall: pc 0x%lux r14 0x%lux cs 0x%lux\n", ureg->pc, ureg->r14, ureg->psr);
 	}
 
 	m->syscall++;

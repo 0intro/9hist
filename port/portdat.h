@@ -817,6 +817,7 @@ struct Uart
 #pragma	varargck	argpos	snprint	3
 #pragma	varargck	argpos	sprint	2
 #pragma	varargck	argpos	fprint	2
+#pragma varargck	argpos	panic	1
 
 #pragma	varargck	type	"lld"	vlong
 #pragma	varargck	type	"llx"	vlong

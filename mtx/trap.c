@@ -229,7 +229,7 @@ trap(Ureg *ur)
 		break;
 	case CSYSCALL:
 		if(!user)
-			panic("syscall in kernel: srr1 0x%4.4uX\n", ur->srr1);
+			panic("syscall in kernel: srr1 0x%4.4luX\n", ur->srr1);
 		syscall(ur);
 		return;		/* syscall() calls notify itself, don't do it again */
 	case CFPU:

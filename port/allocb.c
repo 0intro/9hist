@@ -61,7 +61,7 @@ allocb(int size)
 	 * Can still error out of here, though.
 	 */
 	if(up == nil)
-		panic("allocb without up: %uX\n", getcallerpc(&size));
+		panic("allocb without up: %luX\n", getcallerpc(&size));
 	if((b = _allocb(size)) == nil){
 		xsummary();
 		mallocsummary();

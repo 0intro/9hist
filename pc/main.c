@@ -464,7 +464,7 @@ matherror(Ureg *ur, void*)
 	mathnote();
 
 	if(ur->pc & KZERO)
-		panic("fp: status %lux fppc=0x%lux pc=0x%lux",
+		panic("fp: status %ux fppc=0x%lux pc=0x%lux",
 			up->fpsave.status, up->fpsave.pc, ur->pc);
 }
 
@@ -495,7 +495,7 @@ mathemu(Ureg*, void*)
 		up->fpstate = FPactive;
 		break;
 	case FPactive:
-		panic("math emu", 0);
+		panic("math emu");
 		break;
 	}
 }

@@ -210,7 +210,7 @@ drawgen(Chan *c, char*, Dirtab*, int, int s, Dir *dp)
 			devdir(c, q, up->genbuf, 0, eve, 0500, dp);
 			break;
 		default:
-			panic("drawwalk %lux", c->qid.path);
+			panic("drawwalk %llux", c->qid.path);
 		}
 		return 1;
 	}

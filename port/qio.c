@@ -105,7 +105,7 @@ padblock(Block *bp, int size)
 		}
 
 		if(bp->next)
-			panic("padblock 0x%uX", getcallerpc(&bp));
+			panic("padblock 0x%luX", getcallerpc(&bp));
 		n = BLEN(bp);
 		padblockcnt++;
 		nbp = allocb(size+n);
@@ -119,7 +119,7 @@ padblock(Block *bp, int size)
 		size = -size;
 
 		if(bp->next)
-			panic("padblock 0x%uX", getcallerpc(&bp));
+			panic("padblock 0x%luX", getcallerpc(&bp));
 
 		if(bp->lim - bp->wp >= size)
 			return bp;
