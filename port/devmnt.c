@@ -130,7 +130,7 @@ mntattach(char *muxattach)
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
-		char	*auth;
+		char	*serv;
 	}bogus;
 
 	bogus = *((struct bogus *)muxattach);
@@ -141,7 +141,7 @@ mntattach(char *muxattach)
 			if(m->ref > 0 && m->id && m->c == bogus.chan) {
 				m->ref++;
 				unlock(m);
-				return mattach(m, bogus.spec, bogus.auth);
+				return mattach(m, bogus.spec, bogus.serv);
 			}
 			unlock(m);	
 		}
@@ -174,14 +174,16 @@ mntattach(char *muxattach)
 	incref(m->c);
 	unlock(m);
 
-	return mattach(m, bogus.spec, bogus.auth);
+	return mattach(m, bogus.spec, bogus.serv);
 }
 
 Chan *
-mattach(Mnt *m, char *spec, char *auth)
+mattach(Mnt *m, char *spec, char *serv)
 {
 	Chan *c;
 	Mntrpc *r;
+	char chal[8];
+	int i;
 
 	r = mntralloc();
 
@@ -190,6 +192,26 @@ mattach(Mnt *m, char *spec, char *auth)
 	c->dev = mntalloc.id++;
 	unlock(&mntalloc);
 	c->mntindex = m-mntalloc.mntarena;
+
+	if(*serv && !waserror()){
+		r->request.type = Tauth;
+		r->request.fid = c->fid;
+		memmove(r->request.uname, u->p->user, NAMELEN);
+		chal[0] = 1;
+		for(i = 1; i < sizeof chal; i++)
+			chal[i++] = nrand(256);
+		memmove(r->request.chal, chal, 8);
+		strncpy(r->request.chal+8, serv, NAMELEN);
+		encrypt(u->p->pgrp->crypt->key, r->request.chal, 8+NAMELEN);
+		mountrpc(m, r);
+		decrypt(u->p->pgrp->crypt->key, r->reply.chal, 2*8+2*DESKEYLEN);
+		chal[0] = 4;
+		if(memcmp(chal, r->reply.chal, 8) != 0)
+			error(Eperm);
+		memmove(r->request.auth, r->reply.chal+8+DESKEYLEN, 8+DESKEYLEN);
+		poperror();
+	}else
+		memset(r->request.auth, 0, sizeof r->request.auth);
 
 	if(waserror()){
 		mntfree(r);
@@ -200,7 +222,6 @@ mattach(Mnt *m, char *spec, char *auth)
 	r->request.fid = c->fid;
 	memmove(r->request.uname, u->p->user, NAMELEN);
 	strncpy(r->request.aname, spec, NAMELEN);
-	strncpy(r->request.auth, auth, NAMELEN);
 	mountrpc(m, r);
 
 	c->qid = r->reply.qid;
@@ -249,6 +270,7 @@ mntclone(Chan *c, Chan *nc)
 	nc->mqid = c->qid;
 	incref(m);
 
+	USED(alloc);
 	poperror();
 	mntfree(r);
 	return nc;

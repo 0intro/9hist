@@ -393,7 +393,7 @@ bindmount(ulong *arg, int ismount)
 	struct{
 		Chan	*chan;
 		char	*spec;
-		char	*auth;
+		char	*serv;
 	}bogus;
 
 	flag = arg[2];
@@ -408,7 +408,7 @@ bindmount(ulong *arg, int ismount)
 		validaddr(arg[4], 1, 0);
 		if(vmemchr((char*)arg[4], '\0', NAMELEN) == 0)
 			error(Ebadarg);
-		bogus.auth = (char*)arg[4];
+		bogus.serv = (char*)arg[4];
 		ret = devno('M', 0);
 		c0 = (*devtab[ret].attach)((char*)&bogus);
 	}else{

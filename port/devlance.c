@@ -282,7 +282,7 @@ lanceoput(Queue *q, Block *bp )
 			qlock(&l);
 			l.prom++;
 			if(l.prom == 1)
-/*				lancestart(PROM, 1);/**/
+				lancestart(PROM, 1);/**/
 			qunlock(&l);
 		}
 		freeb(bp);

@@ -212,7 +212,6 @@ void	sleep(Rendez*, int(*)(void*), void*);
 int	splhi(void);
 int	spllo(void);
 void	splx(int);
-void	srand(char*);
 int	streamclose(Chan*);
 int	streamclose1(Stream*);
 int	streamenter(Stream*);

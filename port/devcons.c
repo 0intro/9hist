@@ -889,19 +889,12 @@ conswstat(Chan *c, char *dp)
  *  Rand is huge and not worth it here.  Be small.
  *  Borrowed from the white book.
  */
-ulong	randn;
-void
-srand(char *s)
-{
-	randn = MACHP(0)->ticks * boottime;
-	while(s && *s)
-		randn = (randn << 1) ^ *s++;
-}
-
 int
 nrand(int n)
 {
-	randn = randn*1103515245 + 12345;
+	static ulong randn;
+
+	randn = randn*1103515245 + 12345 + MACHP(0)->ticks;
 	return (randn>>16) % n;
 }
 
