@@ -28,6 +28,19 @@ static void	swapproc(void);
 static void	recover(Method*);
 static Method	*rootserver(char*);
 
+static int
+rconv(void *o, Fconv *fp)
+{
+	char s[ERRLEN];
+
+	USED(o);
+
+	s[0] = 0;
+	errstr(s);
+	strconv(s, fp);
+	return 0;
+}
+
 void
 boot(int argc, char *argv[])
 {
@@ -38,6 +51,8 @@ boot(int argc, char *argv[])
 	int islocal, ishybrid;
 
 	sleep(1000);
+
+	fmtinstall('r', rconv);
 
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
@@ -179,7 +194,6 @@ rootserver(char *arg)
 	Method *mp;
 	char *cp;
 	int n;
-	int notfirst;
 
 	/* make list of methods */
 	mp = method;
