@@ -5,23 +5,22 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-/* Predeclaration */
+int	canflush(Proc *p, Segment*);
+void	executeio(void);
+int	needpages(void*);
 void	pageout(Proc *p, Segment*);
 void	pagepte(int, Page**);
-int	needpages(void*);
 void	pager(void*);
-void	executeio(void);
-int	canflush(Proc *p, Segment*);
 
 enum
 {
 	Maxpages = 500,	/* Max number of pageouts per segment pass */
 };
 
-Image 	swapimage;
-static 	int swopen;
-Page	*iolist[Maxpages];
-int	ioptr;
+	Image 	swapimage;
+static 	int	swopen;
+static	Page	*iolist[Maxpages];
+static	int	ioptr;
 
 void
 swapinit(void)
@@ -161,7 +160,6 @@ pageout(Proc *p, Segment *s)
 
 	if(s->steal) {		/* Protected by /dev/proc */
 		qunlock(&s->lk);
-		putseg(s);
 		return;
 	}
 

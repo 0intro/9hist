@@ -450,6 +450,8 @@ confinit(void)
 	conf.frag = 32;
 	if(cpuserver)
 		conf.nproc = 500;
+
+	conf.monitor = 0;
 }
 
 /*

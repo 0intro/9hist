@@ -7,7 +7,7 @@
 
 enum
 {
-	Twritehdr	= 15,	/* Min bytes for Twrite */
+	Twritehdr	= 16,	/* Min bytes for Twrite */
 	Rreadhdr	= 8,	/* Min bytes for Rread */
 	Twritecnt	= 13,	/* Offset in byte stream of write count */
 	Rreadcnt	= 5,	/* Offset for Readcnt */
@@ -135,8 +135,12 @@ fcalliput(Queue *q, Block *bp)
 		switch(bp->rptr[0]) {		/* This is the type */
 		default:
 			len = msglen[bp->rptr[0]];
-			if(len == 0)
-				error(Emountrpc);
+			if(len == 0){
+				bp = allocb(0);
+				bp->type = M_HANGUP;
+				PUTNEXT(q, bp);
+				return;
+			}
 			if(q->len < len)
 				return;
 	

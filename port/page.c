@@ -94,7 +94,7 @@ retry:
 		/*
 		 * If called from fault and we lost the segment from underneath
 		 * don't waste time allocating and freeing a page. Fault will call
-		 * newpage again when it has reaquired the segment locks
+		 * newpage again when it has reacquired the segment locks
 		 */
 		if(dontalloc)
 			return 0;
