@@ -337,7 +337,7 @@ intrprint(char *format, ...)
 {
 	if (debuglast == 0)
 		debuglast = debugbuf;
-	debuglast = doprint(debuglast, debugbuf + (DEBUGSIZE - 1), format, (&format + 1));
+	debuglast = vseprint(debuglast, debugbuf + (DEBUGSIZE - 1), format, (&format + 1));
 }
 
 static void
@@ -370,7 +370,7 @@ oprint(char *format, ...)
 	s = splhi();
 	if (debuglast == 0)
 		debuglast = debugbuf;
-	debuglast = doprint(debuglast, debugbuf + (DEBUGSIZE - 1), format, (&format + 1));
+	debuglast = vseprint(debuglast, debugbuf + (DEBUGSIZE - 1), format, (&format + 1));
 	splx(s);
 	iflush();	
 }

@@ -68,7 +68,7 @@ poolprint(Pool *p, char *fmt, ...)
 
 	pv = p->private;
 	va_start(v, fmt);
-	doprint(pv->msg+strlen(pv->msg), pv->msg+sizeof pv->msg, fmt, v);
+	vseprint(pv->msg+strlen(pv->msg), pv->msg+sizeof pv->msg, fmt, v);
 	va_end(v);
 }
 
@@ -81,7 +81,7 @@ ppanic(Pool *p, char *fmt, ...)
 
 	pv = p->private;
 	va_start(v, fmt);
-	doprint(pv->msg+strlen(pv->msg), pv->msg+sizeof pv->msg, fmt, v);
+	vseprint(pv->msg+strlen(pv->msg), pv->msg+sizeof pv->msg, fmt, v);
 	va_end(v);
 	memmove(msg, pv->msg, sizeof msg);
 	iunlock(&pv->lk);

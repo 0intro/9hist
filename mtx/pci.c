@@ -25,7 +25,7 @@ pcilog(char *fmt, ...)
 	char buf[PRINTSIZE];
 
 	va_start(arg, fmt);
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	n = vseprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 
 	memmove(PCICONS.output+PCICONS.ptr, buf, n);
@@ -92,20 +92,17 @@ static char* bustypes[] = {
 #pragma	varargck	type	"T"	int
 
 static int
-tbdfconv(va_list* arg, Fconv* f)
+tbdffmt(Fmt* fmt)
 {
 	char *p;
-	int l, type, tbdf;
+	int l, r, type, tbdf;
 
-	p = malloc(READSTR);
-	if(p == nil){
-		strconv("(tbdfconv)", f);
-		return sizeof(int);
-	}
+	if((p = malloc(READSTR)) == nil)
+		return fmtstrcpy(fmt, "(tbdfconv)");
 		
-	switch(f->chr){
+	switch(fmt->r){
 	case 'T':
-		tbdf = va_arg(*arg, int);
+		tbdf = va_arg(fmt->args, int);
 		type = BUSTYPE(tbdf);
 		if(type < nelem(bustypes))
 			l = snprint(p, READSTR, bustypes[type]);
@@ -119,10 +116,10 @@ tbdfconv(va_list* arg, Fconv* f)
 		snprint(p, READSTR, "(tbdfconv)");
 		break;
 	}
-	strconv(p, f);
+	r = fmtstrcpy(fmt, p);
 	free(p);
 
-	return sizeof(int);
+	return r;
 }
 
 ulong
@@ -537,7 +534,7 @@ pcicfginit(void)
 	if(pcicfgmode < 0)
 		goto out;
 
-	fmtinstall('T', tbdfconv);
+	fmtinstall('T', tbdffmt);
 
 	if(p = getconf("*pcimaxbno"))
 		pcimaxbno = strtoul(p, 0, 0);

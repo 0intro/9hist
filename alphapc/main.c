@@ -82,6 +82,7 @@ main(void)
 	printinit();
 	kbdinit();
 	i8250console();
+	quotefmtinstall();
 	print("\nPlan 9\n");
 
 	cpuidprint();

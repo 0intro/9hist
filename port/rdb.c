@@ -18,7 +18,7 @@ scrprint(char *fmt, ...)
 	int n;
 
 	va_start(va, fmt);
-	n = doprint(buf, buf+sizeof buf, fmt, va)-buf;
+	n = vseprint(buf, buf+sizeof buf, fmt, va)-buf;
 	va_end(va);
 	putstrn(buf, n);
 }

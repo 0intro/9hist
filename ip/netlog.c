@@ -233,12 +233,12 @@ netlog(Fs *f, int mask, char *fmt, ...)
 	if(!(f->alog->logmask & mask))
 		return;
 
-	va_start(arg, fmt);
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
-	va_end(arg);
-
 	if(f->alog->opens == 0)
 		return;
+
+	va_start(arg, fmt);
+	n = vseprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
 
 	lock(f->alog);
 	i = f->alog->len + n - Nlog;

@@ -5,23 +5,23 @@
 /*
  * mem routines
  */
-extern	void	*memccpy(void*, void*, int, long);
-extern	void	*memset(void*, int, long);
-extern	int	memcmp(void*, void*, long);
-extern	void	*memmove(void*, void*, long);
-extern	void	*memchr(void*, int, long);
+extern	void*	memccpy(void*, void*, int, ulong);
+extern	void*	memset(void*, int, ulong);
+extern	int	memcmp(void*, void*, ulong);
+extern	void*	memmove(void*, void*, ulong);
+extern	void*	memchr(void*, int, ulong);
 
 /*
  * string routines
  */
-extern	char	*strcat(char*, char*);
-extern	char	*strchr(char*, char);
-extern	char	*strrchr(char*, char);
+extern	char*	strcat(char*, char*);
+extern	char*	strchr(char*, char);
+extern	char*	strrchr(char*, char);
 extern	int	strcmp(char*, char*);
-extern	char	*strcpy(char*, char*);
-extern	char *strecpy(char*, char*, char*);
-extern	char	*strncat(char*, char*, long);
-extern	char	*strncpy(char*, char*, long);
+extern	char*	strcpy(char*, char*);
+extern	char*	strecpy(char*, char*, char*);
+extern	char*	strncat(char*, char*, long);
+extern	char*	strncpy(char*, char*, long);
 extern	int	strncmp(char*, char*, long);
 extern	long	strlen(char*);
 extern	char*	strstr(char*, char*);
@@ -50,24 +50,39 @@ extern	int	abs(int);
 /*
  * print routines
  */
-typedef
-struct
-{
-	char*	out;		/* pointer to next output */
-	char*	eout;		/* pointer to end */
-	int	f1;
-	int	f2;
-	int	f3;
-	int	chr;
-} Fconv;
-extern	void	strconv(char*, Fconv*);
-extern	int	numbconv(va_list*, Fconv*);
-extern	char	*doprint(char*, char*, char*, va_list);
-extern	int	fmtinstall(int, int (*)(va_list*, Fconv*));
-extern	int	sprint(char*, char*, ...);
-extern	char*	seprint(char*, char*, char*, ...);
-extern	int	snprint(char*, int, char*, ...);
+typedef struct Fmt	Fmt;
+typedef int (*Fmts)(Fmt*);
+struct Fmt{
+	uchar	runes;			/* output buffer is runes or chars? */
+	void	*start;			/* of buffer */
+	void	*to;			/* current place in the buffer */
+	void	*stop;			/* end of the buffer; overwritten if flush fails */
+	int	(*flush)(Fmt *);	/* called when to == stop */
+	void	*farg;			/* to make flush a closure */
+	int	nfmt;			/* num chars formatted so far */
+	va_list	args;			/* args passed to dofmt */
+	int	r;			/* % format Rune */
+	int	width;
+	int	prec;
+	ulong	flags;
+};
 extern	int	print(char*, ...);
+extern	char*	seprint(char*, char*, char*, ...);
+extern	char*	vseprint(char*, char*, char*, va_list);
+extern	int	snprint(char*, int, char*, ...);
+extern	int	vsnprint(char*, int, char*, va_list);
+extern	int	sprint(char*, char*, ...);
+
+extern	int	fmtinstall(int c, int (*f)(Fmt*));
+extern	int	quotefmtinstall(void);
+extern	int	fmtit(Fmt *f, char *fmt, ...);
+extern	int	fmtstrcpy(Fmt *f, char *s);
+
+#pragma	varargck	argpos	fmtit	2
+#pragma	varargck	argpos	print	1
+#pragma	varargck	argpos	seprint	3
+#pragma	varargck	argpos	snprint	3
+#pragma	varargck	argpos	sprint	2
 
 /*
  * one-of-a-kind

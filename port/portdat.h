@@ -835,9 +835,6 @@ struct Uart
 #pragma	varargck	type	"x"	uint
 #pragma	varargck	type	"c"	uint
 #pragma	varargck	type	"C"	uint
-#pragma	varargck	type	"f"	double
-#pragma	varargck	type	"e"	double
-#pragma	varargck	type	"g"	double
 #pragma	varargck	type	"s"	char*
 #pragma	varargck	type	"S"	Rune*
 #pragma	varargck	type	"r"	void

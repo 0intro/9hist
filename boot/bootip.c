@@ -21,9 +21,9 @@ configip(void)
 	char **arg;
 	char buf[32];
 	
-	fmtinstall('I', eipconv);
-	fmtinstall('M', eipconv);
-	fmtinstall('E', eipconv);
+	fmtinstall('I', eipfmt);
+	fmtinstall('M', eipfmt);
+	fmtinstall('E', eipfmt);
 
 	arg = malloc((bargc+1) * sizeof(char*));
 	if(arg == nil)

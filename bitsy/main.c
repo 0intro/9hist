@@ -29,6 +29,7 @@ main(void)
 	active.machs = 1;
 
 	rs232power(1);
+	quotefmtinstall();
 	iprint("\nPlan 9 bitsy kernel\n");
 	confinit();
 	xinit();

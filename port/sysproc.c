@@ -631,7 +631,7 @@ werrstr(char *fmt, ...)
 		return;
 
 	va_start(va, fmt);
-	doprint(up->syserrstr, up->syserrstr+ERRMAX, fmt, va);
+	vseprint(up->syserrstr, up->syserrstr+ERRMAX, fmt, va);
 	va_end(va);
 }
 

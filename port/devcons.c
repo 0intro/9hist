@@ -154,41 +154,6 @@ putstrn(char *str, int n)
 	putstrn0(str, n, 0);
 }
 
-int
-snprint(char *s, int n, char *fmt, ...)
-{
-	va_list arg;
-
-	va_start(arg, fmt);
-	n = doprint(s, s+n, fmt, arg) - s;
-	va_end(arg);
-	return n;
-}
-
-int
-sprint(char *s, char *fmt, ...)
-{
-	int n;
-	va_list arg;
-
-	va_start(arg, fmt);
-	n = doprint(s, s+PRINTSIZE, fmt, arg) - s;
-	va_end(arg);
-	return n;
-}
-
-char*
-seprint(char *buf, char *e, char *fmt, ...)
-{
-	char *out;
-	va_list arg;
-
-	va_start(arg, fmt);
-	out = doprint(buf, e, fmt, arg);
-	va_end(arg);
-	return out;
-}
-
 int noprint;
 
 int
@@ -202,7 +167,7 @@ print(char *fmt, ...)
 		return -1;
 
 	va_start(arg, fmt);
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	n = vseprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 	putstrn(buf, n);
 
@@ -218,7 +183,7 @@ iprint(char *fmt, ...)
 
 	s = splhi();
 	va_start(arg, fmt);
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	n = vseprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 	if(screenputs != nil)
 		screenputs(buf, n);
@@ -246,7 +211,7 @@ panic(char *fmt, ...)
 	splhi();
 	strcpy(buf, "panic: ");
 	va_start(arg, fmt);
-	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, arg) - buf;
+	n = vseprint(buf+strlen(buf), buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 	buf[n] = '\n';
 	if(serialputs != nil)
@@ -283,7 +248,7 @@ pprint(char *fmt, ...)
 		return 0;
 	n = sprint(buf, "%s %lud: ", up->text, up->pid);
 	va_start(arg, fmt);
-	n = doprint(buf+n, buf+sizeof(buf), fmt, arg) - buf;
+	n = vseprint(buf+n, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 
 	if(waserror())

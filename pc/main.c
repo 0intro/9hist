@@ -76,6 +76,7 @@ main(void)
 	options();
 	ioinit();
 	i8250console();
+	quotefmtinstall();
 
 	print("\nPlan 9\n");
 

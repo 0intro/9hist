@@ -19,16 +19,13 @@ static void	swapproc(void);
 static Method	*rootserver(char*);
 
 static int
-rconv(va_list *arg, Fconv *fp)
+rconv(Fmt* fp)
 {
 	char s[ERRMAX];
 
-	USED(arg);
-
 	s[0] = '\0';
 	errstr(s, sizeof s);
-	strconv(s, fp);
-	return 0;
+	return fmtstrcpy(fp, s);
 }
 
 void

@@ -81,9 +81,9 @@ mntreset(void)
 {
 	mntalloc.id = 1;
 	mntalloc.rpctag = Tagspace;
-	fmtinstall('F', fcallconv);
-	fmtinstall('D', dirconv);
-	fmtinstall('M', dirmodeconv);
+	fmtinstall('F', fcallfmt);
+	fmtinstall('D', dirfmt);
+	fmtinstall('M', dirmodefmt);
 
 	cinit();
 }

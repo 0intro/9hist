@@ -166,10 +166,11 @@ logn(Log *alog, int mask, void *buf, int n)
 }
 
 void
-vlog(Log *alog, int mask, char *fmt, va_list arg)
+log(Log *alog, int mask, char *fmt, ...)
 {
-	char buf[128];
 	int n;
+	va_list arg;
+	char buf[128];
 
 	if(!(alog->logmask & mask))
 		return;
@@ -177,18 +178,9 @@ vlog(Log *alog, int mask, char *fmt, va_list arg)
 	if(alog->opens == 0)
 		return;
 
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_start(arg, fmt);
+	n = vseprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
 
 	logn(alog, mask, buf, n);
 }
-
-void
-log(Log *alog, int mask, char *fmt, ...)
-{
-	va_list arg;
-
-	va_start(arg, fmt);
-	vlog(alog, mask, fmt, arg);
-	va_end(arg);
-}
-

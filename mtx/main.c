@@ -18,6 +18,7 @@ main(void)
 	machinit();
 	ioinit();
 	i8250console();
+	quotefmtinstall();
 	print("\nPlan 9\n");
 	confinit();
 	xinit();

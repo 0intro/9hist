@@ -959,7 +959,7 @@ rcvError(TlsRec *tr, int err, char *fmt, ...)
 	va_list arg;
 
 	va_start(arg, fmt);
-	doprint(msg, msg+sizeof(msg), fmt, arg);
+	vseprint(msg, msg+sizeof(msg), fmt, arg);
 	va_end(arg);
 
 	sendAlert(tr, err);

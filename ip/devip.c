@@ -260,11 +260,11 @@ ipreset(void)
 	nullmediumlink();
 	pktmediumlink();
 
-	fmtinstall('i', eipconv);
-	fmtinstall('I', eipconv);
-	fmtinstall('E', eipconv);
-	fmtinstall('V', eipconv);
-	fmtinstall('M', eipconv);
+	fmtinstall('i', eipfmt);
+	fmtinstall('I', eipfmt);
+	fmtinstall('E', eipfmt);
+	fmtinstall('V', eipfmt);
+	fmtinstall('M', eipfmt);
 }
 
 static Fs*

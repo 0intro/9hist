@@ -478,7 +478,7 @@ extern uchar*	defmask(uchar*);
 extern int	isv4(uchar*);
 extern void	v4tov6(uchar *v6, uchar *v4);
 extern int	v6tov4(uchar *v4, uchar *v6);
-extern int	eipconv(va_list *arg, Fconv *f);
+extern int	eipfmt(Fmt*);
 
 #define	ipcmp(x, y) memcmp(x, y, IPaddrlen)
 #define	ipmove(x, y) memmove(x, y, IPaddrlen)
