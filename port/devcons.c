@@ -180,17 +180,18 @@ pprint(char *fmt, ...)
 
 	c = u->fd[2];
 	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
-		return;
+		return 0;
 	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
 	n = donprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	qlock(c);
 	if(waserror()){
 		qunlock(c);
-		return;
+		return 0;
 	}
 	(*devtab[c->type].write)(c, buf, n);
 	c->offset += n;
 	qunlock(c);
+	poperror();
 	return n;
 }
 

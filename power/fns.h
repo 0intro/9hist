@@ -97,6 +97,7 @@ Orig	*neworig(ulong, ulong, int, Chan*);
 Page	*newpage(int, Orig*, ulong);
 Pgrp	*newpgrp(void);
 Proc	*newproc(void);
+void	newqinfo(Qinfo*);
 char	*nextelem(char*, char*);
 void	newstart(void);
 int	newtlbpid(Proc*);

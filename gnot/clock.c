@@ -117,9 +117,10 @@ clock(Ureg *ur)
 		}
 		unlock(&m->alarmlock);
 	}
+	kbdclock();
 	if((ur->sr&SPL(7)) == 0){
 		spllo();
 		if(p && p->state==Running)
-			sched();
+			checksched();
 	}
 }

@@ -270,6 +270,7 @@ syscall(Ureg *aur)
 	ret = -1;
 	if(!waserror())
 		ret = (*systab[r0])((ulong*)(sp+BY2WD));
+else print("syscall %d err %d %d\n", r0, u->error.type, u->error.code);
 	u->nerrlab = 0;
 	u->p->insyscall = 0;
 	if(r0 == NOTED)	/* ugly hack */

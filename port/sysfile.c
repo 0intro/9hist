@@ -126,7 +126,7 @@ unionread(Chan *c, void *va, long n)
 	mnt = c->mnt;
 	lock(pg);
 	if(c->mountid != mnt->mountid){
-		print("unionread: changed underfoot?\n");
+		pprint("unionread: changed underfoot?\n");
 		unlock(pg);
 		return 0;
 	}

@@ -149,7 +149,7 @@ mount(Chan *new, Chan *old, int flag)
 	Mtab *mt, *mz;
 	Mount *mnt, *omnt, *nmnt, *pmnt;
 	Pgrp *pg;
-	int isnew;
+	int islast;
 
 	if(CHDIR & (old->qid^new->qid))
 		error(0, Emount);
@@ -157,10 +157,15 @@ mount(Chan *new, Chan *old, int flag)
 		error(0, Emount);
 
 	mz = 0;
-	isnew = 0;
+	islast = 0;
+	mnt = 0;
 	pg = u->p->pgrp;
 	lock(pg);
 	if(waserror()){
+		if(mnt){
+			mnt->c = 0;	/* caller will close new */
+			closemount(mnt);
+		}
 		unlock(pg);
 		nexterror();
 	}
@@ -171,18 +176,18 @@ mount(Chan *new, Chan *old, int flag)
 	for(i=0; i<pg->nmtab; i++,mt++){
 		if(mt->c==0 && mz==0)
 			mz = mt;
-		else if(eqchan(mt->c, old, CHDIR|QPATH))
+		else if(eqchan(mt->c, old, CHDIR|QPATH)){
+			mz = 0;
 			goto Found;
+		}
 	}
-	isnew = 1;
 	if(mz == 0){
 		if(i == conf.nmtab)
 			error(0, Enomount);
 		mz = &pg->mtab[i];
-		pg->nmtab++;
+		islast++;
 	}
 	mz->mnt = 0;
-	mz->c = old;
 	mt = mz;
 
     Found:
@@ -244,8 +249,12 @@ mount(Chan *new, Chan *old, int flag)
 	}
 
 	incref(new);
-	if(isnew)
+	if(mz){
+		mz->c = old;
 		incref(old);
+	}
+	if(islast)
+		pg->nmtab++;
 	unlock(pg);
 	poperror();
 	return mnt->mountid;
@@ -286,7 +295,7 @@ domount(Chan *c)
     Found:
 	lock(pg);
 	if(!eqchan(mt->c, c, CHDIR|QPATH)){	/* table changed underfoot */
-		print("domount: changed underfoot?\n");
+		pprint("domount: changed underfoot?\n");
 		unlock(pg);
 		return c;
 	}
@@ -333,7 +342,7 @@ walk(Chan *ac, char *name, int domnt)
 			goto Notfound;
 		}
 		if(c->mountid != mnt->mountid){
-			print("walk: changed underfoot?\n");
+			pprint("walk: changed underfoot?\n");
 			unlock(pg);
 			goto Notfound;
 		}
@@ -353,6 +362,7 @@ walk(Chan *ac, char *name, int domnt)
 		if(!first)
 			close(c);
 		nc->mnt = mnt;
+		nc->mountid = mnt->mountid;
 		c = nc;
 		first = 0;
 		goto Again;
@@ -391,7 +401,7 @@ createdir(Chan *c)
 	}
 	mnt = c->mnt;
 	if(c->mountid != mnt->mountid){
-		print("createdir: changed underfoot?\n");
+		pprint("createdir: changed underfoot?\n");
 		error(0, Enocreate);
 	}
 	do{

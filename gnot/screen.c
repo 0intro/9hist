@@ -161,11 +161,15 @@ duartintr(void)
 		c = duart->data;
 		if(status & (FRM_ERR|OVR_ERR|PAR_ERR))
 			duart->cmnd = RESET_ERR;
-		if(c == 0x7F)
-			c = 0xFF;	/* VIEW key (bizarre) */
-		if(c & 0x80)
-			c = keymap[c&0x7F];
-		kbdchar(c);
+		if(status & PAR_ERR) /* control word: caps lock (0x4) or repeat (0x10) */
+			kbdrepeat((c&0x10) == 0);
+		else{
+			if(c == 0x7F)
+				c = 0xFF;	/* VIEW key (bizarre) */
+			if(c & 0x80)
+				c = keymap[c&0x7F];
+			kbdchar(c);
+		}
 	}
 	/*
 	 * Is it 2?

@@ -23,8 +23,9 @@ enum {
 	Minstation=	2,	/* lowest station # to poll */
 	Maxstation=	15,	/* highest station # to poll */
 	Nincon=		1,	/* number of incons */
-	Nin=		16,	/* Blocks in the input ring */
+	Nin=		64,	/* Blocks in the input ring */
 	Bsize=		128,	/* size of an input ring block */
+	Mfifo=		0xff	/* a mask, must be 2^n-1, must be > Nin */
 };
 
 /*
@@ -631,7 +632,7 @@ inconkproc(void *arg)
 }
 
 /*
- *  drop an input packet on the floor
+ *  drop a single packet
  */
 static void
 droppacket(Device *dev)
@@ -639,14 +640,21 @@ droppacket(Device *dev)
 	int i;
 	int c;
 
-	screenputc('!');
-	while(!(dev->status & RCV_EMPTY)){
-		for(i = 0; i < 17; i++){
-			c = dev->data_cntl;
-			if(c==0)
-				break;
-		}
+	for(i = 0; i < 17; i++){
+		c = dev->data_cntl;
+		if(c==0)
+			break;
 	}
+}
+
+/*
+ *  flush the input fifo
+ */
+static void
+flushfifo(Device *dev)
+{
+	while(!(dev->status & RCV_EMPTY))
+		droppacket(dev);
 }
 
 /*
@@ -657,19 +665,20 @@ droppacket(Device *dev)
 static Block *
 nextin(Incon *ip, unsigned int c)
 {
-	Block *bp = ip->inb[ip->wi];
+	Block *bp;
 	int next;
 
-	next = (ip->wi+1)%Nin;
-	if(next == ip->ri){
-		bp->wptr = bp->base+3;
-		droppacket(ip->dev);
-		return 0;
-	}
+	bp = ip->inb[ip->wi];
 	bp->base[0] = ip->chan;
 	bp->base[1] = ip->chan>>8;
 	bp->base[2] = c;
-	ip->wi = next;
+
+	next = (ip->wi+3)%Nin;
+	if(next == ip->ri){
+		bp->wptr = bp->base+3;
+		return bp;
+	}
+	ip->wi = (ip->wi+1)%Nin;
 
 	return ip->inb[ip->wi];
 }
@@ -690,8 +699,8 @@ rdpackets(Incon *ip)
 	dev = ip->dev;
 	bp = ip->inb[ip->wi];
 	if(bp==0){
-		droppacket(ip->dev);
-		goto done;
+		flushfifo(ip->dev);
+		return;
 	}
 	p = bp->wptr;
 	while(!(dev->status & RCV_EMPTY)){
@@ -699,12 +708,14 @@ rdpackets(Incon *ip)
 		 *  get channel number
 		 */
 		c = (dev->data_cntl)>>8;
+		if(c == 0){
+			droppacket(dev);
+			continue;
+		}
 		if(ip->chan != c){
 			if(p - bp->rptr > 3){
 				bp->wptr = p;
 				bp = nextin(ip, 0);
-				if(bp == 0)
-					goto done;
 				p = bp->wptr;
 			}
 			ip->chan = c;
@@ -725,8 +736,6 @@ rdpackets(Incon *ip)
 				 */
 				bp->wptr = p;
 				bp = nextin(ip, c);
-				if(bp == 0)
-					goto done;
 				p = bp->wptr;
 			} else {
 				/* end of packet */
@@ -741,14 +750,11 @@ rdpackets(Incon *ip)
 		if(p + 16 > bp->lim){
 			bp->wptr = p;
 			bp = nextin(ip, 0);
-			if(bp == 0)
-				goto done;
 			p = bp->wptr;
 		}
 	}	
 	bp->wptr = p;
 
-done:
 	if(first != ip->wi)/**/
 		wakeup(&ip->kr);
 }

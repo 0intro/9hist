@@ -26,21 +26,17 @@ enum
 	WRITE,
 };
 
-long	hold, wait, hang;
-
 void
 bitsend(Bitmsg *bp, ulong cmd, void *addr, ulong count)
 {
-	do wait++; while(*BITADDR);
+	do; while(*BITADDR);
 	bp->cmd = cmd;
 	bp->addr = (ulong)addr;
 	bp->count = count;
-/* print("%d %lux %d ", cmd, addr, count); /**/
 	*BITADDR = bp;
 	wbflush();
-	do hold++; while(*BITHOLD);
+	do; while(*BITHOLD);
 	*BITINTR = 0x20;
-/* print("done\n");  /**/
 }
 
 void
@@ -153,21 +149,11 @@ bitread(Chan *c, void *buf, long n)
 			docpy = 1;
 		}
 		qunlock(&bit);
-		do{
+		do
 			n = bp->rcount;
-			hang++;
-		}while(n == 0);
+		while(n == 0);
 		if(docpy)
 			memcpy(buf, bit.buf, n);
-if(0 && n > 512){
-	int i;
-	char *cp=buf;
-	for(i=9; i<n; i++)
-		if(cp[i] != cp[i-1]){
-			print("r %d %x %x\n", i, cp[i-1], cp[i]);
-			break;
-		}
-}
 		return n;
 	}
 	error(0, Egreg);
@@ -184,15 +170,6 @@ bitwrite(Chan *c, void *buf, long n)
 	case 1:
 		if(n > sizeof bit.buf)
 			error(0, Egreg);
-if(0 && n > 512){
-	int i;
-	char *cp=buf;
-	for(i=15; i<n; i++)
-		if(cp[i] != cp[i-1]){
-			print("w %d %x %x\n", i, cp[i-1], cp[i]);
-			break;
-		}
-}
 		qlock(&bit);
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0)
 			bitsend(bp, WRITE, buf, n);

@@ -30,8 +30,14 @@ struct IOQ{
 	Rendez	r;
 };
 
-IOQ	kbdq;		/* qlock to getc; interrupt putc's */
 IOQ	lineq;		/* lock to getc; interrupt putc's */
+
+struct{
+	IOQ;		/* qlock to getc; interrupt putc's */
+	int	c;
+	int	repeat;
+	int	count;
+}kbdq;
 
 void
 printinit(void)
@@ -142,17 +148,18 @@ pprint(char *fmt, ...)
 
 	c = u->fd[2];
 	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
-		return;
+		return 0;
 	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
 	n = donprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	qlock(c);
 	if(waserror()){
 		qunlock(c);
-		return;
+		return 0;
 	}
 	(*devtab[c->type].write)(c, buf, n);
 	c->offset += n;
 	qunlock(c);
+	poperror();
 	return n;
 }
 
@@ -185,9 +192,15 @@ echo(int c)
  * Put character into read queue at interrupt time.
  * Always called splhi from proc 0.
  */
+
 void
 kbdchar(int c)
 {
+	if(kbdq.repeat == 1){
+		kbdq.c = c;
+		kbdq.count = 0;
+		kbdq.repeat = 2;
+	}
 	if(c == '\r')
 		c = '\n';
 	echo(c);
@@ -196,6 +209,22 @@ kbdchar(int c)
 		kbdq.in = kbdq.buf;
 	if(c=='\n' || c==0x04)
 		wakeup(&kbdq.r);
+}
+
+void
+kbdrepeat(int rep)
+{
+	if(rep)
+		kbdq.repeat = 1;
+	else
+		kbdq.repeat = 0;
+}
+
+void
+kbdclock(void)
+{
+	if(kbdq.repeat==2 && (++kbdq.count&1))
+		kbdchar(kbdq.c);
 }
 
 int

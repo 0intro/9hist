@@ -7,6 +7,11 @@
 #include	"errno.h"
 #include	"devtab.h"
 
+enum {
+	Nclass=4,	/* number of block classes */
+	Nlds=32,	/* max number of pushable line disciplines */
+};
+
 /*
  *  process end line discipline
  */
@@ -15,21 +20,21 @@ Qinfo procinfo = { stputq, nullput, 0, 0, "process" };
 
 /*
  *  line disciplines that can be pushed
- *
- *  WARNING: this table should be the result of configuration
  */
-extern Qinfo noetherinfo;
-extern Qinfo dkmuxinfo;
-extern Qinfo urpinfo;
-static Qinfo *lds[] = {
-	&dkmuxinfo,
-	&urpinfo,
-	0
-};
+static Qinfo *lds[Nlds+1];
 
-enum {
-	Nclass=4,
-};
+void
+newqinfo(Qinfo *qi)
+{
+	int i;
+
+	for(i=0; i<Nlds && lds[i]; i++)
+		if(lds[i] == qi)
+			return;
+	if(i == Nlds)
+		panic("pushable");
+	lds[i] = qi;
+}
 
 /*
  *  All stream structures are ialloc'd at boot time
@@ -51,8 +56,8 @@ typedef struct {
 } Bclass;
 Bclass bclass[Nclass]={
 	{ 0 },
-	{ 64 },
-	{ 512 },
+	{ 68 },
+	{ 260 },
 	{ 4096 },
 };
 
@@ -87,7 +92,6 @@ streaminit(void)
 		}
 	}
 }
-
 
 /*
  *  allocate a block
@@ -169,7 +173,8 @@ freeb(Block *bp)
 	}
 	bcp->last = bp;
 	unlock(bcp);
-	wakeup(&bcp->r);
+	if(bcp->r.p)
+		wakeup(&bcp->r);
 }
 
 /*
@@ -716,30 +721,37 @@ streamclose(Chan *c)
 void
 stputq(Queue *q, Block *bp)
 {
-	int i;
+	int delim;
 
 	if(bp->type == M_HANGUP){
 		freeb(bp);
 		q->flag |= QHUNGUP;
 		q->other->flag |= QHUNGUP;
 		wakeup(&q->other->r);
+		delim = 1;
 	} else {
+		delim = 0;
 		lock(q);
 		if(q->first)
 			q->last->next = bp;
 		else
 			q->first = bp;
 		q->len += BLEN(bp);
+		delim = bp->flags & S_DELIM;
 		while(bp->next) {
 			bp = bp->next;
 			q->len += BLEN(bp);
+			delim |= bp->flags & S_DELIM;
 		}
 		q->last = bp;
-		if(q->len >= Streamhi)
+		if(q->len >= Streamhi){
 			q->flag |= QHIWAT;
+			delim = 1;
+		}
 		unlock(q);
 	}
-	wakeup(&q->r);
+	if(delim)
+		wakeup(&q->r);
 }
 
 /*

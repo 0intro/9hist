@@ -375,9 +375,9 @@ confinit(void)
 	conf.nalarm = 1000;
 	conf.norig = 500;
 	conf.nchan = 500;
-	conf.nenv = 200;
-	conf.nenvchar = 10000;
-	conf.npgenv = 200;
+	conf.nenv = 400;
+	conf.nenvchar = 20000;
+	conf.npgenv = 400;
 	conf.nmtab = 100;
 	conf.nmount = 500;
 	conf.nmntdev = 30;

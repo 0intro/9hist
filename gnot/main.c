@@ -240,10 +240,10 @@ confinit(void)
 	conf.nmod = 50;
 	conf.nalarm = 1000;
 	conf.norig = 50;
-	conf.nchan = 100;
-	conf.nenv = 50;
-	conf.nenvchar = 4000;
-	conf.npgenv = 100;
+	conf.nchan = 200;
+	conf.nenv = 100;
+	conf.nenvchar = 8000;
+	conf.npgenv = 200;
 	conf.nmtab = 50;
 	conf.nmount = 100;
 	conf.nmntdev = 5;
@@ -251,6 +251,6 @@ confinit(void)
 	conf.nmnthdr = 10;
 	conf.nstream = 64;
 	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 16 * conf.nstream;
+	conf.nblock = 32 * conf.nstream;
 	conf.nsrv = 32;
 }

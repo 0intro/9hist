@@ -117,6 +117,13 @@ ready(Proc *p)
 	splx(s);
 }
 
+void
+checksched(void)		/* just for efficiency; don't sched if no need */
+{
+	if(runq.head)
+		sched();
+}
+
 /*
  * Always called spllo
  */

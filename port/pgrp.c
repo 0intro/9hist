@@ -122,7 +122,8 @@ closemount(Mount *m)
 {
 	lock(m);
 	if(m->ref == 1){
-		close(m->c);
+		if(m->c)
+			close(m->c);
 		if(m->next)
 			closemount(m->next);
 		unlock(m);
