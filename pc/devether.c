@@ -18,22 +18,27 @@
 #include "io.h"
 #include "devtab.h"
 
+static int debug;
+
 typedef struct Ctlr Ctlr;
-typedef struct Pktype Pktype;
+typedef struct Type Type;
 typedef struct Ring Ring;
 
 enum {
 	IObase		= 0x360,
-	RAMbase		= 0xC8000,
+	RAMbase		= 0xD0000,
 	RAMsize		= 8*1024,
 	BUFsize		= 256,
 
+	RINGbase	= 6,		/* gak */
+	RINGsize	= 32,		/* gak */
+
 	Nctlr		= 1,
-	NPktype		= 9,		/* types/interface */
+	NType		= 9,		/* types/interface */
 };
 
-#define NEXT(x, l)	((((x)+1)%(l)) == 0 ? 6: (((x)+1)%(l)))
-#define PREV(x, l)	(((x)-1) == 5 ? (l-1): ((x)-1))
+#define NEXT(x, l)	((((x)+1)%(l)) == 0 ? RINGbase: (((x)+1)%(l)))
+#define PREV(x, l)	(((x)-1) < RINGbase ? (l-1): ((x)-1))
 
 /*
  * register offsets from IObase
@@ -77,7 +82,6 @@ enum {
 	Rxe		= 0x04,		/*	receive error */
 	Txe		= 0x08,		/*	transmit error */
 	Ovw		= 0x10,		/*	overwrite warning */
-	Rst		= 0x80,		/*	reset status */
 };
 
 struct Ring {
@@ -91,7 +95,7 @@ struct Ring {
 /*
  * one per ethernet packet type
  */
-struct Pktype {
+struct Type {
 	QLock;
 	int	type;			/* ethernet type */
 	int	prom;			/* promiscuous mode */
@@ -119,7 +123,7 @@ struct Ctlr {
 
 	int	iobase;			/* I/O base address */
 
-	Pktype	pktype[NPktype];
+	Type	type[NType];
 	uchar	ea[6];
 	uchar	ba[6];
 
@@ -127,7 +131,7 @@ struct Ctlr {
 	uchar	kproc;			/* true if kproc started */
 	char	name[NAMELEN];		/* name of kproc */
 	Network	net;
-	Netprot	prot[NPktype];
+	Netprot	prot[NType];
 
 	int	inpackets;
 	int	outpackets;
@@ -152,17 +156,17 @@ etheroput(Queue *q, Block *bp)
 {
 	Ctlr *cp;
 	int len, n;
-	Pktype *pp;
+	Type *tp;
 	Etherpkt *p;
 	Block *nbp;
 
-	cp = ((Pktype *)q->ptr)->ctlr;
+	cp = ((Type *)q->ptr)->ctlr;
 	if(bp->type == M_CTL){
-		pp = q->ptr;
+		tp = q->ptr;
 		if(streamparse("connect", bp))
-			pp->type = strtol((char *)bp->rptr, 0, 0);
+			tp->type = strtol((char *)bp->rptr, 0, 0);
 		else if(streamparse("promiscuous", bp)) {
-			pp->prom = 1;
+			tp->prom = 1;
 			qlock(cp);
 			cp->prom++;
 			if(cp->prom == 1)
@@ -264,16 +268,16 @@ static void
 etherstopen(Queue *q, Stream *s)
 {
 	Ctlr *cp = &ctlr[0];
-	Pktype *pp;
+	Type *tp;
 
-	pp = &cp->pktype[s->id];
-	qlock(pp);
-	RD(q)->ptr = WR(q)->ptr = pp;
-	pp->type = 0;
-	pp->q = RD(q);
-	pp->inuse = 1;
-	pp->ctlr = cp;
-	qunlock(pp);
+	tp = &cp->type[s->id];
+	qlock(tp);
+	RD(q)->ptr = WR(q)->ptr = tp;
+	tp->type = 0;
+	tp->q = RD(q);
+	tp->inuse = 1;
+	tp->ctlr = cp;
+	qunlock(tp);
 }
 
 /*
@@ -285,23 +289,23 @@ etherstopen(Queue *q, Stream *s)
 static void
 etherstclose(Queue *q)
 {
-	Pktype *pp;
+	Type *tp;
 
-	pp = (Pktype *)(q->ptr);
-	if(pp->prom){
-		qlock(pp->ctlr);
-		pp->ctlr->prom--;
-		if(pp->ctlr->prom == 0)
-			outb(pp->ctlr->iobase+Rcr, 0x04);/* AB */
-		qunlock(pp->ctlr);
+	tp = (Type *)(q->ptr);
+	if(tp->prom){
+		qlock(tp->ctlr);
+		tp->ctlr->prom--;
+		if(tp->ctlr->prom == 0)
+			outb(tp->ctlr->iobase+Rcr, 0x04);/* AB */
+		qunlock(tp->ctlr);
 	}
-	qlock(pp);
-	pp->type = 0;
-	pp->q = 0;
-	pp->prom = 0;
-	pp->inuse = 0;
-	netdisown(&pp->ctlr->net, pp - pp->ctlr->pktype);
-	qunlock(pp);
+	qlock(tp);
+	tp->type = 0;
+	tp->q = 0;
+	tp->prom = 0;
+	tp->inuse = 0;
+	netdisown(&tp->ctlr->net, tp - tp->ctlr->type);
+	qunlock(tp);
 }
 
 static Qinfo info = {
@@ -316,18 +320,18 @@ static int
 clonecon(Chan *c)
 {
 	Ctlr *cp = &ctlr[0];
-	Pktype *pp;
+	Type *tp;
 
-	for(pp = cp->pktype; pp < &cp->pktype[NPktype]; pp++){
-		qlock(pp);
-		if(pp->inuse || pp->q){
-			qunlock(pp);
+	for(tp = cp->type; tp < &cp->type[NType]; tp++){
+		qlock(tp);
+		if(tp->inuse || tp->q){
+			qunlock(tp);
 			continue;
 		}
-		pp->inuse = 1;
-		netown(&cp->net, pp - cp->pktype, u->p->user, 0);
-		qunlock(pp);
-		return pp - cp->pktype;
+		tp->inuse = 1;
+		netown(&cp->net, tp - cp->type, u->p->user, 0);
+		qunlock(tp);
+		return tp - cp->type;
 	}
 	exhausted("ether channels");
 }
@@ -349,10 +353,10 @@ static void
 typefill(Chan *c, char *p, int n)
 {
 	char buf[16];
-	Pktype *pp;
+	Type *tp;
 
-	pp = &ctlr[0].pktype[STREAMID(c->qid.path)];
-	sprint(buf, "%d", pp->type);
+	tp = &ctlr[0].type[STREAMID(c->qid.path)];
+	sprint(buf, "%d", tp->type);
 	strncpy(p, buf, n);
 }
 
@@ -360,7 +364,7 @@ static void
 intr(Ureg *ur)
 {
 	Ctlr *cp = &ctlr[0];
-	uchar isr, curr;
+	uchar isr, bnry, curr;
 
 	while(isr = inb(cp->iobase+Isr)){
 		outb(cp->iobase+Isr, isr);
@@ -369,7 +373,7 @@ intr(Ureg *ur)
 		if(isr & Rxe){
 			cp->frames += inb(cp->iobase+Cntr0);
 			cp->crcs += inb(cp->iobase+Cntr1);
-			cp->buffs += inb(cp->iobase+Cntr2);
+			cp->overflows += inb(cp->iobase+Cntr2);
 		}
 		if(isr & Ptx)
 			cp->outpackets++;
@@ -377,8 +381,11 @@ intr(Ureg *ur)
 			cp->xbusy = 0;
 			wakeup(&cp->xr);
 		}
-		if(isr & Ovw)
-			cp->overflows++;
+		if(isr & Ovw){
+			bnry = inb(cp->iobase+Bnry);
+			outb(cp->iobase+bnry, bnry);
+			cp->buffs++;
+		}
 		/*
 		 * we have received packets.
 		 * this is the only place, other than the init code,
@@ -386,12 +393,12 @@ intr(Ureg *ur)
 		 * we must be sure to reset it back to Page0 in case
 		 * we interrupted some other part of this driver.
 		 */
-		if(isr & (Ovw|Prx)){
+		if(isr & (Rxe|Prx)){
 			outb(cp->iobase+Cr, 0x62);	/* Page1, RD2|STA */
 			cp->curr = inb(cp->iobase+Curr);
-if(cp->curr == 0)
-    print("C0: b%d i%ux\n", cp->bnry, isr);
 			outb(cp->iobase+Cr, 0x22);	/* Page0, RD2|STA */
+if(debug)
+    print("I%d/%d/%d|", isr, cp->curr, cp->bnry);
 			wakeup(&cp->rr);
 		}
 	}
@@ -414,11 +421,11 @@ init(Ctlr *cp)
 	outb(cp->iobase+Rbcr1, 0);
 	outb(cp->iobase+Rcr, 0x04);		/* AB */
 	outb(cp->iobase+Tcr, 0x20);		/* LB0 */
-	cp->bnry = 6;
+	cp->bnry = RINGbase;
 	outb(cp->iobase+Bnry, cp->bnry);
 	cp->ring = (Ring*)(KZERO|RAMbase);
-	outb(cp->iobase+Pstart, 6);		/* 6*256 */
-	outb(cp->iobase+Pstop, 32);		/* 8*1024/256 */
+	outb(cp->iobase+Pstart, RINGbase);
+	outb(cp->iobase+Pstop, RINGsize);
 	outb(cp->iobase+Isr, 0xFF);
 	outb(cp->iobase+Imr, 0x1F);		/* OVWE|TXEE|RXEE|PTXE|PRXE */
 
@@ -443,9 +450,13 @@ etherreset(void)
 	cp->iobase = IObase;
 	msr = 0x40|inb(cp->iobase);
 	outb(cp->iobase, msr);
+msr=0x40|inb(cp->iobase+0x05);
+outb(cp->iobase+0x05, msr);
 for(i = 0; i < 0x10; i++)
     print("#%2.2ux ", inb(cp->iobase+i));
 print("\n");
+msr=0x40|inb(cp->iobase+0x05);
+outb(cp->iobase+0x05, msr);
 	for(i = 0; i < sizeof(cp->ea); i++)
 		cp->ea[i] = inb(cp->iobase+EA+i);
 	init(cp);
@@ -453,7 +464,7 @@ print("\n");
 	memset(cp->ba, 0xFF, sizeof(cp->ba));
 
 	cp->net.name = "ether";
-	cp->net.nconv = NPktype;
+	cp->net.nconv = NType;
 	cp->net.devp = &info;
 	cp->net.protop = 0;
 	cp->net.listen = 0;
@@ -467,45 +478,49 @@ print("\n");
 }
 
 static void
-etherup(Ctlr *cp, Etherpkt *p, int len)
+etherup(Ctlr *cp, uchar *d0, int len0, uchar *d1, int len1)
 {
+	Etherpkt *p;
 	Block *bp;
-	Pktype *pp;
+	Type *tp;
 	int t;
 
-	t = (p->type[0]<<8) | p->type[1];
-	for(pp = &cp->pktype[0]; pp < &cp->pktype[NPktype]; pp++){
+	p = (Etherpkt*)d0;
+	t = (p->type[0]<<8)|p->type[1];
+	for(tp = &cp->type[0]; tp < &cp->type[NType]; tp++){
 		/*
 		 *  check before locking just to save a lock
 		 */
-		if(pp->q == 0 || (t != pp->type && pp->type != -1))
+		if(tp->q == 0 || (t != tp->type && tp->type != -1))
 			continue;
 
 		/*
 		 *  only a trace channel gets packets destined for other machines
 		 */
-		if(pp->type != -1 && p->d[0] != 0xFF && memcmp(p->d, cp->ea, sizeof(p->d)))
+		if(tp->type != -1 && p->d[0] != 0xFF && memcmp(p->d, cp->ea, sizeof(p->d)))
 			continue;
 
 		/*
 		 *  check after locking to make sure things didn't
 		 *  change under foot
 		 */
-		if(canqlock(pp) == 0)
+		if(canqlock(tp) == 0)
 			continue;
-		if(pp->q == 0 || pp->q->next->len > Streamhi || (t != pp->type && pp->type != -1)){
-			qunlock(pp);
+		if(tp->q == 0 || tp->q->next->len > Streamhi || (t != tp->type && tp->type != -1)){
+			qunlock(tp);
 			continue;
 		}
 		if(waserror() == 0){
-			bp = allocb(len);
-			memmove(bp->rptr, (uchar *)p, len);
-			bp->wptr += len;
+			bp = allocb(len0+len1);
+			memmove(bp->rptr, d0, len0);
+			if(len1)
+				memmove(bp->rptr+len0, d1, len1);
+			bp->wptr += len0+len1;
 			bp->flags |= S_DELIM;
-			PUTNEXT(pp->q, bp);
+			PUTNEXT(tp->q, bp);
 		}
 		poperror();
-		qunlock(pp);
+		qunlock(tp);
 	}
 }
 
@@ -526,7 +541,7 @@ isinput(void *arg)
 {
 	Ctlr *cp = arg;
 
-	return NEXT(cp->bnry, 32) != cp->curr;
+	return NEXT(cp->bnry, RINGsize) != cp->curr;
 }
 
 static void
@@ -536,6 +551,7 @@ etherkproc(void *arg)
 	Block *bp;
 	uchar bnry, curr;
 	Ring *rp;
+	int len0, len1;
 
 	if(waserror()){
 		print("%s noted\n", cp->name);
@@ -551,20 +567,33 @@ etherkproc(void *arg)
 		 */
 		while(bp = getq(&cp->rq)){
 			cp->inpackets++;
-			etherup(cp, (Etherpkt*)bp->rptr, BLEN(bp));
+			etherup(cp, bp->rptr, BLEN(bp), 0, 0);
 			freeb(bp);
 		}
 
 		/*
 		 * process any received packets
 		 */
-		bnry = NEXT(cp->bnry, 32);
+		bnry = NEXT(cp->bnry, RINGsize);
 		while(bnry != cp->curr){
 			rp = &cp->ring[bnry];
 			cp->inpackets++;
-			etherup(cp, (Etherpkt*)rp->data, ((rp->len1<<8)+rp->len0)-4);
+			len0 = ((rp->len1<<8)+rp->len0)-4;
+			len1 = 0;
+
+			if(rp->data+len0 >= (uchar*)&cp->ring[RINGsize]){
+				len1 = rp->data+len0 - (uchar*)&cp->ring[RINGsize];
+				len0 = (uchar*)&cp->ring[RINGsize] - rp->data;
+			}
+
+			etherup(cp, rp->data, len0, (uchar*)&cp->ring[RINGbase], len1);
+
+
+
+if(debug)
+    print("K%d/%d/%d|", bnry, rp->next, PREV(rp->next, RINGsize));
 			bnry = rp->next;
-			cp->bnry = PREV(bnry, 32);
+			cp->bnry = PREV(bnry, RINGsize);
 			outb(cp->iobase+Bnry, cp->bnry);
 		}
 	}
@@ -661,6 +690,7 @@ etherdump(void)
 	int s;
 
 	s = splhi();
+debug++;
 	bnry = inb(cp->iobase+Bnry);
 	outb(cp->iobase+Cr, 0x62);			/* Page1, RD2|STA */
 	curr = inb(cp->iobase+Curr);
@@ -668,7 +698,7 @@ etherdump(void)
 	isr = inb(cp->iobase+Isr);
 	print("b%d c%d x%d B%d C%d I%ux",
 	    cp->bnry, cp->curr, cp->xbusy, bnry, curr, isr);
-	print("\t%d %d %d %d %d %d %d\n", cp->inpackets, cp->opackets,
+	print("\t%d %d %d %d %d %d %d\n", cp->inpackets, cp->outpackets,
 	    cp->crcs, cp->oerrs, cp->frames, cp->overflows, cp->buffs);
 	splx(s);
 }
