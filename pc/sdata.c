@@ -17,7 +17,7 @@ enum {
 	DbgSTATE	= 0x04,		/* dump state on panic */
 	DbgPROBE	= 0x08,		/* trace device probing */
 	DbgDEBUG	= 0x80,		/* the current problem... */
-	DbgINL		= 0x100,		/* That Inil20+ message we hate */
+	DbgINL		= 0x100,	/* That Inil20+ message we hate */
 };
 #define DEBUG		(DbgDEBUG|DbgSTATE)
 
@@ -200,13 +200,13 @@ typedef struct Ctlr {
 
 	Pcidev*	pcidev;
 	void	(*ienable)(Ctlr*);
-	void (*idisable)(Ctlr*);
+	void	(*idisable)(Ctlr*);
 	SDev*	sdev;
 
 	Drive*	drive[2];
 
 	Prd*	prdt;			/* physical region descriptor table */
-	void* prdtbase;
+	void*	prdtbase;
 
 	QLock;				/* current command */
 	Drive*	curdrive;
