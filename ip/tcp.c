@@ -953,6 +953,7 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg)
 
 /*
  *  send a reset to the remote side and close the conversation
+ *  called with s qlocked
  */
 char*
 tcphangup(Conv *s)
@@ -963,11 +964,8 @@ tcphangup(Conv *s)
 	Block *hbp;
 
 	tcb = (Tcpctl*)s->ptcl;
-	if(waserror()){
-		qunlock(s);
+	if(waserror())
 		return commonerror();
-	}
-	qlock(s);
 	if(s->raddr != 0) {
 		seg.flags = RST | ACK;
 		seg.ack = tcb->rcv.nxt;
@@ -982,7 +980,6 @@ tcphangup(Conv *s)
 	}
 	localclose(s, nil);
 	poperror();
-	qunlock(s);
 	return nil;
 }
 
@@ -2215,7 +2212,7 @@ tcpadvise(Proto *tcp, Block *bp, char *msg)
 	freeblist(bp);
 }
 
-/* called with c->car qlocked */
+/* called with c qlocked */
 char*
 tcpctl(Conv* c, char** f, int n)
 {
