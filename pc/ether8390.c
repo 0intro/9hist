@@ -646,6 +646,7 @@ static void
 attach(Ether *ether)
 {
 	Dp8390 *dp8390 = ether->ctlr;
+	int x;
 
 	/*
 	 * Enable the chip for transmit/receive.
@@ -653,6 +654,9 @@ attach(Ether *ether)
 	 * mode. Clear the missed-packet counter, it
 	 * increments while in monitor mode.
 	 */
+	x = Ab;
+	if(ether->prom)
+		x |= Pro;
 	slowoutb(dp8390->dp8390+Rcr, Ab);
 	slowinb(dp8390->dp8390+Cntr2);
 }

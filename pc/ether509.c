@@ -113,6 +113,7 @@ static void
 attach(Ether *ether)
 {
 	ulong port;
+	int x;
 
 	port = ether->port;
 	/*
@@ -124,7 +125,10 @@ attach(Ether *ether)
 	 * we will also see TxAvailable interrupts.
 	 * Disable Update interrupts for now.
 	 */
-	COMMAND(port, SetRxFilter, Broadcast|MyEtherAddr);
+	x = Broadcast|MyEtherAddr;
+	if(ether->prom)
+		x |= Promiscuous;
+	COMMAND(port, SetRxFilter, x);
 	COMMAND(port, SetReadZeroMask, (AllIntr|Latch) & ~Update);
 	COMMAND(port, SetIntrMask, (AllIntr|Latch) & ~Update);
 	COMMAND(port, RxEnable, 0);

@@ -104,7 +104,7 @@ etherrloop(Ether *ctlr, Etherpkt *pkt, long len)
 {
 	Block *bp;
 	ushort type;
-	int i;
+	int i, n;
 	Netfile *f, **fp, **ep;
 
 	type = (pkt->type[0]<<8)|pkt->type[1];
@@ -117,12 +117,14 @@ etherrloop(Ether *ctlr, Etherpkt *pkt, long len)
 			} else {
 				if(qwindow(f->in) <= 0)
 					continue;
-				if(len > 60)
-					len = 60;
-				bp = iallocb(len);
+				if(len > 64)
+					n = 64;
+				else
+					n = len;
+				bp = iallocb(n);
 				if(bp == 0)
 					continue;
-				memmove(bp->wp, pkt->d, len);
+				memmove(bp->wp, pkt->d, n);
 				i = TK2MS(m->ticks);
 				bp->wp[58] = len>>8;
 				bp->wp[59] = len;
