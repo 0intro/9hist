@@ -176,6 +176,8 @@ netlog(Logicmp, "goticmpkt from %i to %d\n", dst, recid);
 		s = *c;
 netlog(Logicmp, "conv %i %d %i %d\n", s->laddr, s->lport, s->raddr, s->rport);
 		if(s->lport == recid && s->raddr == dst){
+			if(bp->next)
+				bp = concatblock(bp);
 			qpass(s->rq, bp);
 			return;
 		}
