@@ -384,7 +384,7 @@ error(int code)
 void
 errors(char *err)
 {
-	strncpy(u->error, err, NAMELEN);
+	strncpy(u->error, err, ERRLEN);
 	nexterror();
 }
 
