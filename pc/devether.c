@@ -14,8 +14,11 @@ typedef struct Ctlr Ctlr;
 
 struct Hw {
 	int	addr;			/* interface address */
-	void	*ram;			/* interface shared memory address */
-	int	ramsz;			/* interface shared memory size */
+	uchar	*ram;			/* interface shared memory address */
+	int	size;
+	uchar	tstart;
+	uchar	pstart;
+	uchar	pstop;
 	void	(*reset)(Ctlr*);
 	void	(*init)(Ctlr*);
 	void	(*mode)(Ctlr*, int);
@@ -43,7 +46,7 @@ struct Buffer {
 	uchar	owner;
 	uchar	busy;
 	ushort	len;
-	Etherpkt pkt;
+	uchar	pkt[sizeof(Etherpkt)];
 };
 
 enum {
@@ -250,7 +253,6 @@ etheroput(Queue *q, Block *bp)
 	sleep(&cp->tr, isobuf, cp);
 
 	tb = &cp->tb[cp->th];
-	p = &tb->pkt;
 
 	/*
 	 * copy message into buffer
@@ -258,7 +260,7 @@ etheroput(Queue *q, Block *bp)
 	len = 0;
 	for(nbp = bp; nbp; nbp = nbp->next){
 		if(sizeof(Etherpkt) - len >= (n = BLEN(nbp))){
-			memmove(((uchar *)p)+len, nbp->rptr, n);
+			memmove(tb->pkt+len, nbp->rptr, n);
 			len += n;
 		} else
 			print("no room damn it\n");
@@ -270,14 +272,9 @@ etheroput(Queue *q, Block *bp)
 	 * pad the packet (zero the pad)
 	 */
 	if(len < ETHERMINTU){
-		memset(((char*)p)+len, 0, ETHERMINTU-len);
+		memset(tb->pkt+len, 0, ETHERMINTU-len);
 		len = ETHERMINTU;
 	}
-
-	/*
-	 * give packet a local address
-	 */
-	memmove(p->s, cp->ea, sizeof(cp->ea));
 
 	/*
 	 * set up the transmit buffer and 
@@ -392,12 +389,14 @@ typefill(Chan *c, char *p, int n)
 }
 
 static void
-etherup(Ctlr *cp, Etherpkt *p, int len)
+etherup(Ctlr *cp, void *data, int len)
 {
-	Block *bp;
-	Type *tp;
+	Etherpkt *p;
 	int t;
+	Type *tp;
+	Block *bp;
 
+	p = data;
 	t = (p->type[0]<<8)|p->type[1];
 	for(tp = &cp->type[0]; tp < &cp->type[NType]; tp++){
 		/*
@@ -464,7 +463,7 @@ etherkproc(void *arg)
 		 */
 		while(bp = getq(&cp->lbq)){
 			cp->inpackets++;
-			etherup(cp, (Etherpkt*)bp->rptr, BLEN(bp));
+			etherup(cp, bp->rptr, BLEN(bp));
 			freeb(bp);
 		}
 
@@ -474,7 +473,7 @@ etherkproc(void *arg)
 		while(cp->rb[cp->rh].owner == Host){
 			cp->inpackets++;
 			rb = &cp->rb[cp->rh];
-			etherup(cp, &rb->pkt, rb->len);
+			etherup(cp, rb->pkt, rb->len);
 			rb->owner = Interface;
 			cp->rh = NEXT(cp->rh, Nrb);
 		}
@@ -528,8 +527,7 @@ etherinit(void)
 	/*
 	 * put the receiver online
 	 * and start the kproc
-	 */
-	
+	 */	
 	(*cp->hw->online)(cp, 1);
 	if(cp->kproc == 0){
 		sprint(cp->name, "ether%dkproc", ctlrno);
@@ -599,6 +597,14 @@ typedef struct {
 #define IN(hw, m)	inb((hw)->addr+OFFSETOF(Wd8013, m))
 #define OUT(hw, m, x)	outb((hw)->addr+OFFSETOF(Wd8013, m), (x))
 
+typedef struct {
+	uchar	status;
+	uchar	next;
+	uchar	len0;
+	uchar	len1;
+	uchar	data[256-4];
+} Ring;
+
 /*
  */
 static void
@@ -608,24 +614,17 @@ wd8013reset(Ctlr *cp)
 	int i;
 	uchar msr;
 
-	cp->rb = ialloc(sizeof(Buffer)*Nrb, 0);
-	cp->nrb = Nrb;
-	cp->tb = ialloc(sizeof(Buffer)*Ntb, 0);
+	cp->tb = ialloc(sizeof(Buffer)*Ntb, 1);
 	cp->ntb = Ntb;
+	cp->rb = ialloc(sizeof(Buffer)*Nrb, 1);
+	cp->nrb = Nrb;
 
 	msr = IN(hw, msr);
 	OUT(hw, msr, 0x40|msr);
-{
-int addr = hw->addr;
 
-for(i = 0; i < 16; i++){
-    print("#%2.2ux ", inb(addr));
-    addr++;
-}
-print("\n");
-}
 	for(i = 0; i < sizeof(cp->ea); i++)
 		cp->ea[i] = IN(hw, lan[i]);
+
 	(*hw->init)(cp);
 	setvec(Ethervec, hw->intr);
 }
@@ -639,9 +638,7 @@ wd8013init(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
 	int i;
-	uchar bnry;
 
-print("init %d %d\n", HOWMANY(sizeof(Etherpkt), 256), HOWMANY(hw->ramsz, 256));
 	OUT(hw, w.cr, 0x21);			/* Page0|RD2|STP */
 	OUT(hw, w.dcr, 0x48);			/* FT1|LS */
 	OUT(hw, w.rbcr0, 0);
@@ -649,17 +646,16 @@ print("init %d %d\n", HOWMANY(sizeof(Etherpkt), 256), HOWMANY(hw->ramsz, 256));
 	OUT(hw, w.rcr, 0x04);			/* AB */
 	OUT(hw, w.tcr, 0x20);			/* LB0 */
 
-	bnry = HOWMANY(sizeof(Etherpkt), 256);
-	OUT(hw, w.bnry, bnry);
-	OUT(hw, w.pstart, bnry);
-	OUT(hw, w.pstop, HOWMANY(hw->ramsz, 256));
+	OUT(hw, w.bnry, hw->pstart);
+	OUT(hw, w.pstart, hw->pstart);
+	OUT(hw, w.pstop, hw->pstop);
 	OUT(hw, w.isr, 0xFF);
 	OUT(hw, w.imr, 0x1F);			/* OVWE|TXEE|RXEE|PTXE|PRXE */
 
 	OUT(hw, w.cr, 0x61);			/* Page1|RD2|STP */
 	for(i = 0; i < sizeof(cp->ea); i++)
 		OUT(hw, par[i], cp->ea[i]);
-	OUT(hw, curr, bnry+1);
+	OUT(hw, curr, hw->pstart+1);
 
 	OUT(hw, w.cr, 0x22);			/* Page0|RD2|STA */
 	OUT(hw, w.tpsr, 0);
@@ -688,26 +684,21 @@ wd8013online(Ctlr *cp, int on)
 	OUT(cp->hw, w.tcr, 0);
 }
 
+static ulong wraps;
+
 static void
 wd8013receive(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
 	Buffer *rb;
 	uchar bnry, curr, next;
-	typedef struct Ring {
-		uchar	status;
-		uchar	next;
-		uchar	len0;
-		uchar	len1;
-		uchar	data[256-4];
-	} Ring;
 	Ring *p;
-	int len0, len1;
+	int len;
 
 	bnry = IN(hw, r.bnry);
-	next = NEXT(bnry, HOWMANY(hw->ramsz, 256));
-	if(next == 0)
-		next = HOWMANY(sizeof(Etherpkt), 256);
+	next = bnry+1;
+	if(next >= hw->pstop)
+		next = hw->pstart;
 	for(;;){
 		OUT(hw, w.cr, 0x62);		/* Page1|RD2|STA */
 		curr = IN(hw, curr);
@@ -716,30 +707,31 @@ wd8013receive(Ctlr *cp)
 			break;
 		cp->inpackets++;
 		p = &((Ring*)hw->ram)[next];
-		len0 = (p->len1<<8)|p->len0-4;
-		len1 = 0;
+		len = (p->len1<<8)|p->len0-4;
+if(len > sizeof(Etherpkt))
+    print("!");
 
 		rb = &cp->rb[cp->ri];
 		if(rb->owner == Interface){
-			rb->len = len0;
+			rb->len = len;
 			/*copy in packet*/
-			if(p->data+len0 >= (uchar*)hw->ram+hw->ramsz){
-				len1 = p->data+len0 - (uchar*)hw->ram+hw->ramsz;
-				len0 = (uchar*)hw->ram+hw->ramsz - p->data;
+			if(p->data+len >= hw->ram+hw->size){
+wraps++;
+				len = hw->ram+hw->size - p->data;
+				memmove(rb->pkt+len,
+					&((Ring*)hw->ram)[hw->pstart],
+					p->data+rb->len - hw->ram+hw->size);
 			}
-			memmove((uchar*)&rb->pkt, p->data, len0);
-			if(len1)
-				memmove((uchar*)&rb->pkt+len0,
-					(uchar*)hw->ram+ROUNDUP(sizeof(Etherpkt), 256),
-					len1);
+			memmove(rb->pkt, p->data, len);
 			rb->owner = Host;
 			cp->ri = NEXT(cp->ri, Nrb);
 		}
 
+p->status = 0;
 		next = p->next;
 		bnry = next-1;
-		if(bnry < HOWMANY(sizeof(Etherpkt), 256))
-			bnry = HOWMANY(hw->ramsz, 256)-1;
+		if(bnry < hw->pstart)
+			bnry = hw->pstop-1;
 		OUT(hw, w.bnry, bnry);
 	}
 }
@@ -751,20 +743,18 @@ wd8013transmit(Ctlr *cp)
 	Buffer *tb;
 	int s;
 
-print("transmit\n");
 	s = splhi();
 	tb = &cp->tb[cp->ti];
 	if(tb->busy == 0 && tb->owner == Interface){
 		hw = cp->hw;
-print("transmit memove %lux %lux, %d\n", hw->ram, &tb->pkt, tb->len);
-		memmove(hw->ram, &tb->pkt, tb->len);
+tb->len = tb->len+1 & ~1;
+		memmove(hw->ram, tb->pkt, tb->len);
 		OUT(hw, w.tbcr0, tb->len & 0xFF);
 		OUT(hw, w.tbcr1, (tb->len>>8) & 0xFF);
 		OUT(hw, w.cr, 0x26);		/* Page0|RD2|TXP|STA */
 		tb->busy = 1;
 	}
 	splx(s);
-print("transmit done\n");
 }
 
 static void
@@ -814,7 +804,10 @@ wd8013intr(Ureg *ur)
 static Hw wd8013 = {
 	0x360,					/* I/O base address */
 	KZERO|0xC8000,				/* shared memory address */
-	8*1024,					/* shared memory size */
+	8*1024,
+	0,
+	HOWMANY(sizeof(Etherpkt), 256),
+	HOWMANY(8*1024, 256),
 	wd8013reset,
 	wd8013init,
 	wd8013mode,
@@ -827,4 +820,22 @@ static Hw wd8013 = {
 void
 consdebug(void)
 {
+	Ctlr *cp = &ctlr[0];
+	Hw *hw = cp->hw;
+	Buffer *bp;
+	uchar bnry, curr;
+
+	print("th%d ti%d rh%d ri%d\n",
+		cp->th, cp->ti, cp->rh, cp->ri);
+	bp = &cp->tb[cp->ti];
+	print("t: owner %d busy %d len %d\n",
+		bp->owner, bp->busy, bp->len);
+	bnry = IN(hw, r.bnry);
+	OUT(hw, w.cr, 0x62);
+	curr = IN(hw, curr);
+	OUT(hw, w.cr, 0x22);
+	print("bnry %d, curr %d\n", bnry, curr);
+	print("in %d out %d crcs %d oerrs %d frames %d overflows %d buffs %d wraps %d\n",
+		cp->inpackets, cp->outpackets, cp->crcs, cp->oerrs, cp->frames,
+		cp->overflows, cp->buffs, wraps);
 }

@@ -449,16 +449,16 @@ struct Waitq
 
 enum
 {
-	FORKNSG		= (1<<0),
-	FORKEVG		= (1<<1),
-	FORKFDG		= (1<<2),
-	FORKNTG		= (1<<3),
-	FORKPCS		= (1<<4),
-	FORKMEM		= (1<<5),
-	FORKNOW		= (1<<6),
-	FORKCNSG	= (1<<10),
-	FORKCEVG	= (1<<11),
-	FORKCFDG	= (1<<12)
+	RFNAMEG		= (1<<0),
+	RFENVG		= (1<<1),
+	RFFDG		= (1<<2),
+	RFNOTEG		= (1<<3),
+	RFPROC		= (1<<4),
+	RFMEM		= (1<<5),
+	RFNOWAIT	= (1<<6),
+	RFCNAMEG	= (1<<10),
+	RFCENVG		= (1<<11),
+	RFCFDG		= (1<<12)
 };
 
 /*

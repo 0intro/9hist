@@ -30,13 +30,13 @@ long
 sys__fork__(ulong *arg)
 {
 	USED(arg);
-	return rfork(FORKFDG|FORKPCS);
+	return rfork(RFFDG|RFPROC);
 }
 
 long
 sys__rfork__(ulong *arg)
 {
-	return rfork(arg[0]|FORKPCS);
+	return rfork(arg[0]|RFPROC);
 }
 
 /* This call will obsolete fork */
@@ -64,46 +64,46 @@ rfork(ulong flag)
 	int lastvar;	
 
 	p = u->p;
-	if((flag&FORKPCS) == 0) {
-		if(flag & (FORKNSG|FORKCNSG)) {
-			if((flag & (FORKNSG|FORKCNSG)) == (FORKNSG|FORKCNSG))
+	if((flag&RFPROC) == 0) {
+		if(flag & (RFNAMEG|RFCNAMEG)) {
+			if((flag & (RFNAMEG|RFCNAMEG)) == (RFNAMEG|RFCNAMEG))
 				error(Ebadarg);
 			opg = p->pgrp;
 			p->pgrp = newpgrp();
-			if(flag & FORKNSG)
+			if(flag & RFNAMEG)
 				pgrpcpy(p->pgrp, opg);
 			else
 				*p->pgrp->crypt = *opg->crypt;
 			closepgrp(opg);
 		}
-		if(flag & (FORKEVG|FORKCEVG)) {
-			if((flag & (FORKEVG|FORKCEVG)) == (FORKEVG|FORKCEVG))
+		if(flag & (RFENVG|RFCENVG)) {
+			if((flag & (RFENVG|RFCENVG)) == (RFENVG|RFCENVG))
 				error(Ebadarg);
 			oeg = p->egrp;
 			p->egrp = newegrp();
-			if(flag & FORKEVG)
+			if(flag & RFENVG)
 				envcpy(p->egrp, oeg);
 			closeegrp(oeg);
 		}
-		if(flag & FORKFDG)
+		if(flag & RFFDG)
 			error(Ebadarg);
-		if(flag & FORKCFDG) {
+		if(flag & RFCFDG) {
 			ofg = p->fgrp;
 			p->fgrp = newfgrp();
 			closefgrp(ofg);
 		}
-		if(flag & FORKNTG)
+		if(flag & RFNOTEG)
 			p->noteid = incref(&noteidalloc);
-		if(flag & (FORKMEM|FORKNOW))
+		if(flag & (RFMEM|RFNOWAIT))
 			error(Ebadarg);
 		return 0;
 	}
 	/* Check flags before we commit */
-	if((flag & (FORKFDG|FORKCFDG)) == (FORKFDG|FORKCFDG))
+	if((flag & (RFFDG|RFCFDG)) == (RFFDG|RFCFDG))
 		error(Ebadarg);
-	if((flag & (FORKNSG|FORKCNSG)) == (FORKNSG|FORKCNSG))
+	if((flag & (RFNAMEG|RFCNAMEG)) == (RFNAMEG|RFCNAMEG))
 		error(Ebadarg);
-	if((flag & (FORKEVG|FORKCEVG)) == (FORKEVG|FORKCEVG))
+	if((flag & (RFENVG|RFCENVG)) == (RFENVG|RFCENVG))
 		error(Ebadarg);
 
 	p = newproc();
@@ -123,7 +123,7 @@ rfork(ulong flag)
 	kunmap(k);
 
 	/* Make a new set of memory segments */
-	n = flag & FORKMEM;
+	n = flag & RFMEM;
 	for(i = 0; i < NSEG; i++)
 		if(parent->seg[i])
 			p->seg[i] = dupseg(parent->seg[i], n);
@@ -132,11 +132,11 @@ rfork(ulong flag)
 	incref(u->dot);	
 
 	/* File descriptors */
-	if(flag & (FORKFDG|FORKCFDG)) {
-		if(flag & FORKFDG)
+	if(flag & (RFFDG|RFCFDG)) {
+		if(flag & RFFDG)
 			p->fgrp = dupfgrp(parent->fgrp);
 		else
-		if(flag & FORKCFDG)
+		if(flag & RFCFDG)
 			p->fgrp = newfgrp();
 	}
 	else {
@@ -145,13 +145,13 @@ rfork(ulong flag)
 	}
 
 	/* Process groups */
-	if(flag & (FORKNSG|FORKCNSG)) {	
-		if(flag & FORKNSG) {
+	if(flag & (RFNAMEG|RFCNAMEG)) {	
+		if(flag & RFNAMEG) {
 			p->pgrp = newpgrp();
 			pgrpcpy(p->pgrp, parent->pgrp);
 		}
 		else
-		if(flag & FORKCNSG) {
+		if(flag & RFCNAMEG) {
 			p->pgrp = newpgrp();
 			*p->pgrp->crypt = *parent->pgrp->crypt;
 		}
@@ -162,13 +162,13 @@ rfork(ulong flag)
 	}
 
 	/* Environment group */
-	if(flag & (FORKEVG|FORKCEVG)) {
-		if(flag & FORKEVG) {
+	if(flag & (RFENVG|RFCENVG)) {
+		if(flag & RFENVG) {
 			p->egrp = newegrp();
 			envcpy(p->egrp, parent->egrp);
 		}
 		else
-		if(flag & FORKCEVG)
+		if(flag & RFCENVG)
 			p->egrp = newegrp();
 	}
 	else {
@@ -194,9 +194,9 @@ rfork(ulong flag)
 
 	p->parent = parent;
 	p->parentpid = parent->pid;
-	if(flag&FORKNOW)
+	if(flag&RFNOWAIT)
 		p->parentpid = 1;
-	if((flag&FORKNTG) == 0)
+	if((flag&RFNOTEG) == 0)
 		p->noteid = parent->noteid;
 
 	p->fpstate = parent->fpstate;
