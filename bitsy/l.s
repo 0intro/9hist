@@ -451,16 +451,6 @@ TEXT gotolabel(SB), $-4
 	MOVW	$1, R0
 	RET
 
-/* Debugging print routine */
-TEXT _PrChar(SB), $-4
-	MOVW	UART3REGS, R1
-prloop:
-	MOVW	0x20(R1), R2
-	AND		$0x4, R2
-	BEQ		prloop
-	MOVB	R0,0x14(R1)
-	RET
-
 /* save the state machine in power_resume[] for an upcoming suspend
  */
 TEXT setpowerlabel(SB), $-4

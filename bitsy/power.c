@@ -141,12 +141,13 @@ powerdown(void *)
 void
 deepsleep(void) {
 	static int power_pl;
-	void *xsp, *xlink;
+	ulong xsp, xlink;
 
 	power_pl = splhi();
 	delay(50);
+	xlink = getcallerpc(&xlink);
 	/* Power down */
-	iprint("entering suspend mode\n");
+	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%lux\n", &xsp, xlink, power_pl);
 	dumpitall();
 	uartpower(0);
 	clockpower(0);
@@ -180,8 +181,9 @@ deepsleep(void) {
 		gpclkregs->r0 = 1<<0;
 		µcpower(1);
 		screenpower(1);
-		iprint("\nresuming execution\n");
 		dumpitall();
+		xlink = getcallerpc(&xlink);
+		iprint("\nresuming execution, sp = 0x%lux, pc = 0x%lux, psw = 0x%lux\n", &xsp, xlink, splhi());
 		delay(800);
 		splx(power_pl);
 		return;
