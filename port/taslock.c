@@ -69,8 +69,10 @@ ilock(Lock *l)
 	}
 
 	for(;;){
+		splx(x);
 		while(l->key)
 			;
+		x = splhi();
 		if(tas(&l->key) == 0){
 			l->sr = x;
 			l->pc = pc;
