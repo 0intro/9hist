@@ -108,6 +108,7 @@ extern	islcd;
 Mouseinfo	mouse;
 Cursorinfo	cursor;
 Rendez		lcdmouse;
+int		mouseshifted;
 
 Cursor	arrow =
 {
@@ -168,12 +169,14 @@ enum{
 	Qdir,
 	Qbitblt,
 	Qmouse,
+	Qmousectl,
 	Qscreen,
 };
 
 Dirtab bitdir[]={
 	"bitblt",	{Qbitblt},	0,			0666,
 	"mouse",	{Qmouse},	0,			0666,
+	"mousectl",	{Qmousectl},	0,			0220,
 	"screen",	{Qscreen},	0,			0444,
 };
 
@@ -837,6 +840,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	BSubfont *f, *tf, **fp;
 	GFont *ff, **ffp;
 	GCacheinfo *gc;
+	char buf[64];
 
 	if(!conf.monitor)
 		error(Egreg);
@@ -844,6 +848,15 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 
 	if(c->qid.path == CHDIR)
 		error(Eisdir);
+
+	if(c->qid.path == Qmousectl){
+		if(n >= sizeof(buf))
+			n = sizeof(buf)-1;
+		strncpy(buf, va, n);
+		buf[n] = 0;
+		mousectl(buf);
+		return n;
+	}
 
 	if(c->qid.path != Qbitblt)
 		error(Egreg);
@@ -2026,6 +2039,53 @@ mouseupdate(int dolock)
 	}
 }
 
+/*
+ *  microsoft 3 button, 7 bit bytes
+ *
+ *	byte 0 -	1  L  R Y7 Y6 X7 X6
+ *	byte 1 -	0 X5 X4 X3 X2 X1 X0
+ *	byte 2 -	0 Y5 Y4 Y3 Y2 Y1 Y0
+ *	byte 3 -	0  M  x  x  x  x  x	(optional)
+ *
+ *  shift & left button is the same as middle button (for 2 button mice)
+ */
+int
+m3mouseputc(IOQ *q, int c)
+{
+	static uchar msg[3];
+	static int nb;
+	static uchar b[] = { 0, 4, 1, 5, 0, 4, 3, 7 };
+	short x;
+
+	USED(q);
+	/* 
+	 *  check bit 6 for consistency
+	 */
+	if(nb==0){
+		if((c&0x40) == 0){
+			/* an extra byte gets sent for the middle button */
+			mousebuttons((mouse.buttons & ~2) | ((c&0x20) ? 2 : 0));
+			return 0;
+		}
+	}
+	msg[nb] = c;
+	if(++nb == 3){
+		nb = 0;
+		mouse.newbuttons = (mouse.buttons & 2)
+				 | b[(msg[0]>>4)&3 | (mouseshifted ? 4 : 0)];
+		x = (msg[0]&0x3)<<14;
+		mouse.dx = (x>>8) | msg[1];
+		x = (msg[0]&0xc)<<12;
+		mouse.dy = (x>>8) | msg[2];
+		mouse.track = 1;
+		mouseclock();
+	}
+	return 0;
+}
+
+/*
+ *  Logitech 5 byte packed binary mouse format, 8 bit bytes
+ */
 int
 mouseputc(IOQ *q, int c)
 {

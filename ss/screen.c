@@ -14,6 +14,7 @@
 
 extern	GSubfont	defont0;
 GSubfont		*defont;
+int	islcd;
 
 struct{
 	Point	pos;
@@ -543,4 +544,11 @@ rep(ulong v, int n)
 	for(o = 32 - n; o >= 0; o -= n)
 		rv |= (v << o);
 	return rv;
+}
+
+/* only 1 flavor mouse */
+void
+mousectl(char *x)
+{
+	USED(x);
 }

@@ -178,3 +178,10 @@ mousetry(Ureg *ur)
 		wakeup(&mouse.r);
 	}
 }
+
+/* only 1 flavor mouse */
+void
+mousectl(char *x)
+{
+	USED(x);
+}

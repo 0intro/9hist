@@ -30,12 +30,10 @@ enum {
 	Qvgatype=	3,
 	Qvgaport=	4,
 	Qvgamem=	5,
-	Qmouse=		6,
 	Nvga=		6,
 };
 
 Dirtab vgadir[]={
-	"mouseconf",	{Qmouse},	0,		0666,
 	"vgamonitor",	{Qvgamonitor},	0,		0666,
 	"vgatype",	{Qvgatype},	0,		0666,
 	"vgasize",	{Qvgasize},	0,		0666,
@@ -184,16 +182,6 @@ configwrite(Chan *c, void *buf, long n, ulong offset)
 		if (offset + n > 0x10000)
 			error(Ebadarg);
 		memmove((void *)(SCREENMEM+offset), buf, n);
-		return n;
-	case Qmouse:
-		if(n >= sizeof(cbuf))
-			n = sizeof(cbuf) - 1;
-		memmove(cbuf, buf, n);
-		cbuf[n] = 0;
-		cp = strchr(cbuf, '\n');
-		if(cp)
-			*cp = 0;
-		mousectl(cbuf);
 		return n;
 	}
 	error(Eperm);

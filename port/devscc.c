@@ -98,7 +98,7 @@ struct SCC
 	ulong	freq;		/* clock frequency */
 
 	/* console interface */
-	int	nostream;	/* can't use the stream interface */
+	int	special;	/* can't use the stream interface */
 	IOQ	*iq;		/* input character queue */
 	IOQ	*oq;		/* output character queue */
 
@@ -473,7 +473,7 @@ sccspecial(int port, IOQ *oq, IOQ *iq, int baud)
 {
 	SCC *sp = scc[port];
 
-	sp->nostream = 1;
+	sp->special = 1;
 	sp->oq = oq;
 	sp->iq = iq;
 	sccenable(sp);
@@ -542,6 +542,9 @@ static void
 sccstclose(Queue *q)
 {
 	SCC *sp = q->ptr;
+
+	if(sp->special)
+		return;
 
 	qlock(sp);
 	sp->wq = 0;
@@ -679,7 +682,7 @@ sccreset(void)
 
 		/* set up queues if a stream port */
 		sp = scc[i];
-		if(sp->nostream)
+		if(sp->special)
 			continue;
 		sp->iq = xalloc(sizeof(IOQ));
 		initq(sp->iq);
@@ -735,7 +738,7 @@ sccopen(Chan *c, int omode)
 
 	if(c->qid.path != CHDIR){
 		sp = scc[STREAMID(c->qid.path)];
-		if(sp->nostream)
+		if(sp->special)
 			error(Einuse);
 		streamopen(c, &sccinfo);
 	}

@@ -10,6 +10,8 @@
 #include	<gnot.h>
 #include	"screen.h"
 
+extern Mouseinfo mouse;
+
 enum {
 	Data=		0x60,	/* data port */
 
@@ -109,13 +111,12 @@ uchar kbtabesc1[] =
  */
 KIOQ	kbdq;
 
-static int mousebuttons;
 static int keybuttons;
 static uchar ccc;
 static int mousetype;
 static int mouseport;
 static int shift;
-
+extern int mouseshifted;
 
 enum
 {
@@ -135,7 +136,6 @@ enum
 
 static void	kbdintr(Ureg*);
 static int	ps2mouseputc(IOQ*, int);
-static int	m3mouseputc(IOQ*, int);
 
 /*
  *  wait for output no longer busy
@@ -279,6 +279,9 @@ serialmouse(int port, char *type, int setspeed)
 	if(mousetype)
 		error(Emouseset);
 
+	if(port >= 2 || port < 0)
+		error(Ebadarg);
+
 	/* set up /dev/eia0 as the mouse */
 	uartspecial(port, 0, &mouseq, setspeed ? 1200 : 0);
 	if(type && *type == 'M')
@@ -338,7 +341,6 @@ ps2mouseputc(IOQ *q, int c)
 	static short msg[3];
 	static int nb;
 	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7, 0, 1, 2, 5, 2, 3, 6, 7 };
-	extern Mouseinfo mouse;
 
 	USED(q);		/* not */
 	/* 
@@ -355,60 +357,11 @@ ps2mouseputc(IOQ *q, int c)
 		if(msg[0] & 0x20)
 			msg[2] |= 0xFF00;
 
-		mousebuttons = b[(msg[0]&7) | (shift ? 8 : 0)];
-		mouse.newbuttons = mousebuttons | keybuttons;
+		mouse.newbuttons = b[(msg[0]&7) | (shift ? 8 : 0)] | keybuttons;
 		mouse.dx = msg[1];
 		mouse.dy = -msg[2];
 		mouse.track = 1;
 		spllo();		/* mouse tracking kills uart0 */
-		mouseclock();
-	}
-	return 0;
-}
-
-/*
- *  microsoft 3 button, 7 bit bytes
- *
- *	byte 0 -	1  L  R Y7 Y6 X7 X6
- *	byte 1 -	0 X5 X4 X3 X2 X1 X0
- *	byte 2 -	0 Y5 Y4 Y3 Y2 Y1 Y0
- *	byte 3 -	0  M  x  x  x  x  x	(optional)
- *
- *  shift & left button is the same as middle button (for 2 button mice)
- */
-static int
-m3mouseputc(IOQ *q, int c)
-{
-	static uchar msg[3];
-	static int nb;
-	static uchar b[] = { 0, 4, 1, 5, 0, 4, 3, 7 };
-	extern Mouseinfo mouse;
-
-	USED(q);		/* not */
-
-	/* 
-	 *  check bit 6 for consistency
-	 */
-	if(nb==0){
-		if((c&0x40) != 0){
-			/* must be 4th (M button) byte */
-			mousebuttons = (mousebuttons & ~Mbutton) | ((c&0x2)?Mbutton:0);
-			mouse.newbuttons = mousebuttons | keybuttons;
-			mouse.dx = 0;
-			mouse.dy = 0;
-			mouse.track = 0;
-			mouseclock();
-			return 0;
-		}
-	}
-	msg[nb] = c;
-	if(++nb == 3){
-		nb = 0;
-		mousebuttons = b[(msg[0]>>4)&3 | (shift ? 4 : 0)];
-		mouse.newbuttons = mousebuttons | keybuttons;
-		mouse.dx = (((msg[0]&3)<<7) | msg[1]) - 128;
-		mouse.dy = (((msg[0]&0xc)<<5) | msg[2]) - 128;
-		mouse.track = 1;
 		mouseclock();
 	}
 	return 0;
@@ -424,13 +377,19 @@ mousectl(char *arg)
 	char *field[3];
 
 	n = getfields(arg, field, 3, ' ');
-	if(n < 1)
-		return;
 	if(strncmp(field[0], "serial", 6) == 0){
-		if(n > 1)
-			serialmouse(atoi(field[1]), field[2], 0);
-		else
+		switch(n){
+		case 1:
 			serialmouse(atoi(field[0]+6), 0, 1);
+			break;
+		case 2:
+			serialmouse(atoi(field[1]), 0, 0);
+			break;
+		case 3:
+		default:
+			serialmouse(atoi(field[1]), field[2], 0);
+			break;
+		}
 	} else if(strcmp(field[0], "ps2") == 0){
 		ps2mouse();
 	} else if(strcmp(field[0], "accelerated") == 0){
@@ -472,23 +431,13 @@ static void
 mbon(int val)
 {
 	keybuttons |= val;
-	mouse.newbuttons = mousebuttons | keybuttons;
-	mouse.dx = 0;
-	mouse.dy = 0;
-	mouse.track = 1;
-	spllo();		/* mouse tracking kills uart0 */
-	mouseclock();
+	mousebuttons(keybuttons);
 }
 static void
 mboff(int val)
 {
 	keybuttons &= ~val;
-	mouse.newbuttons = mousebuttons | keybuttons;
-	mouse.dx = 0;
-	mouse.dy = 0;
-	mouse.track = 1;
-	spllo();		/* mouse tracking kills uart0 */
-	mouseclock();
+	mousebuttons(keybuttons);
 }
 
 /*
@@ -564,7 +513,7 @@ kbdintr0(void)
 	if(keyup){
 		switch(c){
 		case Shift:
-			shift = 0;
+			mouseshifted = shift = 0;
 			break;
 		case Ctrl:
 			ctl = 0;
@@ -631,7 +580,7 @@ kbdintr0(void)
 			num ^= 1;
 			return 0;
 		case Shift:
-			shift = 1;
+			mouseshifted = shift = 1;
 			return 0;
 		case Latin:
 			lstate = 1;
