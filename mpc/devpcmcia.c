@@ -225,10 +225,6 @@ pcmciareset(void)
 	io->pcmr[0].base = ISAMEM + 512*1024;
 	io->pcmr[0].option = (0x1a<<27) | (8<<16) | (6<<12) | (24<<7)
 		| Rport16 | Rattrib | Rvalid;
-	// 64K io 
-	io->pcmr[1].base = ISAMEM+0x300;
-	io->pcmr[1].option = (0x6<<27) | (2<<16) | (4<<12) | (8<<7)
-		| Rport8 | Rio | Rvalid;
 
 //	intrenable(VectorPIC+PCMCIAlevel, pcmciaintr, 0, BUSUNKNOWN);
 	io->pscr = 0xFEF0FEF0;	/* reset status */
@@ -364,8 +360,8 @@ pcmciaread(Chan *c, void *a, long n, vlong offset)
 			cp += sprint(cp, "busy\n");
 		cp += sprint(cp, "battery lvl %d\n", pp->battery);
 		cp += sprint(cp, "voltage select %d\n", pp->voltage);
-		cp += sprint(cp, "pipr %ux\n", m->iomem->pipr);
-		cp += sprint(cp, "pcsr %ux\n", m->iomem->pscr);
+		cp += sprint(cp, "pipr %ulx\n", m->iomem->pipr);
+		cp += sprint(cp, "pcsr %ulx\n", m->iomem->pscr);
 		*cp = 0;
 		n = readstr(offset, a, n, buf);
 		poperror();
@@ -383,9 +379,9 @@ pcmwrite(int dev, int attr, void *a, long n, vlong offset)
 {
 	int i, len;
 	PCMmap *m;
-	ulong ka;
-	uchar *ac;
 	Slot *pp;
+	uchar *ac;
+	ulong ka;
 
 	pp = slot + dev;
 	if(pp->memlen < offset)
@@ -393,7 +389,6 @@ pcmwrite(int dev, int attr, void *a, long n, vlong offset)
 	if(pp->memlen < offset + n)
 		n = pp->memlen - offset;
 
-#ifdef xxx
 	m = 0;
 	if(waserror()){
 		if(m)
@@ -403,7 +398,7 @@ pcmwrite(int dev, int attr, void *a, long n, vlong offset)
 
 	ac = a;
 	for(len = n; len > 0; len -= i){
-		m = pcmmap(pp, offset, 0, attr);
+		m = pcmmap(pp->slotno, offset, 0, attr);
 		if(m == 0)
 			error("can't map PCMCIA card");
 		if(offset + len > m->cea)
@@ -418,7 +413,6 @@ pcmwrite(int dev, int attr, void *a, long n, vlong offset)
 	}
 
 	poperror();
-#endif
 
 	return n;
 }
@@ -504,6 +498,7 @@ pcmmap(int slotno, ulong offset, int len, int attr)
 	e = ROUND(offset+len, Mgran);
 	offset &= Mmask;
 	len = e - offset;
+	USED(len);
 
 	m = pp->mmap;
 
@@ -526,12 +521,16 @@ pcmunmap(int slotno, PCMmap *m)
 static int
 pcmio(int slotno, ISAConf *isa)
 {
-	uchar we, x, *p;
+	uchar *p;
 	Slot *pp;
 	Conftab *ct, *et, *t;
-	PCMmap *m;
+	PCMmap *mm;
 	int i, index, irq;
 	char *cp;
+	IMM *io;
+	ulong x;
+
+	io = m->iomem;
 
 	isa->irq = VectorPIC+PCMCIAlevel;
 	irq = isa->irq;
@@ -599,22 +598,30 @@ pcmio(int slotno, ISAConf *isa)
 	if(isa->port == 0 && ct->io[0].start == 0)
 		return -1;
 
+	// setup io space - this could be better
+	io->pcmr[1].base = ISAMEM+isa->port;
+	x = (0x6<<27) | (2<<16) | (4<<12) | (8<<7) | Rio | Rvalid;
+	/* 16-bit data path */
+	if(ct->bit16)
+		x |= Rport16;
+	else
+		x |= Rport8;
+	io->pcmr[1].option = x;
+
 	if(pp->cpresent & (1<<Rconfig)){
-print("devpcmcia: reset caddr = %x!\n", pp->caddr);
 		/*  Reset adapter */
-		m = pcmmap(pp->slotno, pp->caddr + Rconfig, 1, 1);
-		p = KADDR(m->isa + pp->caddr + Rconfig - m->ca);
+		mm = pcmmap(pp->slotno, pp->caddr + Rconfig, 1, 1);
+		p = KADDR(mm->isa + pp->caddr + Rconfig - mm->ca);
 
 		/* set configuration and interrupt type */
 		x = 1;
-//		x |= ct->index<<1;
+		x |= ct->index<<1;
 		if((ct->irqtype & 0x20) && ((ct->irqtype & 0x40)==0 || isa->irq>7)) {
 			x |= Clevel;
 		}
-print("devpcmcia: x = %ux!\n", x);
 		*p = x;
 		delay(5);
-		pcmunmap(pp->slotno, m);
+		pcmunmap(pp->slotno, mm);
 	}
 	return 0;
 }
@@ -775,11 +782,9 @@ static void
 slotena(Slot *pp)
 {
 	IMM *io;
-	int shift;
 
 	if(pp->enabled)
 		return;
-	shift = (pp->slotno == 0)?16:0;
 
 	io = m->iomem;
 //	io->pgcr[pp->slotno] |= Coe;
@@ -789,16 +794,6 @@ slotena(Slot *pp)
 	delay(100);
 	io->pgcr[pp->slotno] &= ~Creset;
 	delay(500);
-#ifdef XXX
-	eieio();
-	delay(300);
-	io->pgcrb |= Cbreset;	/* TO DO: active high? active low? */
-	eieio();
-	delay(100);
-	io->pgcrb &= ~Cbreset;
-	eieio();
-	delay(500);
-#endif
 	/* get configuration */
 	slotinfo(pp);
 	if(pp->occupied){

@@ -134,7 +134,6 @@ static int
 sacwalk(Chan *c, char *name)
 {
 	Sac *sac;
-	Path *op;
 
 //print("walk %s\n", name);
 
@@ -149,9 +148,6 @@ sacwalk(Chan *c, char *name)
 	}
 	c->aux = sac;
 	c->qid = (Qid){getl(sac->qid), 0};
-	op = c->path;
-	c->path = ptenter(&syspt, op, name);
-	decref(op);
 	return 1;
 }
 
