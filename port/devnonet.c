@@ -489,7 +489,7 @@ noclose(Queue *q)
 		 */
 		nosendctl(cp, NO_HANGUP, 1);
 		for(i=0; i<10 && !ishungup(cp); i++){
-			nosendctl(cp, NO_HANGUP, 1);
+			nosendctl(cp, NO_HANGUP, 0);
 			tsleep(&cp->r, ishungup, cp, MSrexmit);
 		}
 		break;
@@ -1009,20 +1009,10 @@ nosend(Noconv *cp, Nomsg *mp)
 	wq = ifc->wq->next;
 
 	/*
-	 *  one transmitter at a time for this connection
-	 */
-	qlock(&cp->xlock);
-
-	if(waserror()){
-		qunlock(&cp->xlock);
-		return;
-	}
-
-	/*
 	 *  get the next acknowledge to use if the next queue up
 	 *  is not full.
 	 */
-	if(cp->afirst != cp->anext && cp->rq->next->len < 16*1024){
+	if(cp->afirst!=cp->anext && cp->rq->next->len<16*1024){
 		cp->hdr->ack = cp->ack[cp->afirst];
 		cp->afirst = (cp->afirst+1)&Nmask;
 	}
@@ -1103,8 +1093,6 @@ nosend(Noconv *cp, Nomsg *mp)
 	else
 		mp->time = NOW + (cp->rexmit+1)*MSrexmit;
 	(*wq->put)(wq, pkt);
-	qunlock(&cp->xlock);
-	poperror();
 }
 
 /*
@@ -1409,9 +1397,9 @@ loop:
 			 */
 			if(cp->first!=cp->next && NOW>=cp->out[cp->first].time){
 				mp = &(cp->out[cp->first]);
-				if(cp->rexmit++ > 60){
+				if(cp->rexmit++ > 15){
 					norack(cp, mp->mid);
-					nohangup(cp);
+					noreset(cp);
 				} else
 					nosend(cp, mp);
 			}

@@ -81,29 +81,26 @@ clockinit(void)
 
 
 void
-clock(ulong n, ulong pc)
+clock(Ureg *ur)
 {
 	int i;
 	Proc *p;
 
-	if(n&INTR2){
+	if(ur->cause & INTR2){
 		i = *CLRTIM0;
 		USED(i);
 		m->ticks++;
 		if(m->machno == 0){
 			p = m->proc;
-			if(p == 0)
-				p = m->intrp;
 			if(p)
 				p->time[p->insyscall]++;
 			for(i=1; i<conf.nmach; i++){
 				if(active.machs & (1<<i)){
 					p = MACHP(i)->proc;
-					if(p && p!=m->intrp)
+					if(p)
 						p->time[p->insyscall]++;
 				}
 			}
-			m->intrp = 0;
 			printslave();
 		}
 		if(active.exiting && active.machs&(1<<m->machno)){
@@ -111,9 +108,16 @@ clock(ulong n, ulong pc)
 			exit();
 		}
 		checkalarms();
+		p = m->proc;
+		if((ur->status&IEP) && p && p->state==Running){
+			if(anyready())
+				sched();
+			if(u->nnote && (ur->status&KUP))
+				notify(ur);
+		}
 		return;
 	}
-	if(n & INTR4){
+	if(ur->cause & INTR4){
 		extern ulong start;
 
 		i = *CLRTIM1;

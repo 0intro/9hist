@@ -11,6 +11,7 @@ typedef struct Envp	Envp;
 typedef struct Envval	Envval;
 typedef struct Etherpkt	Etherpkt;
 typedef struct FPsave	FPsave;
+typedef struct Hotmsg	Hotmsg;
 typedef struct Lance	Lance;
 typedef struct Lancemem	Lancemem;
 typedef struct Label	Label;
@@ -89,6 +90,12 @@ struct Bit3msg
 	ulong	addr;
 	ulong	count;
 	ulong	rcount;
+};
+
+struct Hotmsg
+{
+	ulong	cmd;
+	ulong	param[5];
 };
 
 #define	CHDIR	0x80000000L
@@ -207,10 +214,6 @@ struct Mach
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
-	void	(*intr)(ulong, ulong);	/* pending interrupt */
-	Proc	*intrp;			/* process that was interrupted */
-	ulong	cause;			/* arg to intr */
-	ulong	pc;			/* pc that was interrupted */
 	char	pidhere[NTLBPID];	/* is this pid possibly in this mmu? */
 	int	lastpid;		/* last pid allocated on this machine */
 	Proc	*pidproc[NTLBPID];	/* process that owns this tlbpid on this mach */
@@ -360,11 +363,18 @@ struct User
 	Chan	*fd[NFD];
 	int	maxfd;			/* highest fd in use */
 	/*
-	 * I/O point for bit3 interface.  This is the easiest way to allocate
+	 * I/O point for bit3 and hotrod interfaces.
+	 * This is the easiest way to allocate
 	 * them, but not the prettiest or most general.
 	 */
-	Bit3msg	kbit3;
-	Bit3msg	ubit3;
+	union{
+		Bit3msg	kbit3;
+		Hotmsg	khot;
+	};
+	union{
+		Bit3msg	ubit3;
+		Hotmsg	uhot;
+	};
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

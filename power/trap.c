@@ -12,7 +12,6 @@
  */
 void	(*vmevec[256])(int);
 
-void	notify(Ureg*);
 void	noted(Ureg**);
 void	rfnote(Ureg**);
 
@@ -87,7 +86,6 @@ trap(Ureg *ur)
 		u->p->pc = ur->pc;		/* BUG */
 	switch(ecode){
 	case CINT:
-		m->intrp = 0;
 		if(u && u->p->state==Running){
 			if(u->p->fpstate == FPactive) {
 				if(ur->cause & INTR3){	/* FP trap */
@@ -100,14 +98,8 @@ trap(Ureg *ur)
 				if(ecode == FPEXC)
 					goto Default;
 			}
-			m->intr = intr;
-			m->cause = ur->cause;
-			m->pc = ur->pc;
-			if(ur->cause & INTR2)
-				m->intrp = u->p;
-			sched();
-		}else
-			intr(ur->cause, ur->pc);
+		}
+		intr(ur);
 		break;
 
 	case CTLBM:
@@ -181,14 +173,15 @@ trap(Ureg *ur)
 }
 
 void
-intr(ulong cause, ulong pc)
+intr(Ureg *ur)
 {
 	int i, pend;
 	long v;
+	ulong cause;
 
-	cause &= INTR5|INTR4|INTR3|INTR2|INTR1;
+	cause = ur->cause&(INTR5|INTR4|INTR3|INTR2|INTR1);
 	if(cause & (INTR2|INTR4)){
-		clock(cause, pc);
+		clock(ur);
 		cause &= ~(INTR2|INTR4);
 	}
 	if(cause & INTR1){

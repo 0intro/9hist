@@ -220,9 +220,6 @@ struct Mach
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	int	fpstate;		/* state of fp registers on machine */
-	void	(*intr)(ulong, ulong);	/* !!Compatability with mips!! */
-	ulong	cause;			/*	... */
-	ulong	pc;			/*	... */
 	int	stack[1];
 };
 

@@ -9,59 +9,72 @@
 #include	"io.h"
 
 typedef struct Hotrod	Hotrod;
+typedef struct HotQ	HotQ;
 typedef struct Device	Device;
-typedef struct Printbuf	Printbuf;
 
 enum {
 	Vmevec=		0xd2,		/* vme vector for interrupts */
 	Intlevel=	5,		/* level to interrupt on */
-	Nhotrod=	2,
+	Qdir=		0,		/* Qid's */
+	Qhotrod=	1,
+	NhotQ=		10,		/* size of communication queues */
+	Nhotrod=	1,
 };
 
 /*
- *  circular 2 pointer queue for hotrod prnt's
- */
-struct Printbuf {
-	char	*rptr;
-	char	*wptr;
-	char	*lim;
-	char	buf[4*1024];
-};
-
-/*
- *  the hotrod fiber interface responds to 1MB
+ *  The hotrod fiber interface responds to 1MB
  *  of either user or supervisor accesses at:
  *  	0x30000000 to 0x300FFFFF  in	A32 space
- *  and	  0xB00000 to   0xBFFFFF  in	A24 space
+ *  and	  0xB00000 to   0xBFFFFF  in	A24 space.
+ *  The second 0x40000 of this space is on-board SRAM.
  */
 struct Device {
-	ulong	mem[1024*1024/sizeof(ulong)];
+	ulong	mem[0x100000/sizeof(ulong)];
 };
 #define HOTROD		VMEA24SUP(Device, 0xB00000)
 
-struct Hotrod {
-	QLock;
+struct HotQ{
+	ulong	i;			/* index into queue */
+	Hotmsg	*msg[NhotQ];		/* pointer to command buffer */
+	ulong	pad[3];			/* unused; for hotrod prints */
+};
 
+
+struct Hotrod{
+	QLock;
+	Lock		busy;
 	Device		*addr;		/* address of the device */
 	int		vec;		/* vme interrupt vector */
-	char		name[NAMELEN];	/* hot rod name */
-	Printbuf	pbuf;		/* circular queue for hotrod print's */
-	int		kprocstarted;
+	HotQ		*wq;		/* write this queue to send cmds */
+	int		wi;		/* where to write next cmd */
+	HotQ		rq;		/* read this queue to receive replies */
+	int		ri;		/* where to read next response */
 	Rendez		r;
 };
 
 Hotrod hotrod[Nhotrod];
 
 void	hotrodintr(int);
-void	hotrodkproc(void *a);
 
-int
-hotrodgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
+/*
+ * Commands
+ */
+enum{
+	RESET=	0,	/* params: Q address, length of queue */
+	REBOOT=	1,	/* params: none */
+};
+
+void
+hotsend(Hotrod *h, Hotmsg *m)
 {
-	if(i || c->dev>=Nhotrod)
-		return -1;
-	devdir(c, (Qid){0,0}, hotrod[c->dev].name, sizeof(Device), 0666, dp);
-	return 1;
+print("hotsend send %d %lux %lux\n", m->cmd, m, m->param[0]);
+	h->wq->msg[h->wi] = m;
+	while(h->wq->msg[h->wi])
+		;
+print("hotsend done\n");
+	h->wi++;
+	if(h->wi >= NhotQ)
+		h->wi = 0;
 }
 
 /*
@@ -73,11 +86,14 @@ hotrodreset(void)
 	int i;
 	Hotrod *hp;
 
-	for(i=0; i<Nhotrod; i++){
-		hotrod[i].addr = HOTROD+i;
-		hotrod[i].vec = Vmevec+i;
-		sprint(hotrod[i].name, "hotrod%d", i);
-		setvmevec(hotrod[i].vec, hotrodintr);
+	for(hp=hotrod,i=0; i<Nhotrod; i++,hp++){
+		hp->addr = HOTROD+i;
+		/*
+		 * Write queue is at end of hotrod memory
+		 */
+		hp->wq = (HotQ*)((ulong)hp->addr+2*0x40000-sizeof(HotQ));
+		hp->vec = Vmevec+i;
+		setvmevec(hp->vec, hotrodintr);
 	}	
 	wbflush();
 	delay(20);
@@ -102,10 +118,6 @@ hotrodattach(char *spec)
 	if(i >= Nhotrod)
 		error(Ebadarg);
 
-	hp = &hotrod[i];
-	if(hp->kprocstarted == 0)
-		kproc(hp->name, hotrodkproc, hp);
-
 	c = devattach('H', spec);
 	c->dev = i;
 	c->qid.path = CHDIR;
@@ -122,13 +134,20 @@ hotrodclone(Chan *c, Chan *nc)
 int	 
 hotrodwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, 0, 0, hotrodgen);
+	if(c->qid.path != CHDIR)
+		return 0;
+	if(strncmp(name, "hotrod", 6) == 0){
+		c->qid.path = Qhotrod;
+		return 1;
+	}
+	return 0;
 }
 
 void	 
 hotrodstat(Chan *c, char *dp)
 {
-	devstat(c, dp, 0, 0, hotrodgen);
+	print("hotrodstat\n");
+	error(Egreg);
 }
 
 Chan*
@@ -137,19 +156,28 @@ hotrodopen(Chan *c, int omode)
 	Device *dp;
 	Hotrod *hp;
 
-#ifdef asdf
-	/*
-	 *  Remind hotrod where the print buffer is.  The address we store
-	 *  is the address of the printbuf in VME A32 space.
-	 */
-	hp = &hotrod[c->dev];
-	dp = hp->addr;
-	dp->mem[256*1024/sizeof(ulong)] = (((ulong)&hp->pbuf) - KZERO) | (SLAVE<<28);
-#endif
-
 	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
 			error(Eperm);
+	}else if(c->qid.path == Qhotrod){
+		hp = &hotrod[c->dev];
+		if(!canlock(&hp->busy))
+			error(Einuse);
+		/*
+		 * Clear communications region
+		 */
+		memset(hp->wq->msg, 0, sizeof(hp->wq->msg));
+		hp->wq->i = 0;
+
+		/*
+		 * Issue reset
+		 */
+		hp->wi = 0;
+		hp->ri = 0;
+		u->khot.cmd = RESET;
+		u->khot.param[0] = (ulong)&hp->rq;
+		u->khot.param[1] = NhotQ;
+		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
@@ -166,6 +194,14 @@ hotrodcreate(Chan *c, char *name, int omode, ulong perm)
 void	 
 hotrodclose(Chan *c)
 {
+	Hotrod *hp;
+
+	hp = &hotrod[c->dev];
+	if(c->qid.path != CHDIR){
+		u->khot.cmd = REBOOT;
+		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		unlock(&hp->busy);
+	}
 }
 
 /*
@@ -180,8 +216,8 @@ hotrodread(Chan *c, void *buf, long n)
 	ulong *to;
 	ulong *end;
 
-	if(c->qid.path & CHDIR)
-		return devdirread(c, buf, n, 0, 0, hotrodgen);
+	if(c->qid.path != Qhotrod)
+		error(Egreg);
 
 	/*
 	 *  allow full word access only
@@ -222,6 +258,8 @@ hotrodwrite(Chan *c, void *buf, long n)
 	ulong *to;
 	ulong *end;
 
+	if(c->qid.path != Qhotrod)
+		error(Egreg);
 	/*
 	 *  allow full word access only
 	 */
@@ -270,33 +308,5 @@ hotrodintr(int vec)
 	if(hp < hotrod || hp > &hotrod[Nhotrod]){
 		print("bad hotrod vec\n");
 		return;
-	}
-}
-
-/*
- *  print hotrod processor messages on the console
- */
-void
-hotrodkproc(void *a)
-{
-	Hotrod	*hp = a;
-	char	*p;
-
-	hp->kprocstarted = 1;
-	hp->pbuf.rptr = hp->pbuf.wptr = hp->pbuf.buf;
-	hp->pbuf.lim = &hp->pbuf.buf[sizeof(hp->pbuf.buf)];
-
-	for(;;){
-		p = hp->pbuf.wptr;
-		if(p != hp->pbuf.rptr){
-			if(p > hp->pbuf.rptr){
-				putstrn(hp->pbuf.rptr, p - hp->pbuf.rptr);
-			} else {
-				putstrn(hp->pbuf.rptr, hp->pbuf.lim - hp->pbuf.rptr);
-				putstrn(hp->pbuf.buf, hp->pbuf.wptr - hp->pbuf.buf);
-			}
-			hp->pbuf.rptr = p;
-		}
-		tsleep(&(hp->r), return0, 0, 1000);
 	}
 }

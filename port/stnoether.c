@@ -120,6 +120,7 @@ noetherbad(Noifc *ifc, Block *bp)
 	Etherhdr *eh, *neh;
 	int circuit;
 	Block *nbp;
+	int r;
 
 	/*
 	 *  crack the packet header
@@ -129,6 +130,13 @@ noetherbad(Noifc *ifc, Block *bp)
 		eh->s[0], eh->s[1], eh->s[2], eh->s[3], eh->s[4],
 		eh->s[5], eh->circuit[0], eh->mid, eh->flag);
 	if(eh->flag & NO_RESET)
+		goto out;
+
+	/*
+	 *  only one reset per message
+	 */
+	r = (eh->remain[1]<<8) | eh->remain[0];
+	if(r<0)
 		goto out;
 
 	/*

@@ -222,9 +222,6 @@ struct Mach
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	int	fpstate;		/* state of fp registers on machine */
-	void	(*intr)(ulong, ulong);	/* !!Compatibility with mips!! */
-	ulong	cause;			/*	... */
-	ulong	pc;			/*	... */
 	char	pidhere[NTLBPID];	/* is this tlbpid possibly in this mmu? */
 	int	lastpid;		/* last pid allocated on this machine */
 	Proc	*pidproc[NTLBPID];	/* process that owns this pid on this mach */

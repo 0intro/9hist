@@ -94,10 +94,6 @@ sched(void)
 		}
 		gotolabel(&m->sched);
 	}
-	if(f = m->intr){			/* assign = */
-		m->intr = 0;
-		(*f)(m->cause, m->pc);
-	}
 	spllo();
 	p = runproc();
 	splhi();
@@ -320,10 +316,8 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(p != u->p){
 		k = kmap(p->upage);
 		up = (User*)VA(k);
-	}else{
-		SET(k);
+	}else
 		up = u;
-	}
 	if(flag!=NUser && (up->notify==0 || up->notified))
 		up->nnote = 0;	/* force user's hand */
 	else if(up->nnote == NNOTE-1){
