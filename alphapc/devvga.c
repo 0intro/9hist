@@ -393,7 +393,8 @@ Dev vgadevtab = {
 	"vga",
 
 	vgareset,
-	devinit,
+	devinit,	
+	devshutdown,
 	vgaattach,
 	vgawalk,
 	vgastat,

@@ -617,6 +617,7 @@ Dev flashdevtab = {
 
 	devreset,
 	flashinit,
+	devshutdown,
 	flashattach,
 	flashwalk,
 	flashstat,

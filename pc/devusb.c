@@ -2307,6 +2307,7 @@ Dev usbdevtab = {
 
 	usbreset,
 	usbinit,
+	devshutdown,
 	usbattach,
 	usbwalk,
 	usbstat,

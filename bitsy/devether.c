@@ -445,6 +445,7 @@ Dev etherdevtab = {
 
 	etherreset,
 	devinit,
+	devshutdown,
 	etherattach,
 	etherwalk,
 	etherstat,

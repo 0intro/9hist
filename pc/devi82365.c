@@ -870,6 +870,7 @@ Dev i82365devtab = {
 
 	devreset,
 	devinit,
+	devshutdown,
 	i82365attach,
 	i82365walk,
 	i82365stat,

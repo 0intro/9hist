@@ -973,6 +973,18 @@ scanphy(Ctlr* ctlr)
 	return -1;
 }
 
+static void
+shutdown(Ether* ether)
+{
+	Ctlr *ctlr = ether->ctlr;
+
+print("ether82557 shutting down\n");
+	csr32w(ctlr, Port, 0);
+	delay(1);
+	csr8w(ctlr, Interrupt, InterruptM);
+}
+
+
 static int
 reset(Ether* ether)
 {
@@ -1247,6 +1259,7 @@ reset(Ether* ether)
 	ether->transmit = transmit;
 	ether->interrupt = interrupt;
 	ether->ifstat = ifstat;
+	ether->shutdown = shutdown;
 
 	ether->promiscuous = promiscuous;
 	ether->multicast = multicast;

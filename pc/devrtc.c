@@ -308,6 +308,7 @@ Dev rtcdevtab = {
 
 	devreset,
 	rtcinit,
+	devshutdown,
 	rtcattach,
 	rtcwalk,
 	rtcstat,

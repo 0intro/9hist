@@ -78,6 +78,11 @@ devinit(void)
 {
 }
 
+void
+devshutdown(void)
+{
+}
+
 Chan*
 devattach(int tc, char *spec)
 {

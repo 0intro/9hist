@@ -145,16 +145,16 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		ksetenv("cputype", "alpha");
+		ksetenv("cputype", "alpha", 0);
 		sprint(tstr, "alpha %s alphapc", conffile);
-		ksetenv("terminal", tstr);
+		ksetenv("terminal", tstr, 0);
 		if(cpuserver)
-			ksetenv("service", "cpu");
+			ksetenv("service", "cpu", 0);
 		else
-			ksetenv("service", "terminal");
+			ksetenv("service", "terminal", 0);
 		for(i = 0; i < nconf; i++)
-			if(confname[i] && confname[i][0] != '*')
-				ksetenv(confname[i], confval[i]);
+			if(confname[i])
+				ksetenv(confname[i], confval[i], 1);
 		poperror();
 	}
 
@@ -257,6 +257,14 @@ procsave(Proc *p)
 	 * trashed page tables it will crash.
 	 */
 }
+
+/* still too do */
+void
+reboot(void*, void*, ulong)
+{
+	exit(0);
+}
+
 
 void
 exit(int)

@@ -165,7 +165,7 @@ i8250status(Uart* uart, void* buf, long n, long offset)
 	ier = ctlr->sticky[Ier];
 	lcr = ctlr->sticky[Lcr];
 	snprint(p, READSTR,
-		"b%d c%d d%d e%d l%d m%d p%c r%d s%d i%d\n"
+		"b%d c%d d%d e%d l%d m%d p%c r%d s%d i%d ier=%ux\n"
 		"dev(%d) type(%d) framing(%d) overruns(%d)%s%s%s%s\n",
 
 		uart->baud,
@@ -178,6 +178,7 @@ i8250status(Uart* uart, void* buf, long n, long offset)
 		(mcr & Rts) != 0,
 		(lcr & Stb) ? 2: 1,
 		ctlr->fena,
+		ier,
 
 		uart->dev,
 		uart->type,
@@ -269,13 +270,13 @@ i8250modemctl(Uart* uart, int on)
 	ilock(&uart->tlock);
 	if(on){
 		ctlr->sticky[Ier] |= Ems;
-		csr8w(ctlr, Ier, 0);
+		csr8w(ctlr, Ier, ctlr->sticky[Ier]);
 		uart->modem = 1;
 		uart->cts = csr8r(ctlr, Msr) & Cts;
 	}
 	else{
 		ctlr->sticky[Ier] &= ~Ems;
-		csr8w(ctlr, Ier, 0);
+		csr8w(ctlr, Ier, ctlr->sticky[Ier]);
 		uart->modem = 0;
 		uart->cts = 1;
 	}
@@ -525,7 +526,7 @@ i8250disable(Uart* uart)
 
 	ctlr = uart->regs;
 	ctlr->sticky[Ier] = 0;
-	csr8w(ctlr, Ier, 0);
+	csr8w(ctlr, Ier, ctlr->sticky[Ier]);
 
 	if(ctlr->iena != 0){
 		intrdisable(ctlr->irq, i8250interrupt, uart, ctlr->tbdf, uart->name);
@@ -562,6 +563,18 @@ i8250enable(Uart* uart, int ie)
 
 	(*uart->phys->dtr)(uart, 1);
 	(*uart->phys->rts)(uart, 1);
+
+
+	/*
+	 * During startup, the i8259 interrupt controler is reset.
+	 * This may result in a lost interrupt from the i8250 uart.
+	 * The i8250 thinks the interrupt is still outstanding and does not
+	 * generate any further interrupts. To work around this we call the
+	 * interrupt handler to clear any pending inerrupt events.
+	 * Note this must be donw after setting Ier.
+	 */
+	if(ie)
+		i8250interrupt(nil, uart);
 }
 
 void*

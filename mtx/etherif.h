@@ -19,7 +19,6 @@ struct Ether {
 	void	(*interrupt)(Ureg*, void*);
 	long	(*ifstat)(Ether*, void*, long, ulong);
 	long 	(*ctl)(Ether*, void*, long); /* custom ctl messages */
-	void	(*shutdown)(Ether*);	/* shutdown hardware before reboot */
 	void	*ctlr;
 
 	Queue*	oq;

@@ -624,6 +624,7 @@ Dev pnpdevtab = {
 
 	pnpreset,
 	devinit,
+	devshutdown,
 	pnpattach,
 	pnpwalk,
 	pnpstat,

@@ -1190,6 +1190,7 @@ Dev bridgedevtab = {
 
 	devreset,
 	bridgeinit,
+	devshutdown,
 	bridgeattach,
 	bridgewalk,
 	bridgestat,

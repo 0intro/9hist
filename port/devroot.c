@@ -156,6 +156,7 @@ Dev rootdevtab = {
 
 	rootreset,
 	devinit,
+	devshutdown,
 	rootattach,
 	rootwalk,
 	rootstat,

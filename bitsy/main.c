@@ -51,6 +51,14 @@ main(void)
 	schedinit();
 }
 
+/* need to do better */
+void
+reboot(void*, void*, ulong)
+{
+	exit(0);
+}
+
+
 /*
  *  exit kernel either on a panic or user request
  */
@@ -94,12 +102,12 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		ksetenv("terminal", "bitsy");
-		ksetenv("cputype", "arm");
+		ksetenv("terminal", "bitsy", 0);
+		ksetenv("cputype", "arm", 0);
 		if(cpuserver)
-			ksetenv("service", "cpu");
+			ksetenv("service", "cpu", 0);
 		else
-			ksetenv("service", "terminal");
+			ksetenv("service", "terminal", 0);
 		poperror();
 	}
 	kproc("alarm", alarmkproc, 0);

@@ -229,6 +229,7 @@ Dev lptdevtab = {
 
 	devreset,
 	devinit,
+	devshutdown,
 	lptattach,
 	lptwalk,
 	lptstat,

@@ -7,27 +7,28 @@
 #include	"ureg.h"
 #include	"init.h"
 #include	"pool.h"
+#include	"reboot.h"
 
 Mach *m;
-
-static  uchar *sp;	/* stack pointer for /boot */
 
 /*
  * Where configuration info is left for the loaded programme.
  * This will turn into a structure as more is done by the boot loader
  * (e.g. why parse the .ini file twice?).
- * There are XXX bytes available at CONFADDR.
+ * There are 3584 bytes available at CONFADDR.
  */
 #define BOOTLINE	((char*)CONFADDR)
 #define BOOTLINELEN	64
 #define BOOTARGS	((char*)(CONFADDR+BOOTLINELEN))
 #define	BOOTARGSLEN	(4096-0x200-BOOTLINELEN)
-#define	MAXCONF		32
+#define	MAXCONF		64
 
 char bootdisk[KNAMELEN];
+Conf	conf;
 char *confname[MAXCONF];
 char *confval[MAXCONF];
 int nconf;
+uchar	*sp;	/* user stack of init proc */
 
 static void
 options(void)
@@ -71,18 +72,16 @@ options(void)
 void
 main(void)
 {
-	conf.nmach = 1;
-	MACHP(0) = (Mach*)CPU0MACH;
-	m->pdb = (ulong*)CPU0PDB;
-	machinit();
-	active.machs = 1;
-	active.exiting = 0;
+	mach0init();
 	options();
 	ioinit();
 	i8250console();
+
 	print("\nPlan 9\n");
+
 	cpuidentify();
 	screeninit();
+	meminit();
 	confinit();
 	archinit();
 	xinit();
@@ -108,6 +107,19 @@ conf.monitor = 1;
 }
 
 void
+mach0init(void)
+{
+	conf.nmach = 1;
+	MACHP(0) = (Mach*)CPU0MACH;
+	m->pdb = (ulong*)CPU0PDB;
+
+	machinit();
+
+	active.machs = 1;
+	active.exiting = 0;
+}
+
+void
 machinit(void)
 {
 	int machno;
@@ -129,19 +141,10 @@ machinit(void)
 }
 
 void
-ksetterm(char *f)
-{
-	char buf[2*KNAMELEN];
-
-	sprint(buf, f, conffile);
-	ksetenv("terminal", buf);
-}
-
-void
 init0(void)
 {
 	int i;
-	char tstr[32];
+	char buf[2*KNAMELEN];
 
 	up->nerrlab = 0;
 
@@ -159,17 +162,15 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		strcpy(tstr, arch->id);
-		strcat(tstr, " %s");
-		ksetterm(tstr);
-		ksetenv("cputype", "386");
+		snprint(buf, sizeof(buf), "%s %s", arch->id, conffile);
+		ksetenv("terminal", buf, 0);
+		ksetenv("cputype", "386", 0);
 		if(cpuserver)
-			ksetenv("service", "cpu");
+			ksetenv("service", "cpu", 0);
 		else
-			ksetenv("service", "terminal");
+			ksetenv("service", "terminal", 0);
 		for(i = 0; i < nconf; i++)
-			if(confname[i] && confname[i][0] != '*')
-				ksetenv(confname[i], confval[i]);
+			ksetenv(confname[i], confval[i], 1);
 		poperror();
 	}
 	kproc("alarm", alarmkproc, 0);
@@ -260,6 +261,8 @@ bootargs(ulong base)
 
 	ac = 0;
 	av[ac++] = pusharg("/386/9dos");
+
+	/* when boot is changed to only use rc, this code can go away */
 	cp[BOOTLINELEN-1] = 0;
 	buf[0] = 0;
 	if(strncmp(cp, "fd", 2) == 0){
@@ -270,13 +273,6 @@ bootargs(ulong base)
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "ether", 5) == 0)
 		av[ac++] = pusharg("-n");
-	if(buf[0]){
-		cp = strchr(buf, '!');
-		if(cp){
-			strcpy(bootdisk, cp+1);
-			addconf("bootdisk", bootdisk);
-		}
-	}
 
 	/* 4 byte word align stack */
 	sp = (uchar*)((ulong)sp & ~3);
@@ -290,18 +286,6 @@ bootargs(ulong base)
 	sp += (USTKTOP - BY2PG) - base - sizeof(ulong);
 }
 
-Conf	conf;
-
-void
-addconf(char *name, char *val)
-{
-	if(nconf >= MAXCONF)
-		return;
-	confname[nconf] = name;
-	confval[nconf] = val;
-	nconf++;
-}
-
 char*
 getconf(char *name)
 {
@@ -313,23 +297,46 @@ getconf(char *name)
 	return 0;
 }
 
+static void
+writeconf(void)
+{
+	char *p, *q;
+	int n;
+
+	p = getconfenv();
+
+	if(waserror()) {
+		free(p);
+		nexterror();
+	}
+
+	/* convert to name=value\n format */
+	for(q=p; *q; q++) {
+		q += strlen(q);
+		*q = '=';
+		q += strlen(q);
+		*q = '\n';
+	}
+	n = q - p + 1;
+	if(n >= BOOTARGSLEN)
+		error("kernel configuration too large");
+	memset(BOOTLINE, 0, BOOTLINELEN);
+	memmove(BOOTARGS, p, n);
+	poperror();
+	free(p);
+}
+
 void
 confinit(void)
 {
 	char *p;
 	int userpcnt;
-	ulong kpages, maxmem;
+	ulong kpages;
 
-	if(p = getconf("*maxmem"))
-		maxmem = strtoul(p, 0, 0);
-	else
-		maxmem = 0;
 	if(p = getconf("*kernelpercent"))
 		userpcnt = 100 - strtol(p, 0, 0);
 	else
 		userpcnt = 0;
-
-	meminit(maxmem);
 
 	conf.npage = conf.npage0 + conf.npage1;
 
@@ -556,8 +563,8 @@ procsave(Proc *p)
 	mmuflushtlb(PADDR(m->pdb));
 }
 
-void
-exit(int ispanic)
+static void
+shutdown(int ispanic)
 {
 	int ms, once;
 
@@ -588,7 +595,56 @@ exit(int ispanic)
 	}
 	else
 		delay(1000);
+}
 
+void
+reboot(void *entry, void *code, ulong size)
+{
+	void (*f)(ulong, ulong, ulong);
+	ulong *pdb;
+
+	writeconf();
+
+	shutdown(0);
+
+	/*
+	 * should be the only processor running now
+	 */
+
+	print("shutting down...\n");
+	delay(200);
+
+	splhi();
+
+	/* turn off buffered serial console */
+	serialoq = nil;
+
+	/* shutdown devices */
+	chandevshutdown();
+
+	/*
+	 * Modify the machine page table to directly map the low 4MB of memory
+	 * This allows the reboot code to turn off the page mapping
+	 */
+	pdb = m->pdb;
+	pdb[PDX(0)] = pdb[PDX(KZERO)];
+	mmuflushtlb(PADDR(pdb));
+
+	/* setup reboot trampoline function */
+	f = (void*)REBOOTADDR;
+	memmove(f, rebootcode, sizeof(rebootcode));
+
+	print("rebooting...\n");
+
+	/* off we go - never to return */
+	(*f)(PADDR(entry), PADDR(code), size);
+}
+
+
+void
+exit(int ispanic)
+{
+	shutdown(ispanic);
 	arch->reset();
 }
 
@@ -596,33 +652,32 @@ int
 isaconfig(char *class, int ctlrno, ISAConf *isa)
 {
 	char cc[32], *p;
-	int i, n;
+	int i;
 
 	snprint(cc, sizeof cc, "%s%d", class, ctlrno);
-	for(n = 0; n < nconf; n++){
-		if(cistrcmp(confname[n], cc) != 0)
-			continue;
-		isa->nopt = tokenize(confval[n], isa->opt, NISAOPT);
-		for(i = 0; i < isa->nopt; i++){
-			p = isa->opt[i];
-			if(cistrncmp(p, "type=", 5) == 0)
-				isa->type = p + 5;
-			else if(cistrncmp(p, "port=", 5) == 0)
-				isa->port = strtoul(p+5, &p, 0);
-			else if(cistrncmp(p, "irq=", 4) == 0)
-				isa->irq = strtoul(p+4, &p, 0);
-			else if(cistrncmp(p, "dma=", 4) == 0)
-				isa->dma = strtoul(p+4, &p, 0);
-			else if(cistrncmp(p, "mem=", 4) == 0)
-				isa->mem = strtoul(p+4, &p, 0);
-			else if(cistrncmp(p, "size=", 5) == 0)
-				isa->size = strtoul(p+5, &p, 0);
-			else if(cistrncmp(p, "freq=", 5) == 0)
-				isa->freq = strtoul(p+5, &p, 0);
-		}
-		return 1;
+	p = getconf(cc);
+	if(p == nil)
+		return 0;
+
+	isa->nopt = tokenize(p, isa->opt, NISAOPT);
+	for(i = 0; i < isa->nopt; i++){
+		p = isa->opt[i];
+		if(cistrncmp(p, "type=", 5) == 0)
+			isa->type = p + 5;
+		else if(cistrncmp(p, "port=", 5) == 0)
+			isa->port = strtoul(p+5, &p, 0);
+		else if(cistrncmp(p, "irq=", 4) == 0)
+			isa->irq = strtoul(p+4, &p, 0);
+		else if(cistrncmp(p, "dma=", 4) == 0)
+			isa->dma = strtoul(p+4, &p, 0);
+		else if(cistrncmp(p, "mem=", 4) == 0)
+			isa->mem = strtoul(p+4, &p, 0);
+		else if(cistrncmp(p, "size=", 5) == 0)
+			isa->size = strtoul(p+5, &p, 0);
+		else if(cistrncmp(p, "freq=", 5) == 0)
+			isa->freq = strtoul(p+5, &p, 0);
 	}
-	return 0;
+	return 1;
 }
 
 int

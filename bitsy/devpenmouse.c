@@ -430,6 +430,7 @@ Dev penmousedevtab = {
 
 	penmousereset,
 	penmouseinit,
+	devshutdown,
 	penmouseattach,
 	penmousewalk,
 	penmousestat,

@@ -251,6 +251,7 @@ Dev capdevtab = {
 
 	devreset,
 	devinit,
+	devshutdown,
 	capattach,
 	capwalk,
 	capstat,

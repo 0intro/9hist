@@ -1382,6 +1382,7 @@ Dev uda1341devtab = {
 
 	devreset,
 	audioinit,
+	devshutdown,
 	audioattach,
 	audiowalk,
 	audiostat,

@@ -417,6 +417,7 @@ Dev µcdevtab = {
 
 	devreset,
 	µcinit,
+	devshutdown,
 	µcattach,
 	µcwalk,
 	µcstat,

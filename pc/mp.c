@@ -348,9 +348,6 @@ checkmtrr(void)
 	}
 }
 
-#define PDX(va)		((((ulong)(va))>>22) & 0x03FF)
-#define PTX(va)		((((ulong)(va))>>12) & 0x03FF)
-
 static void
 squidboy(Apic* apic)
 {

@@ -31,6 +31,7 @@
  * Fundamental addresses
  */
 #define IDTADDR		0x80000800		/* idt */
+#define	REBOOTADDR	0x00001000		/* reboot code - physical address */
 #define APBOOTSTRAP	0x80001000		/* AP bootstrap code */
 #define CONFADDR	0x80001200		/* info passed from boot loader */
 #define CPU0PDB		0x80002000		/* bootstrap processor PDB */
@@ -75,8 +76,8 @@
 #define SELECTOR(i, t, p)	(((i)<<3) | (t) | (p))
 
 #define NULLSEL	SELECTOR(NULLSEG, SELGDT, 0)
-#define KESEL	SELECTOR(KESEG, SELGDT, 0)
 #define KDSEL	SELECTOR(KDSEG, SELGDT, 0)
+#define KESEL	SELECTOR(KESEG, SELGDT, 0)
 #define UESEL	SELECTOR(UESEG, SELGDT, 3)
 #define UDSEL	SELECTOR(UDSEG, SELGDT, 3)
 #define TSSSEL	SELECTOR(TSSSEG, SELGDT, 0)
@@ -125,5 +126,12 @@
 #define	PTEKERNEL	(0<<2)
 #define	PTEUSER		(1<<2)
 #define	PTESIZE		(1<<7)
+
+/*
+ * Macros for calculating offsets within the page directory base
+ * and page tables. 
+ */
+#define PDX(va)		((((ulong)(va))>>22) & 0x03FF)
+#define PTX(va)		((((ulong)(va))>>12) & 0x03FF)
 
 #define getpgcolor(a)	0

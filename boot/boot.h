@@ -53,24 +53,19 @@ extern int	parsefields(char*, char**, int, char*);
 
 /* methods */
 extern void	configil(Method*);
-extern int	authil(void);
 extern int	connectil(void);
 
 extern void	configtcp(Method*);
-extern int	authtcp(void);
 extern int	connecttcp(void);
 
 extern void	configlocal(Method*);
-extern int	authlocal(void);
 extern int	connectlocal(void);
 
 extern void	configsac(Method*);
-extern int	authsac(void);
 extern int	connectsac(void);
 
-extern void	configpaq(Method*);
-extern int	authpaq(void);
-extern int	connectpaq(void);
+extern void	configrc(Method*);
+extern int	connectrc(void);
 
 /* hack for passing authentication address */
 extern char	*authaddr;

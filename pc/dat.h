@@ -84,7 +84,7 @@ struct Conf
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	ulong	ialloc;		/* max interrupt time allocation in bytes */
 	ulong	pipeqsize;	/* size in bytes of pipe queues */
-	int	nuart;	/* number of uart devices */
+	int	nuart;		/* number of uart devices */
 };
 
 /*

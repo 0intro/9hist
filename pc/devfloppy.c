@@ -1061,6 +1061,7 @@ Dev floppydevtab = {
 
 	floppyreset,
 	devinit,
+	devshutdown,
 	floppyattach,
 	floppywalk,
 	floppystat,

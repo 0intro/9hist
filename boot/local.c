@@ -49,12 +49,6 @@ configlocal(Method *mp)
 }
 
 int
-authlocal(void)
-{
-	return -1;
-}
-
-int
 connectlocal(void)
 {
 	int i, p[2];

@@ -447,6 +447,7 @@ Dev vgadevtab = {
 
 	vgareset,
 	devinit,
+	devshutdown,
 	vgaattach,
 	vgawalk,
 	vgastat,

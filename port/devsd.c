@@ -1448,6 +1448,7 @@ Dev sddevtab = {
 
 	sdreset,
 	devinit,
+	devshutdown,
 	sdattach,
 	sdwalk,
 	sdstat,

@@ -80,6 +80,7 @@ static struct
 plan9ini[] =
 {
 	{ "console", "0" },
+	{ "ether0", "type=2114x" },
 };
 
 char*
@@ -115,11 +116,11 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		ksetenv("cputype", "power");
+		ksetenv("cputype", "power", 0);
 		if(cpuserver)
-			ksetenv("service", "cpu");
+			ksetenv("service", "cpu", 0);
 		else
-			ksetenv("service", "terminal");
+			ksetenv("service", "terminal", 0);
 		
 /*
 		for(p = confenv; *p; p++) {
@@ -193,6 +194,13 @@ userinit(void)
 	kunmap(k);
 
 	ready(p);
+}
+
+/* still to do */
+void
+reboot(void*, void*, ulong)
+{
+	exit(0);
 }
 
 void

@@ -386,6 +386,7 @@ Dev pcmciadevtab = {
 
 	pcmciareset,
 	devinit,
+	devshutdown,
 	pcmciaattach,
 	pcmciawalk,
 	pcmciastat,

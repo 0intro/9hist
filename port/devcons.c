@@ -50,6 +50,18 @@ static int	readbintime(char*, int);
 static int	writetime(char*, int);
 static int	writebintime(char*, int);
 
+enum
+{
+	CMreboot,
+	CMpanic,
+};
+
+Cmdtab reboottbl[] =
+{
+	CMreboot,	"reboot",	0,
+	CMpanic,	"panic",	0,
+};
+
 void
 printinit(void)
 {
@@ -868,6 +880,8 @@ conswrite(Chan *c, void *va, long n, vlong off)
 	int id, fd;
 	Chan *swc;
 	ulong offset = off;
+	Cmdbuf *cb;
+	Cmdtab *ct;
 
 	switch((ulong)c->qid.path){
 	case Qcons:
@@ -940,21 +954,22 @@ conswrite(Chan *c, void *va, long n, vlong off)
 	case Qreboot:
 		if(!iseve())
 			error(Eperm);
-		if(strncmp(a, "reboot", 6) == 0){
-			print("conswrite: reboot\n");
-			exit(0);
+		cb = parsecmd(a, n);
+
+		if(waserror()) {
+			free(cb);
+			nexterror();
 		}
-		if(strncmp(a, "malloc", 6) == 0){	/* rsc bug */
-			a = malloc(2);
-			strcpy(a, "hi");
-			free(a);
-			a = malloc(2);
-			strcpy(a, "helo");
-			free(a);
-			panic("not reached conswrite");
-		}
-		if(strncmp(a, "panic", 5) == 0)
+		ct = lookupcmd(cb, reboottbl, nelem(reboottbl));
+		switch(ct->index) {
+		case CMreboot:
+			rebootcmd(cb->nf-1, cb->f+1);
+			break;
+		case CMpanic:
 			panic("/dev/reboot");
+		}
+		poperror();
+		free(cb);
 		break;
 
 	case Qsysstat:
@@ -1009,21 +1024,13 @@ conswrite(Chan *c, void *va, long n, vlong off)
 	return n;
 }
 
-void
-setterm(char *f)
-{
-	char buf[64];
-
-	snprint(buf, sizeof buf, f, conffile);
-	ksetenv("terminal", buf);
-}
-
 Dev consdevtab = {
 	'c',
 	"cons",
 
 	devreset,
 	consinit,
+	devshutdown,
 	consattach,
 	conswalk,
 	consstat,

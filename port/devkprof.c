@@ -176,6 +176,7 @@ Dev kprofdevtab = {
 
 	devreset,
 	kprofinit,
+	devshutdown,
 	kprofattach,
 	kprofwalk,
 	kprofstat,

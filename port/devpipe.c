@@ -375,6 +375,7 @@ Dev pipedevtab = {
 
 	devreset,
 	pipeinit,
+	devshutdown,
 	pipeattach,
 	pipewalk,
 	pipestat,

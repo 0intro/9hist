@@ -1,7 +1,6 @@
 #include "../port/portfns.h"
 
 void	aamloop(int);
-void	addconf(char*, char*);
 Dirtab*	addarchfile(char*, int, long(*)(Chan*,void*,long,vlong), long(*)(Chan*,void*,long,vlong));
 //void	addscsilink(char*, Scsiio (*)(int, ISAConf*));
 void	archinit(void);
@@ -74,8 +73,9 @@ void	lgdt(ushort[3]);
 void	lidt(ushort[3]);
 void	links(void);
 void	ltr(ulong);
+void	mach0init(void);
 void	mathinit(void);
-void	meminit(ulong);
+void	meminit(void);
 #define mmuflushtlb(pdb) putcr3(pdb)
 void	mmuinit(void);
 ulong	mmukmap(ulong, ulong, int);

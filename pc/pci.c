@@ -888,6 +888,7 @@ pcicfginit(void)
 
 out:
 	qunlock(&pcicfginitlock);
+
 }
 
 static int
@@ -1170,8 +1171,12 @@ pcireset(void)
 	if(pcicfgmode == -1)
 		pcicfginit();
 
-	for(p = pcilist; p != nil; p = p->list)
+	for(p = pcilist; p != nil; p = p->list) {
+		/* don't mess with the bridges */
+		if(p->ccrb == 0x06)
+			continue;
 		pciclrbme(p);
+	}
 }
 
 void

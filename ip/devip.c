@@ -259,11 +259,7 @@ ipreset(void)
 {
 	nullmediumlink();
 	pktmediumlink();
-}
 
-static void
-ipinit(void)
-{
 	fmtinstall('i', eipconv);
 	fmtinstall('I', eipconv);
 	fmtinstall('E', eipconv);
@@ -1079,9 +1075,6 @@ ipwrite(Chan* ch, void *v, long n, vlong off)
 			free(cb);
 			nexterror();
 		}
-		if(cb->nf < 1)
-			error("short control request");
-
 		ct = lookupcmd(cb, ipctlmsg, nelem(ipctlmsg));
 		switch(ct->index){
 		case CMconnect:
@@ -1171,7 +1164,8 @@ Dev ipdevtab = {
 	"ip",
 
 	ipreset,
-	ipinit,
+	devinit,
+	devshutdown,
 	ipattach,
 	ipwalk,
 	ipstat,

@@ -450,7 +450,6 @@ mntwalk(Chan *c, Chan *nc, char **name, int nname)
 		wq->qid[i] = r->reply.wqid[i];
 
     Return:
-
 	poperror();
 	mntfree(r);
 	poperror();
@@ -1142,6 +1141,7 @@ Dev mntdevtab = {
 
 	mntreset,
 	devinit,
+	devshutdown,
 	mntattach,
 	mntwalk,
 	mntstat,

@@ -130,6 +130,7 @@ Dev dupdevtab = {
 
 	devreset,
 	devinit,
+	devshutdown,
 	dupattach,
 	dupwalk,
 	dupstat,

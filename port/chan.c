@@ -208,6 +208,18 @@ chandevinit(void)
 		devtab[i]->init();
 }
 
+void
+chandevshutdown(void)
+{
+	int i;
+	
+	/* shutdown in reverse order */
+	for(i=0; devtab[i] != nil; i++)
+		;
+	for(i--; i >= 0; i--)
+		devtab[i]->shutdown();
+}
+
 Chan*
 newchan(void)
 {

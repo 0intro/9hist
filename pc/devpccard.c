@@ -1367,7 +1367,8 @@ Dev pccarddevtab = {
 	"cardbus",
 
 	devreset,
-	devinit,
+	devinit,	
+	devshutdown,
 	pccardattach,
 	pccardwalk,
 	pccardstat,

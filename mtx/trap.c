@@ -24,6 +24,7 @@ hwintrenable(Vctl *v)
 
 	irq = v->irq;
 	if(BUSTYPE(v->tbdf) == BusPCI) {	/* MPIC? */
+print("add PCI intr %d\n", irq);
 		if(irq > 15) {
 			print("intrenable: pci irq %d out of range\n", v->irq);
 			return -1;
@@ -32,6 +33,7 @@ hwintrenable(Vctl *v)
 		mpicenable(vec, v);
 	}
 	else {
+print("add pic intr %d\n", irq);
 		if(irq > MaxIrqPIC) {
 			print("intrenable: irq %d out of range\n", v->irq);
 			return -1;
@@ -348,6 +350,7 @@ intr(Ureg *ureg)
 		vno = i8259intack();
 		mpiceoi(0);
 	}
+else print("non-pic %d\n", vno);
 
 	if(vno > nelem(vctl) || (ctl = vctl[vno]) == 0) {
 		panic("spurious intr %d", vno);

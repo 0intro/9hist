@@ -1221,6 +1221,7 @@ Dev audiodevtab = {
 
 	devreset,
 	audioinit,
+	devshutdown,
 	audioattach,
 	audiowalk,
 	audiostat,

@@ -861,6 +861,13 @@ gc82543detach(Ctlr* ctlr)
 		;
 }
 
+static void
+gc82543shutdown(Ether* ether)
+{
+print("gc82543shutdown\n");
+	gc82543detach(ether->ctlr);
+}
+
 static int
 gc82543reset(Ctlr* ctlr)
 {
@@ -994,6 +1001,7 @@ gc82543pnp(Ether* edev)
 	edev->transmit = gc82543transmit;
 	edev->interrupt = gc82543interrupt;
 	edev->ifstat = gc82543ifstat;
+	edev->shutdown = gc82543shutdown;
 
 	edev->arg = edev;
 	edev->promiscuous = nil;

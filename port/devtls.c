@@ -1666,6 +1666,7 @@ Dev tlsdevtab = {
 
 	devreset,
 	tlsinit,
+	devshutdown,
 	tlsattach,
 	tlswalk,
 	tlsstat,

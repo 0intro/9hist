@@ -509,6 +509,7 @@ Dev uartdevtab = {
 
 	uartreset,
 	devinit,
+	devshutdown,
 	uartattach,
 	uartwalk,
 	uartstat,

@@ -318,7 +318,8 @@ Dev lmldevtab = {
 	"video",
 
 	lmlreset,
-	devinit,
+	devinit,	
+	devshutdown,
 	lmlattach,
 	lmlwalk,
 	lmlstat,

@@ -576,6 +576,7 @@ Dev sacdevtab = {
 
 	devreset,
 	sacinit,
+	devshutdown,
 	sacattach,
 	sacwalk,
 	sacstat,

@@ -748,6 +748,7 @@ Dev loopbackdevtab = {
 
 	devreset,
 	loopbackinit,
+	devshutdown,
 	loopbackattach,
 	loopbackwalk,
 	loopbackstat,

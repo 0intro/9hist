@@ -935,6 +935,7 @@ Dev sdpdevtab = {
 
 	devreset,
 	sdpinit,
+	devshutdown,
 	sdpattach,
 	sdpwalk,
 	sdpstat,

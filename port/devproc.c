@@ -920,6 +920,7 @@ Dev procdevtab = {
 
 	devreset,
 	procinit,
+	devshutdown,
 	procattach,
 	procwalk,
 	procstat,

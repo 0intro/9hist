@@ -1229,6 +1229,7 @@ Dev ssldevtab = {
 
 	devreset,
 	sslinit,
+	devshutdown,
 	sslattach,
 	sslwalk,
 	sslstat,

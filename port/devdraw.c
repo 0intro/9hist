@@ -1925,6 +1925,7 @@ Dev drawdevtab = {
 
 	devreset,
 	devinit,
+	devshutdown,
 	drawattach,
 	drawwalk,
 	drawstat,

@@ -425,6 +425,25 @@ etherreset(void)
 		free(ether);
 }
 
+static void
+ethershutdown(void)
+{
+	Ether *ether;
+	int i;
+
+	for(i = 0; i < MaxEther; i++){
+		ether = etherxx[i];
+		if(ether == nil)
+			continue;
+		if(ether->shutdown == nil) {
+			print("#l%d: no shutdown fuction\n", i);
+			continue;
+		}
+		(*ether->shutdown)(ether);
+	}
+}
+
+
 #define POLY 0xedb88320
 
 /* really slow 32 bit crc for ethers */
@@ -451,6 +470,7 @@ Dev etherdevtab = {
 
 	etherreset,
 	devinit,
+	ethershutdown,
 	etherattach,
 	etherwalk,
 	etherstat,

@@ -10,7 +10,7 @@
 #define	TSSSEGM(b,p)	{ ((b)<<16)|sizeof(Tss),\
 			  ((b)&0xFF000000)|(((b)>>16)&0xFF)|SEGTSS|SEGPL(p)|SEGP }
 
-Segdesc gdt[6] =
+Segdesc gdt[NGDT] =
 {
 [NULLSEG]	{ 0, 0},		/* null descriptor */
 [KDSEG]		DATASEGM(0),		/* kernel data/stack */
@@ -19,9 +19,6 @@ Segdesc gdt[6] =
 [UESEG]		EXECSEGM(3),		/* user code */
 [TSSSEG]	TSSSEGM(0,0),		/* tss segment */
 };
-
-#define PDX(va)		((((ulong)(va))>>22) & 0x03FF)
-#define PTX(va)		((((ulong)(va))>>12) & 0x03FF)
 
 static void
 taskswitch(ulong pdb, ulong stack)
@@ -40,6 +37,21 @@ taskswitch(ulong pdb, ulong stack)
 }
 
 void
+gdtinit(void)
+{
+	ulong x;
+	ushort ptr[3];
+
+	memmove(m->gdt, gdt, sizeof(m->gdt));
+
+	ptr[0] = sizeof(m->gdt)-1;
+	x = (ulong)m->gdt;
+	ptr[1] = x & 0xFFFF;
+	ptr[2] = (x>>16) & 0xFFFF;
+	lgdt(ptr);
+}
+
+void
 mmuinit(void)
 {
 	ulong x, *p;
@@ -53,13 +65,13 @@ mmuinit(void)
 	m->gdt[TSSSEG].d0 = (x<<16)|sizeof(Tss);
 	m->gdt[TSSSEG].d1 = (x&0xFF000000)|((x>>16)&0xFF)|SEGTSS|SEGPL(0)|SEGP;
 
-	ptr[0] = sizeof(m->gdt);
+	ptr[0] = sizeof(m->gdt)-1;
 	x = (ulong)m->gdt;
 	ptr[1] = x & 0xFFFF;
 	ptr[2] = (x>>16) & 0xFFFF;
 	lgdt(ptr);
 
-	ptr[0] = sizeof(Segdesc)*256;
+	ptr[0] = sizeof(Segdesc)*256-1;
 	x = IDTADDR;
 	ptr[1] = x & 0xFFFF;
 	ptr[2] = (x>>16) & 0xFFFF;

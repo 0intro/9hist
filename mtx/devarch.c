@@ -372,6 +372,7 @@ Dev archdevtab = {
 
 	devreset,
 	devinit,
+	devshutdown,
 	archattach,
 	archwalk,
 	archstat,

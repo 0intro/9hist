@@ -185,6 +185,7 @@ struct Dev
 
 	void	(*reset)(void);
 	void	(*init)(void);
+	void	(*shutdown)(void);
 	Chan*	(*attach)(char*);
 	Walkqid*	(*walk)(Chan*, Chan*, char**, int);
 	int	(*stat)(Chan*, uchar*, int);

@@ -435,6 +435,7 @@ Dev mousedevtab = {
 
 	mousereset,
 	mouseinit,
+	devshutdown,
 	mouseattach,
 	mousewalk,
 	mousestat,

@@ -2,8 +2,6 @@
 #include <libc.h>
 #include <../boot/boot.h>
 
-void configip(char* dev);
-
 // HACK - take over from boot since file system is not
 // available on a pipe
 
@@ -40,13 +38,6 @@ configsac(Method *mp)
 	print("starting %s\n", cmd);
 	execl(cmd, "init", "-c", 0);
 	fatal(cmd);
-}
-
-int
-authsac(void)
-{
-	// does not get here
-	return -1;
 }
 
 int
