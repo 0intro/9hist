@@ -38,6 +38,8 @@ typedef struct Talarm	Talarm;
 typedef struct Waitq	Waitq;
 typedef int    Devgen(Chan*, Dirtab*, int, int, Dir*);
 
+#include "fcall.h"
+
 struct List
 {
 	void	*next;
@@ -394,7 +396,6 @@ struct Pgrp
 struct Egrp
 {
 	Ref;
-	Egrp	*next;
 	int	nenv;			/* highest active env table entry, +1 */
 	QLock	ev;			/* for all of etab */
 	Env	*etab;
@@ -404,7 +405,6 @@ struct Egrp
 struct Fgrp
 {
 	Ref;
-	Fgrp	*next;
 	Chan	*fd[NFD];
 	int	maxfd;			/* highest fd in use */
 };
@@ -413,9 +413,8 @@ struct Fgrp
 struct Palloc
 {
 	Lock;
-	ulong	addr0;			/* next available ialloc addr in bank 0 */
-	ulong	addr1;			/* next available ialloc addr in bank 1 */
-	int	active;
+	ulong	p0, p1;			/* base of pages in bank 0/1 */
+	ulong	np0, np1;		/* number of pages in bank 0/1 */
 	Page	*head;			/* most recently used */
 	Page	*tail;			/* least recently used */
 	ulong	freecount;		/* how many pages on free list now */

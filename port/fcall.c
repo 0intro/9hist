@@ -1,6 +1,6 @@
 #include	<u.h>
 #include	<libc.h>
-#include	<fcall.h>
+#include	"fcall.h"
 
 #define	CHAR(x)		*p++ = f->x
 #define	SHORT(x)	p[0] = f->x; p[1] = f->x>>8; p += 2

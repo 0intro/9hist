@@ -22,12 +22,6 @@ struct Imagealloc
 	Image	*hash[IHASHSIZE];
 }imagealloc;
 
-struct segalloc
-{
-	Lock;
-	Segment *free;
-}segalloc;
-
 static QLock ireclaim;
 
 void
@@ -36,14 +30,7 @@ initseg(void)
 	Segment *s, *se;
 	Image *i, *ie;
 
-	segalloc.free = ialloc(conf.nseg*sizeof(Segment), 0);
-	imagealloc.free = ialloc(conf.nimage*sizeof(Image), 0);
-
-	se = &segalloc.free[conf.nseg-1];
-	for(s = segalloc.free; s < se; s++)
-		s->next = s+1;
-	s->next = 0;
-
+	imagealloc.free = xalloc(conf.nimage*sizeof(Image));
 	ie = &imagealloc.free[conf.nimage-1];
 	for(i = imagealloc.free; i < ie; i++)
 		i->next = i+1;
@@ -58,32 +45,13 @@ newseg(int type, ulong base, ulong size)
 	if(size > (SEGMAPSIZE*PTEPERTAB))
 		error(Enovmem);
 
-	for(;;) {
-		lock(&segalloc);
-		if(s = segalloc.free) {
-			segalloc.free = s->next;
-			unlock(&segalloc);
-
-			s->ref = 1;
-			s->steal = 0;
-			s->type = type;
-			s->base = base;
-			s->top = base+(size*BY2PG);
-			s->size = size;
-			s->image = 0;
-			s->fstart = 0;
-			s->flen = 0;
-			s->pgalloc = 0;
-			s->pgfree = 0;
-			s->flushme = 0;
-			memset(s->map, 0, sizeof(s->map));
-
-			return s;
-		}
-		unlock(&segalloc);
-		resrcwait("no segments");
-	}
-	return 0;	/* not reached */
+	s = smalloc(sizeof(Segment));
+	s->ref = 1;
+	s->type = type;
+	s->base = base;
+	s->top = base+(size*BY2PG);
+	s->size = size;
+	return s;
 }
 
 void
@@ -117,10 +85,7 @@ putseg(Segment *s)
 
 		qunlock(&s->lk);
 
-		lock(&segalloc);
-		s->next = segalloc.free;		
-		segalloc.free = s;
-		unlock(&segalloc);
+		free(s);
 	}
 }
 
@@ -237,10 +202,10 @@ attachimage(int type, Chan *c, ulong base, ulong len)
 	for(i = ihash(c->qid.path); i; i = i->hash) {
 		if(c->qid.path == i->qid.path) {
 			lock(i);
-			if(eqqid(c->qid, i->qid))
-			if(eqqid(c->mqid, i->mqid))
-			if(c->mchan == i->mchan)
-			if(c->type == i->type) {
+			if(eqqid(c->qid, i->qid) &&
+			   eqqid(c->mqid, i->mqid) &&
+			   c->mchan == i->mchan &&
+			   c->type == i->type) {
 				i->ref++;
 				goto found;
 			}

@@ -23,10 +23,11 @@ main(void)
 	active.exiting = 0;
 	active.machs = 1;
 	confinit();
+	xinit();
 	mmuinit();
 	screeninit();
 	printinit();
-	print("sparc plan 9\n");
+	pageinit();
 	trapinit();
 	kmapinit();
 	ioinit();
@@ -34,11 +35,9 @@ main(void)
 	intrinit();
 	procinit0();
 	initseg();
-	grpinit();
 	chaninit();
 	chandevreset();
 	streaminit();
-	pageinit();
 	userinit();
 	clockinit();
 	schedinit();
@@ -198,12 +197,15 @@ confinit(void)
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
+
 	conf.npage0 = (4*1024*1024)/BY2PG;	/* BUG */
 	conf.npage1 = (4*1024*1024)/BY2PG;	/* BUG */
 	conf.base0 = 0;
 	conf.base1 = 32*1024*1024;
 	conf.npage = conf.npage0+conf.npage1;
-	conf.maxialloc = 4*1024*1024;		/* BUG */
+
+	conf.upages = 1400;
+
 	mul = 1;
 	if(conf.npage1 > 0)
 		mul = 2;

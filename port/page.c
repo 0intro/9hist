@@ -8,8 +8,6 @@
 #define PGHFUN(x, y)	(((ulong)x^(ulong)y)%PGHSIZE)
 #define	pghash(s)	palloc.hash[PGHFUN(s->image, p->daddr)]
 
-struct Palloc palloc;
-
 struct Ptealloc
 {
 	Lock;
@@ -17,240 +15,55 @@ struct Ptealloc
 	int	pages;
 }ptealloclk;
 
-ulong	hiaddr;
-static Lock pglock;
-
-/* Multiplex a hardware lock for per page manipulations */
-void
-lockpage(Page *p)
-{	
-	int s;
-
-	for(;;) {
-		if(p->lock == 0) {
-			s = splhi();
-			lock(&pglock);
-			if(p->lock == 0) {
-				p->lock = 1;
-				unlock(&pglock);
-				splx(s);
-				return;
-			}
-			unlock(&pglock);
-			splx(s);
-		}
-		sched();
-	}
-}
-
-void
-unlockpage(Page *p)
-{
-	p->lock = 0;
-}
-
-typedef struct Region	Region;
-struct Region
-{
-	ulong	start;
-	ulong	end;
-};
-
-enum
-{
-	Nregion=	10,
-};
-Region region[Nregion];
-
-
-void
-addsplit(Region *r, ulong start, ulong end)
-{
-	int len;
-	Region *rr, *eregion;
-
-	len = end - start;
-	eregion = &region[Nregion];
-
-	/* first look for an unused one */
-	for(rr = region; rr < eregion; rr++){
-		if(rr == r)
-			continue;
-		if(rr->end - rr->start == 0){
-			rr->start = start;
-			rr->end = end;
-			return;
-		}
-	}
-
-	/* then look for a smaller one */
-	for(rr = region; rr < eregion; rr++){
-		if(rr == r)
-			continue;
-		if(rr->end - rr->start < len){
-			rr->start = start;
-			rr->end = end;
-			return;
-		}
-	}
-}
-
-/*
- *  Called to allocate permanent data structures, before calling pageinit().
- *  We assume all of text+data+bss is in the first memory bank.
- *
- *  alignment is in number of bytes.  It pertains both to the start and
- *  end of the allocated memory.
- *
- *  If crevasse is specified, no allocation can span an address that is
- *  a multiple of crevasse.
- */
-void*
-iallocspan(ulong n, int align, ulong crevasse)
-{
-	int m;
-	ulong p;
-	Region *r;
-	int ledge;
-
-	if(palloc.active && n!=0)
-		print("ialloc bad\n");
-
-	if(palloc.addr0 == 0){
-		r = &region[Nregion-2];
-		r->start = (((ulong)end)&~KZERO) + conf.base0;
-		r->end = conf.base0 + (conf.npage0<<PGSHIFT);
-		r++;
-		r->start = conf.base1;
-		r->end = conf.base1 + (conf.npage1<<PGSHIFT);
-
-		palloc.addr0 = region[Nregion-2].start;
-		palloc.addr1 = region[Nregion-1].start;
-	}
-
-	/*
-	 *  alignment also applies to length
-	 */
-	if(align){
-		m = n % align;
-		if(m)
-			n += align - m;
-	}
-
-	p = 0;
-	for(r = region; r < &region[Nregion]; r++){
-		/* align region */
-		p = r->start;
-		if(align){
-			m = p % align;
-			if(m)
-				p += align - m;
-		}
-
-		/* check for crossing a crevasse */
-		if(crevasse){
-			ledge = p / crevasse;
-			if(ledge != ((p+n-1) / crevasse))
-				p = ((p+n-1) / crevasse) * crevasse;
-		}
-
-		/* see if it fits */
-		if(p + n > r->end)
-			continue;
-
-		/* split the region */
-		if(p != r->start)
-			addsplit(r, r->start, p);
-		r->start = p + n;
-		break;
-	}
-	if(r == &region[Nregion])
-		panic("out of memory");
-
-	/*
-	 *  remember high water marks
-	 */
-	if(palloc.addr0 < r->start && r->start <= conf.base0+(conf.npage0<<PGSHIFT))
-		palloc.addr0 = r->start;
-	else if(palloc.addr1 < r->start && r->start <= conf.base1+(conf.npage1<<PGSHIFT))
-		palloc.addr1 = r->start;
-
-	/*
-	 *  zero it
-	 */
-	memset((void*)(p|KZERO), 0, n);
-	return (void*)(p|KZERO);
-}
-
-/*
- *  allocate with possible page alignment
- */
-void*
-ialloc(ulong n, int align)
-{
-	return iallocspan(n, align ? BY2PG : 0, 0);
-}
+static	Lock pglock;
+struct	Palloc palloc;
 
 void
 pageinit(void)
 {
-	ulong np, addr, lim;
-	ulong i, vmem, pmem, hw, hr;
 	Page *p;
+	ulong np, hw, hr, vmem, pmem;
 
-	/*
-	 *  calculate an upper bound to the number of pages structures
-	 *  we'll need (np).
-	 */
-	np = (conf.npage0<<PGSHIFT) - (palloc.addr0 - conf.base0);
-	np += (conf.npage1<<PGSHIFT) - (palloc.addr1 - conf.base1);
-	np = np>>PGSHIFT;
+	np = palloc.np0+palloc.np1;
+	palloc.head = xalloc(np*sizeof(Page));
+	if(palloc.head == 0)
+		panic("pageinit");
 
-	/*
-	 *  allocate Page structs (no more ialloc's allowed after this).
-	 *  np is useless after this ialloc since we've just eaten up
-	 *  some pages for the Page structures.
-	 */
-	palloc.head = ialloc(np*sizeof(Page), 0);
-	palloc.active = 1;
-
-	/*
- 	 *  for each page in each bank, point a page structure to
-	 *  the page and chain it into the free list
-	 */
 	p = palloc.head;
-	addr = palloc.addr0 = PGROUND(palloc.addr0);
-	lim = conf.base0 + (conf.npage0<<PGSHIFT);
-	for(; addr < lim; addr += BY2PG){
-		p->next = p+1;
+	while(palloc.np0 > 0) {
 		p->prev = p-1;
-		p->pa = addr;
+		p->next = p+1;
+		p->pa = palloc.p0;
+		palloc.p0 += BY2PG;
+		palloc.np0--;
 		p++;
 	}
-	addr = palloc.addr1 = PGROUND(palloc.addr1);
-	lim = conf.base1 + (conf.npage1<<PGSHIFT);
-	for(; addr < lim; addr += BY2PG){
-		p->next = p+1;
+	while(palloc.np1 > 0) {
 		p->prev = p-1;
-		p->pa = addr;
+		p->next = p+1;
+		p->pa = palloc.p1;
+		palloc.p1 += BY2PG;
+		palloc.np1--;
 		p++;
 	}
 	palloc.tail = p - 1;
 	palloc.head->prev = 0;
 	palloc.tail->next = 0;
 
-	palloc.user = palloc.freecount = p - palloc.head;
+	palloc.user = p - palloc.head;
+	palloc.freecount = palloc.user;
 	pmem = palloc.user*BY2PG/1024;
-	vmem = pmem + ((conf.nswap)*BY2PG)/1024;
+	vmem = pmem + (conf.nswap*BY2PG)/1024;
 
 	/* Pageing numbers */
 	swapalloc.highwater = (palloc.freecount*5)/100;
 	swapalloc.headroom = swapalloc.highwater + (swapalloc.highwater/4);
-	hw = (swapalloc.highwater*BY2PG)/1024;
-	hr = (swapalloc.headroom*BY2PG)/1024;
+
+	hw = swapalloc.highwater*BY2PG;
+	hr = swapalloc.headroom*BY2PG;
 	
-	print("%lud free pages, %dK bytes, swap %dK bytes, highwater %dK, headroom %dK\n", 
-				palloc.user, pmem, vmem, hw, hr);
+	print("%lud free pages, %dK bytes, swap %dK, highwater %dK, headroom %dK\n", 
+	palloc.user, pmem, vmem, hw/1024, hr/1024);
 }
 
 Page*
@@ -260,13 +73,11 @@ newpage(int clear, Segment **s, ulong va)
 	KMap *k;
 	int i;
 
-	if(palloc.active == 0)
-		print("newpage inactive\n");
-
 	lock(&palloc);
 
 	/* The kp test is a poor guard against the pager deadlocking */
-	while((palloc.freecount < swapalloc.highwater && u->p->kp == 0)||palloc.freecount == 0) {
+	while((palloc.freecount < swapalloc.highwater && u->p->kp == 0) ||
+	       palloc.freecount == 0) {
 		palloc.wanted++;
 		unlock(&palloc);
 		if(s && *s) {
@@ -604,4 +415,33 @@ freepte(Segment *s, Pte *p)
 	p->next = ptealloclk.free;
 	ptealloclk.free = p;
 	unlock(&ptealloclk);
+}
+
+/* Multiplex a hardware lock for per page manipulations */
+void
+lockpage(Page *p)
+{	
+	int s;
+
+	for(;;) {
+		if(p->lock == 0) {
+			s = splhi();
+			lock(&pglock);
+			if(p->lock == 0) {
+				p->lock = 1;
+				unlock(&pglock);
+				splx(s);
+				return;
+			}
+			unlock(&pglock);
+			splx(s);
+		}
+		sched();
+	}
+}
+
+void
+unlockpage(Page *p)
+{
+	p->lock = 0;
 }

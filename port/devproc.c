@@ -4,7 +4,6 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"fcall.h"
 #include	"ureg.h"
 
 #include	"devtab.h"
@@ -264,10 +263,6 @@ procread(Chan *c, void *va, long n, ulong offset)
 		}
 
 		if(offset >= KZERO) {
-			/* prevent users reading authentication crypt keys */
-			if(offset >= pgrpalloc.cryptbase)
-			if(offset < pgrpalloc.crypttop)
-				error(Eperm);
 			/* validate physical kernel addresses */
 			if(offset < KZERO+conf.npage0*BY2PG){
 				if(offset+n > KZERO+conf.npage0*BY2PG)

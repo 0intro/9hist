@@ -93,7 +93,6 @@ ipreset(void)
 	}
 
 	initfrag(conf.frag);
-	tcpinit();
 }
 
 void

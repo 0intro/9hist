@@ -4,7 +4,6 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"fcall.h"
 
 /*
  * The sys*() routines needn't poperror() as they return directly to syscall().

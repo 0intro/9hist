@@ -6,7 +6,6 @@
 #include	"io.h"
 #include	"../port/error.h"
 #include	"devtab.h"
-#include	"fcall.h"
 
 enum {
 	Nclass=4,	/* number of block classes */
@@ -30,29 +29,9 @@ Qinfo procinfo =
  */
 static Qinfo *lds;
 
-/*
- *  All stream structures are ialloc'd at boot time
- */
 Stream *slist;
 Queue *qlist;
 static Lock garbagelock;
-
-/*
- *  The block classes.  There are Nclass block sizes, each with its own free list.
- *  All are ialloced at qinit() time.
- */
-typedef struct {
-	int	size;
-	int	made;
-	QLock;
-	Blist;
-} Bclass;
-Bclass bclass[Nclass]={
-	{ 0 },
-	{ 68 },
-	{ 268 },
-	{ 4096 },
-};
 
 /*
  *  Allocate streams, queues, and blocks.  Allocate n block classes with
@@ -62,25 +41,12 @@ Bclass bclass[Nclass]={
 void
 streaminit(void)
 {
-	int class, i, n;
-	Bclass *bcp;
 
 	/*
 	 *  allocate queues, streams
 	 */
-	slist = (Stream *)ialloc(conf.nstream * sizeof(Stream), 0);
-	qlist = (Queue *)ialloc(conf.nqueue * sizeof(Queue), 0);
-
-	/*
-	 *  set block classes
-	 */
-	n = conf.nblock;
-	for(class = 0; class < Nclass; class++){
-		if(class < Nclass-1)
-			n = n/2;
-		bcp = &bclass[class];
-		bcp->made = 0;
-	}
+	slist = (Stream *)xalloc(conf.nstream * sizeof(Stream));
+	qlist = (Queue *)xalloc(conf.nqueue * sizeof(Queue));
 
 	/*
 	 *  make stream modules available
@@ -105,107 +71,22 @@ newqinfo(Qinfo *qi)
 }
 
 /*
- *  upgrade a block 0 block to another class (called with bcp qlocked)
- */
-int
-newblock(Bclass *bcp)
-{
-	Page *page;
-	int n;
-	Block *bp;
-	uchar *cp;
-
-	page = newpage(1, 0, 0);
-	page->va = VA(kmapperm(page));
-	if(bcp == bclass){
-		/*
-		 *  create some level zero blocks and return
-		 */
-		n = BY2PG/sizeof(Block);
-		bp = (Block *)(page->va);
-		while(n-- > 0){
-			bp->flags = 0;
-			bp->base = bp->lim = bp->rptr = bp->wptr = 0;
-			if(bcp->first)
-				bcp->last->next = bp;
-			else
-				bcp->first = bp;
-			bcp->last = bp;
-			bcp->made++;
-			bp++;
-		}
-	} else {
-		/*
-		 *  create a page worth of new blocks
-		 */
-		n = BY2PG/bcp->size;
-		cp = (uchar *)(page->va);
-		
-		while(n-- > 0){
-			/*
-			 *  upgrade a level 0 block
-			 */
-			bp = allocb(0);
-			qlock(bclass);
-			bclass->made--;
-			bcp->made++;
-			bp->flags = bcp - bclass;
-			qunlock(bclass);
-
-			/*
-			 *  tack on the data area
-			 */
-			bp->base = bp->rptr = bp->wptr = cp;
-			cp += bcp->size;
-			bp->lim = cp;
-			if(bcp->first)
-				bcp->last->next = bp;
-			else
-				bcp->first = bp;
-			bcp->last = bp;
-		}
-	}
-	return 0;
-}
-
-/*
  *  allocate a block
  */
 Block *
 allocb(ulong size)
 {
 	Block *bp;
-	Bclass *bcp;
+	uchar *data;
 
-	/*
-	 *  map size to class
-	 */
-	for(bcp=bclass; bcp->size<size && bcp<&bclass[Nclass-1]; bcp++)
-		;
+	bp = smalloc(sizeof(Block)+size);
 
-	/*
-	 *  look for a free block
-	 */
-	qlock(bcp);
-	while(bcp->first == 0){
-		if(waserror()){
-			qunlock(bcp);
-			nexterror();
-		}
-		newblock(bcp);
-		poperror();
-	}
-	bp = bcp->first;
-	bcp->first = bp->next;
-	if(bcp->first == 0)
-		bcp->last = 0;
-	qunlock(bcp);
-
-	/*
-	 *  return an empty block
-	 */
-	bp->flags = bcp - bclass;
-	bp->rptr = bp->wptr = bp->base;
+	data = (uchar*)bp + sizeof(Block);
+	bp->rptr = data;
+	bp->wptr = data;
+	bp->base = data;
+	bp->lim = data+size;
+	bp->flags = 0;
 	bp->next = 0;
 	bp->list = 0;
 	bp->type = M_DATA;
@@ -219,31 +100,14 @@ allocb(ulong size)
 void
 freeb(Block *bp)
 {
-	ulong mark[1];
-	Block *nbp;
-	Bclass *bcp;
-	int x;
-	ulong pc;
+	Block *next;
 
-#ifdef asdf
-	pc = getcallerpc(((uchar*)&bp) - sizeof(bp));
-	if((bp->flags&S_CLASS) >= Nclass)		/* Check for double free */
-		panic("freeb class last(%lux) this(%lux)", bp->pc, pc);
-	bp->pc = pc;
-#endif asdf
-	for(; bp; bp = nbp){
-		bcp = &bclass[bp->flags & S_CLASS];
-		bp->flags = bp->flags|S_CLASS;		/* Check for double free */
-		qlock(bcp);
-		bp->rptr = bp->wptr = 0;
-		if(bcp->first)
-			bcp->last->next = bp;
-		else
-			bcp->first = bp;
-		bcp->last = bp;
-		nbp = bp->next;
-		bp->next = 0;
-		qunlock(bcp);
+	while(bp){
+		bp->rptr = 0;
+		bp->wptr = 0;
+		next = bp->next;
+		free(bp);
+		bp = next;	
 	}
 }
 
@@ -1497,7 +1361,6 @@ dumpqueues(void)
 	Queue *q;
 	int count, qcount;
 	Block *bp;
-	Bclass *bcp;
 
 	print("\n");
 	qcount = 0;
@@ -1516,11 +1379,4 @@ dumpqueues(void)
 		dumpblocks(WR(q), 'W');
 	}
 	print("%d queues\n", qcount);
-	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){
-		for(count = 0, bp = bcp->first; bp; count++, bp = bp->next)
-			;
-		print("%d byte blocks: %d made %d free\n", bcp->size,
-			bcp->made, count);
-	}
-	print("\n");
 }

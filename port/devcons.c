@@ -228,6 +228,9 @@ echo(Rune r, char *buf, int n)
 		switch(r){
 		case 0x14:
 			break;	/* pass it on */
+		case 'x':
+			xsummary();
+			break;
 		case 'd':
 			consdebug();
 			return;

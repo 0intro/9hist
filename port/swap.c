@@ -26,7 +26,7 @@ int	ioptr;
 void
 swapinit(void)
 {
-	swapalloc.swmap = ialloc(conf.nswap, 0);
+	swapalloc.swmap = xalloc(conf.nswap);
 	swapalloc.top = &swapalloc.swmap[conf.nswap];
 	swapalloc.alloc = swapalloc.swmap;
 

@@ -62,7 +62,8 @@ schedinit(void)		/* never returns */
 		u = 0;
 		if(p->state == Running)
 			ready(p);
-		else if(p->state == Moribund) {
+		else
+		if(p->state == Moribund) {
 			p->pid = 0;
 			/* 
 			 * Holding locks from pexit:
@@ -244,7 +245,7 @@ procinit0(void)		/* bad planning - clashes with devproc.c */
 	Proc *p;
 	int i;
 
-	procalloc.free = ialloc(conf.nproc*sizeof(Proc), 0);
+	procalloc.free = xalloc(conf.nproc*sizeof(Proc));
 	procalloc.arena = procalloc.free;
 
 	p = procalloc.free;

@@ -5,8 +5,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	"fcall.h"
-
 enum
 {
 	Qlisten=	1,

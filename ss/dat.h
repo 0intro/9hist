@@ -69,6 +69,7 @@ struct Conf
 	ulong	nimage;		/* number of page cache image headers */
 	ulong 	npagetab;	/* number of pte tables */
 	ulong	nswap;		/* number of swap blocks */
+	ulong	upages;		/* number of user pages */
 	int	nalarm;		/* alarms */
 	int	nchan;		/* channels */
 	int	nenv;		/* distinct environment values */
@@ -92,7 +93,6 @@ struct Conf
 	int	npipe;		/* number of pipes */
 	int	nservice;	/* number of services */
 	int	nfsyschan;	/* number of filsys open channels */
-	ulong	maxialloc;	/* maximum bytes used by ialloc */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	ulong	ipif;		/* Ip protocol interfaces */
 	ulong	ip;		/* Ip conversations per interface */

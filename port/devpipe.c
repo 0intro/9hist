@@ -6,7 +6,6 @@
 #include	"../port/error.h"
 
 #include	"devtab.h"
-#include	"fcall.h"
 
 typedef struct Pipe	Pipe;
 

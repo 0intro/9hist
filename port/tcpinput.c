@@ -11,25 +11,10 @@ int tcpdbg = 0;
 #define DPRINT	if(tcpdbg) print
 #define LPRINT  if(tcpdbg) print
 
-QLock	reseqlock;
-Reseq	*reseqfree;
-
 char *tcpstate[] = {
 	"Closed", 	"Listen", 	"Syn_sent", "Syn_received",
 	"Established", 	"Finwait1",	"Finwait2", "Close_wait",
 	"Closing", 	"Last_ack", 	"Time_wait" };
-
-void
-tcpinit(void)
-{
-	Reseq *r;
-
-	reseqfree = ialloc(sizeof(Reseq)*Nreseq, 0);
-	for(r = reseqfree; r < &reseqfree[Nreseq-1]; r++)
-		r->next = r+1;
-
-	r->next = 0;
-}
 
 void
 reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
@@ -624,20 +609,10 @@ void
 add_reseq(Tcpctl *tcb, char tos, Tcp *seg, Block *bp, ushort length)
 {
 	Reseq *rp, *rp1;
-	static int dropped;
 
-	qlock(&reseqlock);
-	if(!reseqfree) {
-		qunlock(&reseqlock);
-		if((dropped++%256) == 0)
-			print("tcp: no resequence descriptors\n");
-		freeb(bp);
+	rp = malloc(sizeof(Reseq));
+	if(rp == 0)
 		return;
-	}
-
-	rp = reseqfree;
-	reseqfree = rp->next;
-	qunlock(&reseqlock);
 
 	rp->seg = *seg;
 	rp->tos = tos;
@@ -677,10 +652,7 @@ get_reseq(Tcpctl *tcb, char *tos, Tcp *seg, Block **bp, ushort *length)
 	*bp = rp->bp;
 	*length = rp->length;
 
-	qlock(&reseqlock);
-	rp->next = reseqfree;
-	reseqfree = rp;
-	qunlock(&reseqlock);
+	free(rp);
 }
 
 int
@@ -874,11 +846,7 @@ close_self(Ipconv *s, char reason[])
 	for(rp = tcb->reseq;rp != 0;rp = rp1){
 		rp1 = rp->next;
 		freeb(rp->bp);
-
-		qlock(&reseqlock);
-		rp->next = reseqfree;
-		reseqfree = rp;
-		qunlock(&reseqlock);
+		free(rp);
 	}
 
 	tcb->reseq = 0;

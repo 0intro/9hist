@@ -7,8 +7,6 @@
 #define	DEVTAB
 #include	"devtab.h"
 
-#include	"fcall.h"
-
 extern ulong	kerndate;
 
 int

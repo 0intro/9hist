@@ -136,25 +136,31 @@ purgepid(int pid)
 	flushcontext();
 }
 
-
 void
 mmuinit(void)
 {
-	ulong l, i, j, c, pte;
+	ulong ktop, l, i, j, c, pte;
 
+	/*
+	 * TEMP: just map the first 4M of bank 0 for the kernel - philw
+	 */
+	ktop = 4*1024*1024;
 	/*
 	 * First map lots of memory as kernel addressable in all contexts
 	 */
 	i = 0;		/* used */
 	for(c=0; c<NCONTEXT; c++)
-		for(i=0; i<conf.maxialloc/BY2SEGM; i++)
+		for(i=0; i < ktop/BY2SEGM; i++)
 			putcxsegm(c, KZERO+i*BY2SEGM, i);
+
 	kmapalloc.lowpmeg = i;
+
 	/*
 	 * Make sure cache is turned on for kernel
 	 */
 	pte = PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
-	for(i=0; i<conf.maxialloc/BY2PG; i++)
+	ktop /= BY2PG;
+	for(i=0; i < ktop; i++)
 		putpmeg(KZERO+i*BY2PG, pte+i);
 
 	/*
@@ -163,6 +169,7 @@ mmuinit(void)
 	putsegm(INVALIDSEGM, INVALIDPMEG);
 	for(i=0; i<PG2SEGM; i++)
 		putpmeg(INVALIDSEGM+i*BY2PG, INVALIDPTE);
+
 	for(c=0; c<NCONTEXT; c++){
 		putcontext(c);
 		putsegm(INVALIDSEGM, INVALIDPMEG);
@@ -317,7 +324,8 @@ kmapinit(void)
 	KMap *k;
 	int i;
 
-print("low pmeg %d high pmeg %d\n", kmapalloc.lowpmeg, TOPPMEG);
+	print("low pmeg %d high pmeg %d\n", kmapalloc.lowpmeg, TOPPMEG);
+
 	kmapalloc.free = 0;
 	k = kmapalloc.arena;
 	for(i=0; i<(IOEND-IOSEGM)/BY2PG; i++,k++){

@@ -23,6 +23,8 @@ int	kbdstate(IOQ*, int);
 void	kbdclock(void);
 void	kbdrepeat(int);
 KMap*	kmap(Page*);
+#define KADDR(a)	((void*)((ulong)(a)|KZERO))
+#define PADDR(a)	((ulong)(a)&~KZERO)
 void	kmapinit(void);
 KMap*	kmappa(ulong, ulong);
 KMap*	kmapperm(Page*);

@@ -3,18 +3,25 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#define	nil	((void*)0)
-#define datoff	((int)&((Xhdr*)0)->data)
+
+#define	nil		((void*)0)
+#define datoff		((ulong)&((Xhdr*)0)->data)
+#define bdatoff		((ulong)&((Bucket*)0)->data)
 
 enum
 {
-	Nhole	= 128,
-	Magic	= 0xDeadBabe,
+	Maxpow		= 16,
+	Nhole		= 128,
+	Magichole	= 0xDeadBabe,
+	Magic2n		= 0xBadC0c0a,
 };
 
 typedef struct Hole Hole;
 typedef struct Xalloc Xalloc;
 typedef struct Xhdr Xhdr;
+typedef struct Bucket Bucket;
+typedef struct Arena Arena;
+
 struct Hole
 {
 	ulong	addr;
@@ -38,62 +45,95 @@ struct Xalloc
 	Hole	*table;
 };
 
-Xalloc	xlists;
+struct Bucket
+{
+	int	size;
+	int	magic;
+	Bucket	*next;
+	char	data[1];
+};
+
+struct Arena
+{
+	Lock;
+	Bucket	*btab[Maxpow];	
+};
+
+static Arena	arena;
+static Xalloc	xlists;
+
+void*
+ialloc(ulong size, int align)
+{
+	ulong p;
+
+	if(align) {
+		size += BY2PG;
+		p = (ulong)xalloc(size);
+		p += BY2PG;
+		p &= ~(BY2PG-1);
+		return (void*)p;
+	}
+
+	return xalloc(size);
+}
+
+void*
+iallocspan(ulong size, int quanta, ulong span)
+{
+	return ialloc(size, quanta);
+}
 
 void
 xinit(void)
 {
+	ulong ktop;
 	Hole *h, *eh;
+	int up, np0, np1;
 
 	eh = &xlists.hole[Nhole-1];
 	for(h = xlists.hole; h < eh; h++)
 		h->link = h+1;
 
-	xlists.flist = h;
-}
+	xlists.flist = xlists.hole;
 
-void
-xhole(ulong addr, ulong size)
-{
-	Hole *h, **l;
+	ktop = PGROUND((ulong)end);
+	ktop = PADDR(ktop);
+	conf.npage0 -= ktop/BY2PG;
+	conf.base0 += ktop;
 
-	lock(&xlists);
-	l = &xlists.table;
-	for(h = *l; h; h = h->link) {
-		if(h->top == addr) {
-			h->size += size;
-			h->top = h->addr+h->size;
-			unlock(&xlists);
-			return;
-		}
-		if(h->addr > addr)
-			break;
-		l = &h->link;
-	}
+	up = conf.upages;
+	np1 = up;
+	if(np1 > conf.npage1)
+		np1 = conf.npage1;
 
-	if(xlists.flist == nil) {
-		print("xfree: no free holes, leaked %d bytes\n", size);
-		unlock(&xlists);
-		return;
-	}
+	palloc.p1 = conf.base1;
+	conf.base1 += np1*BY2PG;
+	conf.npage1 -= np1;
+	xhole(conf.base1, conf.npage1*BY2PG);
+	up -= np1;
 
-	h = xlists.flist;
-	xlists.flist = h->link;
-	h->addr = addr;
-	h->top = addr+size;
-	h->size = size;
-	h->link = *l;
-	*l = h;
-	unlock(&xlists);
+	np0 = up;
+	if(np0 > conf.npage0)
+		np0 = conf.npage0;
+
+	palloc.p0 = conf.base0;
+	conf.base0 += np0*BY2PG;
+	conf.npage0 -= np0;
+	xhole(conf.base0, conf.npage0*BY2PG);
+
+	palloc.np0 = np0;
+	palloc.np1 = np1;
 }
 
 void*
 xalloc(ulong size)
 {
-	Hole *h, **l;
 	Xhdr *p;
+	Hole *h, **l;
 
-	size += sizeof(Xhdr);
+	size += BY2WD + sizeof(Xhdr);
+	size &= ~(BY2WD-1);
 
 	lock(&xlists);
 	l = &xlists.table;
@@ -107,7 +147,9 @@ xalloc(ulong size)
 				h->link = xlists.flist;
 				xlists.flist = h;
 			}
-			p->magix = Magic;
+			p = KADDR(p);
+			memset(p, 0, size);
+			p->magix = Magichole;
 			p->size = size;
 			unlock(&xlists);
 			return p->data;
@@ -124,10 +166,64 @@ xfree(void *p)
 	Xhdr *x;
 
 	x = (Xhdr*)((ulong)p - datoff);
-	if(x->magix != Magic)
+	if(x->magix != Magichole)
 		panic("xfree");
 
-	xhole((ulong)x, x->size);
+	xhole(PADDR(x), x->size);
+}
+
+void
+xhole(ulong addr, ulong size)
+{
+	ulong top;
+	Hole *h, *c, **l;
+
+	if(size == 0)
+		return;
+
+	top = addr + size;
+	lock(&xlists);
+	l = &xlists.table;
+	for(h = *l; h; h = h->link) {
+		if(h->top == addr) {
+			h->size += size;
+			h->top = h->addr+h->size;
+			c = h->link;
+			if(c && h->top == c->addr) {
+				h->top += c->size;
+				h->size += c->size;
+				h->link = c->link;
+				c->link = xlists.flist;
+				xlists.flist = c;
+			}
+			unlock(&xlists);
+			return;
+		}
+		if(h->addr > addr)
+			break;
+		l = &h->link;
+	}
+	if(h && top == h->addr) {
+		h->addr -= size;
+		h->size += size;
+		unlock(&xlists);
+		return;
+	}
+
+	if(xlists.flist == nil) {
+		unlock(&xlists);
+		print("xfree: no free holes, leaked %d bytes\n", size);
+		return;
+	}
+
+	h = xlists.flist;
+	xlists.flist = h->link;
+	h->addr = addr;
+	h->top = top;
+	h->size = size;
+	h->link = *l;
+	*l = h;
+	unlock(&xlists);
 }
 
 void
@@ -143,8 +239,74 @@ xsummary(void)
 	print("%d holes free\n", i);
 	i = 0;
 	for(h = xlists.table; h; h = h->link) {
-		print("%lux %lux %d\n", h->addr, h->top, h->size);
+		print("%.8lux %.8lux %d\n", h->addr, h->top, h->size);
 		i += h->size;
 	}
 	print("%d bytes free\n", i);
+}
+
+void*
+malloc(ulong size)
+{
+	int pow;
+	Bucket *bp;
+
+	for(pow = 1; pow < Maxpow; pow++)
+		if(size <= (1<<pow))
+			goto good;
+
+	return nil;
+good:
+	/* Allocate off this list */
+	lock(&arena);
+	bp = arena.btab[pow];
+	if(bp) {
+		arena.btab[pow] = bp->next;
+		unlock(&arena);
+
+		if(bp->magic != 0)
+			panic("malloc");
+
+		bp->magic = Magic2n;
+
+		memset(bp->data, 0,  size);
+		return  bp->data;
+	}
+	unlock(&arena);
+	size = sizeof(Bucket)+(1<<pow);
+	bp = xalloc(size);
+	if(bp == nil)
+		return nil;
+
+	bp->size = pow;
+	bp->magic = Magic2n;
+	return bp->data;
+}
+
+void*
+smalloc(ulong size)
+{
+	void *p;
+
+	p = malloc(size);
+	if(p == nil)
+		panic("smalloc should sleep");
+	return p;
+}
+
+void
+free(void *ptr)
+{
+	Bucket *bp, **l;
+
+	bp = (Bucket*)((ulong)ptr - bdatoff);
+	if(bp->magic != Magic2n)
+		panic("free");
+
+	bp->magic = 0;
+	lock(&arena);
+	l = &arena.btab[bp->size];
+	bp->next = *l;
+	*l = bp;
+	unlock(&arena);
 }

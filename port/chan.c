@@ -91,7 +91,6 @@ newchan(void)
 			c->mnt = 0;
 			c->stream = 0;
 			c->aux = 0;
-			c->mntindex = 0;
 			c->mchan = 0;
 			c->mqid = (Qid){0, 0};
 			return c;
@@ -178,7 +177,7 @@ mount(Chan *new, Chan *old, int flag)
 	}
 
 	if(m == 0) {
-		m = newmnthead();
+		m = smalloc(sizeof(Mhead));
 		m->from = old;
 		incref(old);
 		m->hash = *l;
@@ -238,7 +237,7 @@ unmount(Chan *mnt, Chan *mounted)
 		wunlock(&pg->ns);
 		mountfree(m->mount);
 		close(m->from);
-		mntheadfree(m);
+		free(m);
 		return;
 	}
 
@@ -252,7 +251,7 @@ unmount(Chan *mnt, Chan *mounted)
 				*l = m->hash;
 				wunlock(&pg->ns);
 				close(m->from);
-				mntheadfree(m);
+				free(m);
 				return;
 			}
 			wunlock(&pg->ns);

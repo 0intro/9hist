@@ -5,73 +5,8 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-Pgrps pgrpalloc;
-
-struct
-{
-	Lock;
-	Egrp	*free;
-}egrpalloc;
-
-struct
-{
-	Lock;
-	Fgrp	*free;
-}fgrpalloc;
-
-struct{
-	Lock;
-	Mount	*free;
-	Mhead	*mhfree;
-	ulong	mountid;
-}mountalloc;
-
-void
-grpinit(void)
-{
-	int i;
-	Pgrp *p;
-	Egrp *e, *ee;
-	Fgrp *f, *fe;
-	Mount *m, *em;
-	Mhead *hm, *hem;
-	Crypt *cr;
-
-	i = conf.npgrp*sizeof(Crypt);
-	cr = ialloc(i, 0);
-	pgrpalloc.cryptbase = (ulong)cr;
-	pgrpalloc.crypttop = (ulong)cr + i;
-	pgrpalloc.arena = ialloc(conf.npgrp*sizeof(Pgrp), 0);
-	pgrpalloc.free = pgrpalloc.arena;
-
-	p = pgrpalloc.free;
-	for(i=0; i<conf.npgrp; i++,p++) {
-		p->index = i;
-		p->next = p+1;
-		p->crypt = cr++;
-	}
-	p[-1].next = 0;
-
-	egrpalloc.free = ialloc(conf.npgrp*sizeof(Egrp), 0);
-	ee = &egrpalloc.free[conf.npgrp];
-	for(e = egrpalloc.free; e < ee; e++) {
-		e->next = e+1;
-		e->etab = ialloc(conf.npgenv*sizeof(Env), 0);
-	}
-	e[-1].next = 0;
-
-	fgrpalloc.free = ialloc(conf.nproc*sizeof(Fgrp), 0);
-	fe = &fgrpalloc.free[conf.nproc-1];
-	for(f = fgrpalloc.free; f < fe; f++)
-		f->next = f+1;
-	f->next = 0;
-}
-
-Pgrp*
-pgrptab(int i)
-{
-	return &pgrpalloc.arena[i];
-}
+static Ref pgrpid;
+static Ref mountid;
 
 void
 pgrpnote(ulong noteid, char *a, long n, int flag)
@@ -109,22 +44,12 @@ newpgrp(void)
 {
 	Pgrp *p;
 
-	for(;;) {
-		lock(&pgrpalloc);
-		if(p = pgrpalloc.free){
-			pgrpalloc.free = p->next;
-			p->ref = 1;
-			p->pgrpid = ++pgrpalloc.pgrpid;
-			memset(p->crypt, 0, sizeof *p->crypt);
-			memset(p->rendhash, 0, sizeof(p->rendhash));
-			memset(p->mnthash, 0, sizeof(p->mnthash));
-			unlock(&pgrpalloc);
-			return p;
-		}
-		unlock(&pgrpalloc);
-		resrcwait("no pgrps");
-	}
-	return 0;		/* not reached */
+	p = smalloc(sizeof(Pgrp)+sizeof(Crypt));
+	p->ref = 1;
+	/* This needs to have its own arena for protection */
+	p->crypt = (Crypt*)((uchar*)p+sizeof(Pgrp));
+	p->pgrpid = incref(&pgrpid);
+	return p;
 }
 
 Egrp*
@@ -132,19 +57,12 @@ newegrp(void)
 {
 	Egrp *e;
 
-	for(;;) {
-		lock(&egrpalloc);
-		if(e = egrpalloc.free) {
-			egrpalloc.free = e->next;
-			e->ref = 1;
-			e->nenv = 0;
-			unlock(&egrpalloc);
-			return e;
-		}
-		unlock(&egrpalloc);
-		resrcwait("no envgrps");
-	}
-	return 0;		/* not reached */
+	e = smalloc(sizeof(Egrp)+sizeof(Env)*conf.npgenv);
+
+	/* This is a sleazy hack to make malloc work .. devenv need rewriting. */
+	e->etab = (Env*)((uchar*)e+sizeof(Egrp));
+	e->ref = 1;
+	return e;
 }
 
 Fgrp*
@@ -152,20 +70,9 @@ newfgrp(void)
 {
 	Fgrp *f;
 
-	for(;;) {
-		lock(&fgrpalloc);
-		if(f = fgrpalloc.free) {
-			fgrpalloc.free = f->next;
-			f->ref = 1;
-			f->maxfd = 0;
-			memset(f->fd, 0, sizeof(f->fd));
-			unlock(&fgrpalloc);
-			return f;
-		}
-		unlock(&fgrpalloc);
-		resrcwait("no filegrps");
-	}
-	return 0;		/* not reached */
+	f = smalloc(sizeof(Fgrp));
+	f->ref = 1;
+	return f;
 }
 
 Fgrp*
@@ -221,15 +128,11 @@ closepgrp(Pgrp *p)
 				close(f->from);
 				mountfree(f->mount);
 				next = f->hash;
-				mntheadfree(f);
+				free(f);
 			}
 		}
-
-		lock(&pgrpalloc);
-		p->next = pgrpalloc.free;
-		pgrpalloc.free = p;
 		qunlock(&p->debug);
-		unlock(&pgrpalloc);
+		free(p);
 	}
 }
 
@@ -243,10 +146,8 @@ closeegrp(Egrp *eg)
 		e = eg->etab;
 		for(i=0; i<eg->nenv; i++, e++)
 			envpgclose(e);
-		lock(&egrpalloc);
-		eg->next = egrpalloc.free;
-		egrpalloc.free = eg;
-		unlock(&egrpalloc);
+
+		free(eg);
 	}
 }
 
@@ -261,10 +162,7 @@ closefgrp(Fgrp *f)
 			if(c = f->fd[i])
 				close(c);
 
-		lock(&fgrpalloc);
-		f->next = fgrpalloc.free;
-		fgrpalloc.free = f;
-		unlock(&fgrpalloc);
+		free(f);
 	}
 }
 
@@ -274,31 +172,12 @@ newmount(Mhead *mh, Chan *to)
 {
 	Mount *m, *f, *e;
 
-	for(;;) {
-		lock(&mountalloc);
-		if(m = mountalloc.free){		/* assign = */
-			mountalloc.free = m->next;
-			m->mountid = ++mountalloc.mountid;
-			unlock(&mountalloc);
-			m->next = 0;
-			m->head = mh;
-			m->to = to;
-			incref(to);
-			return m;
-		}
-		unlock(&mountalloc);
-
-		m = (Mount*)VA(kmap(newpage(0, 0, 0)));
-		e = &m[(BY2PG/sizeof(Mount))-1];
-		for(f = m; f < e; f++)
-			f->next = f+1;
-
-		lock(&mountalloc);
-		e->next = mountalloc.free;
-		mountalloc.free = m;
-		unlock(&mountalloc);
-	}
-	return 0;	/* not reached */
+	m = smalloc(sizeof(Mount));
+	m->to = to;
+	m->head = mh;
+	incref(to);
+	m->mountid = incref(&mountid);
+	return m;
 }
 
 void
@@ -331,7 +210,7 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	for(h = from->mnthash; h < e; h++) {
 		l = tom++;
 		for(f = *h; f; f = f->hash) {
-			mh = newmnthead();
+			mh = smalloc(sizeof(Mhead));
 			mh->from = f->from;
 			incref(mh->from);
 			*l = mh;
@@ -347,44 +226,6 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	runlock(&from->ns);
 }
 
-Mhead *
-newmnthead(void)
-{
-	Mhead *mh, *f, *e;
-
-	for(;;) {
-		lock(&mountalloc);
-		if(mh = mountalloc.mhfree) {		/* Assign '=' */
-			mountalloc.mhfree = mh->hash;
-			unlock(&mountalloc);
-			mh->hash = 0;
-			mh->mount = 0;
-			return mh;
-		}
-		unlock(&mountalloc);
-
-		mh = (Mhead*)VA(kmap(newpage(0, 0, 0)));
-		e = &mh[(BY2PG/sizeof(Mhead))-1];
-		for(f = mh; f < e; f++)
-			f->hash = f+1;
-
-		lock(&mountalloc);
-		e->hash = mountalloc.mhfree;
-		mountalloc.mhfree = mh;
-		unlock(&mountalloc);
-	}
-	return 0;		/* not reached */
-}
-
-void
-mntheadfree(Mhead *mh)
-{
-	lock(&mountalloc);
-	mh->hash = mountalloc.mhfree;
-	mountalloc.mhfree = mh;
-	unlock(&mountalloc);
-}
-
 void
 mountfree(Mount *m)
 {
@@ -392,9 +233,8 @@ mountfree(Mount *m)
 
 	for(f = m; f->next; f = f->next)
 		close(f->to);
+
 	close(f->to);
-	lock(&mountalloc);
-	f->next = mountalloc.free;
-	mountalloc.free = m;
-	unlock(&mountalloc);
+
+	free(f);
 }
