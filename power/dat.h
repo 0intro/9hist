@@ -345,7 +345,8 @@ struct User
 	 * I/O point for bit3 interface.  This is the easiest way to allocate
 	 * them, but not the prettiest or most general.
 	 */
-	Bit3msg	bit3;
+	Bit3msg	kbit3;
+	Bit3msg	ubit3;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

@@ -11,6 +11,7 @@
 static struct
 {
 	QLock;
+	QLock	buflock;
 	int	open;
 	char	buf[10*1024];
 }bit3;
@@ -89,7 +90,7 @@ bit3open(Chan *c, int omode)
 {
 	Bit3msg *bp;
 
-	bp = &((User*)(u->p->upage->pa|KZERO))->bit3;
+	bp = &((User*)(u->p->upage->pa|KZERO))->kbit3;
 	if(c->qid!=1 || omode!=ORDWR)
 		error(0, Eperm);
 	qlock(&bit3);
@@ -134,26 +135,40 @@ bit3read(Chan *c, void *buf, long n)
 	Bit3msg *bp;
 	int docpy;
 
-	bp = &((User*)(u->p->upage->pa|KZERO))->bit3;
-	bp->rcount = 0;
 	switch(c->qid){
 	case 1:
 		if(n > sizeof bit3.buf)
 			error(0, Egreg);
-		docpy = 0;
-		qlock(&bit3);
-		if((((ulong)buf)&(KSEGM|3)) == KSEG0)
+		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
+			/*
+			 *  use supplied buffer, no need to lock for reply
+			 */
+			bp = &((User*)(u->p->upage->pa|KZERO))->kbit3;
+			bp->rcount = 0;
+			qlock(&bit3);
 			bit3send(bp, READ, buf, n);
-		else{
+			qunlock(&bit3);
+			do
+				n = bp->rcount;
+			while(n == 0);
+		}else{
+			/*
+			 *  use bit3 buffer.  lock the buffer till the reply
+			 */
+			bp = &((User*)(u->p->upage->pa|KZERO))->ubit3;
+			bp->rcount = 0;
+			qlock(&bit3.buflock);
+
+			qlock(&bit3);
 			bit3send(bp, READ, bit3.buf, n);
-			docpy = 1;
-		}
-		qunlock(&bit3);
-		do
-			n = bp->rcount;
-		while(n == 0);
-		if(docpy)
+			qunlock(&bit3);
+			do
+				n = bp->rcount;
+			while(n == 0);
 			memcpy(buf, bit3.buf, n);
+
+			qunlock(&bit3.buflock);
+		}
 		return n;
 	}
 	error(0, Egreg);
@@ -165,19 +180,27 @@ bit3write(Chan *c, void *buf, long n)
 {
 	Bit3msg *bp;
 
-	bp = &((User*)(u->p->upage->pa|KZERO))->bit3;
 	switch(c->qid){
 	case 1:
 		if(n > sizeof bit3.buf)
 			error(0, Egreg);
-		qlock(&bit3);
-		if((((ulong)buf)&(KSEGM|3)) == KSEG0)
+		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
+			bp = &((User*)(u->p->upage->pa|KZERO))->kbit3;
+			qlock(&bit3);
 			bit3send(bp, WRITE, buf, n);
-		else{
+			qunlock(&bit3);
+		}else{
+			bp = &((User*)(u->p->upage->pa|KZERO))->ubit3;
+			qlock(&bit3.buflock);
+
+			qlock(&bit3);
 			memcpy(bit3.buf, buf, n);
 			bit3send(bp, WRITE, bit3.buf, n);
+			do; while(*BIT3ADDR);
+			qunlock(&bit3);
+
+			qunlock(&bit3.buflock);
 		}
-		qunlock(&bit3);
 		return n;
 	}
 	error(0, Egreg);
