@@ -177,7 +177,7 @@ mntattach(char *muxattach)
 
 	/*
 	 * Detect a recursive mount for a mount point served by exportfs.
-	 * If CHDIR is clear in the returned qid the foreign server is
+	 * If CHDIR is clear in the returned qid, the foreign server is
 	 * requesting the mount point be folded into the connection
 	 * to the exportfs. In this case the remote mount driver does
 	 * the multiplexing.

@@ -594,21 +594,20 @@ noted(Ureg *kur, Ureg **urp, ulong arg0)
 	up->notified = 0;
 
 	nur = up->ureg;
+
+	oureg = (ulong)nur;
+	if(oureg>=USTKTOP || oureg<USTKTOP-USTKSIZE
+	|| (oureg & (BY2V-1))
+	|| !okaddr((ulong)oureg-BY2WD, BY2WD+sizeof(Ureg), 0)){
+		pprint("bad ureg in noted or call to noted() when not notified\n");
+		qunlock(&up->debug);
+		pexit("Suicide", 0);
+	}
+
 	if(!validstatus(kur->status, nur->status)) {
 		qunlock(&up->debug);
 		pprint("bad noted ureg status %lux\n", nur->status);
 		pexit("Suicide", 0);
-	}
-
-	oureg = (ulong)nur;
-	if(oureg){
-		if(oureg>=USTKTOP || oureg<USTKTOP-USTKSIZE
-		|| (oureg & (BY2V-1))
-		|| !okaddr((ulong)oureg-BY2WD, BY2WD+sizeof(Ureg), 0)){
-			pprint("suicide: bad up->ureg in noted\n");
-			qunlock(&up->debug);
-			pexit("Suicide", 0);
-		}
 	}
 
 	memmove(*urp, up->ureg, sizeof(Ureg));
