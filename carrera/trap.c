@@ -329,7 +329,6 @@ intr(Ureg *ur)
 		iprint("i386ACK #%lux\n", devint);
 		cause &= ~INTR4;
 	}
-
 	if(cause & INTR7) {
 		clock(ur);
 		cause &= ~INTR7;

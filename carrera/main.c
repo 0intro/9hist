@@ -248,7 +248,7 @@ iomapinit(void)
 
 	/* Set the translation table */
 	IO(ulong, Ttbr) = PADDR(t);
-	IO(ulong, Tlrb) = (Ntranslation-1)*sizeof(Tte);
+	IO(ulong, Tlrb) = Ntranslation*sizeof(Tte);
 
 	/* Invalidate the old entries */
 	IO(ulong, Tir) = 0;
