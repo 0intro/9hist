@@ -9,9 +9,10 @@
 #define	LED		((char*)0xBF200001)
 enum
 {
-	LEDhotintr=	1<<0,
-	LEDclock=	1<<1,
-	LEDfault=	1<<2,
+	LEDtrapmask=	0xf<<0,
+	LEDhotintr=	1<<4,
+	LEDclock=	1<<5,
+	LEDfault=	1<<6,
 	LEDpulse=	1<<7,
 };
 #define LEDON(x) 	(m->ledval &= ~x, *LED = m->ledval)

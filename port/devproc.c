@@ -454,7 +454,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		memmove(buf, va, n);
 		buf[n] = 0;
 		if(!postnote(p, 0, buf, NUser))
-			exhausted("notes");
+			error("note not posted");
 		break;
 
 	default:

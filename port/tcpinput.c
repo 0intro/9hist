@@ -390,13 +390,15 @@ tcp_input(Ipconv *ipc, Block *bp)
 		else if(seq_gt(tcb->rcv.nxt, tcb->rcv.up))
 			tcb->rcv.up = tcb->rcv.nxt;
 
-		if(length == 0)
-			freeb(bp);
-		else {
+		if(length == 0){
+			if(bp)
+				freeb(bp);
+		} else {
 			switch(tcb->state){
 			default:
 				/* Ignore segment text */
-				freeb(bp);
+				if(bp)
+					freeb(bp);
 				break;
 
 			case Syn_received:

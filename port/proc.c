@@ -394,7 +394,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(p->upage == 0){
 		if(dolock)
 			qunlock(&p->debug);
-		error(Eprocdied);
+		return 0;
 	}
 
 	SET(k);

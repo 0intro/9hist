@@ -81,6 +81,7 @@ trap(Ureg *ur)
 
 	SET(x);
 	ecode = EXCCODE(ur->cause);
+	LEDON(ecode);
 	user = ur->status&KUP;
 	if(u) {
 		u->p->pc = ur->pc;		/* BUG */
@@ -175,6 +176,7 @@ trap(Ureg *ur)
 			ur->status |= CU1;
 		}
 	}
+	LEDOFF(ecode);
 }
 
 void
