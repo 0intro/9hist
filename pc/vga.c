@@ -108,16 +108,18 @@ VGAmode mode12 =
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0f,
 	0xff,
 	/* attribute */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07,
-	0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
-	0x01, 0x07, 0x0f, 0x00, 0x00,
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0d, 0x0f,
+	0x01, 0x10, 0x0f, 0x00, 0x00,
 };
 #endif
+
+#define TESTDELAY	1
 
 void
 genout(int reg, int val)
 {
-delay(1000);
+delay(TESTDELAY);
 	if(reg == 0)
 		outb(EMISCW, val);
 	else if (reg == 1)
@@ -129,7 +131,7 @@ srout(int reg, int val)
 	/*
 	 * needed or the screen goes blank on an ultra VGA card
 	 */
-	delay(1000);
+	delay(TESTDELAY);
 	outb(SRX, reg);
 	outb(SR, val);
 }
@@ -153,7 +155,7 @@ arout(int reg, int val)
 void
 crout(int reg, int val)
 {
-	delay(1000);	/* needed for 16bit VGA path on Ultra SVGA */
+	delay(TESTDELAY);	/* needed for 16bit VGA path on Ultra SVGA */
 	outb(CRX, reg);
 	outb(CR, val);
 }
@@ -224,6 +226,7 @@ screeninit(void)
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
+print("PEL Mask Register = %02x\n", inb(0x3c6)&0xff);
 }
 
 void

@@ -100,6 +100,17 @@ main(int argc, char *argv[])
 	islocal = strcmp(mp->name, "local") == 0;
 
 	/*
+	 *  set user to none
+	 */
+	fd = open("#c/user", OWRITE|OTRUNC);
+	if(fd >= 0){
+		if(write(fd, "none", 4) < 0)
+			warning("write user name");
+		close(fd);
+	}else
+		warning("open #c/user");
+
+	/*
 	 *  connect to the root file system
 	 */
 	fd = (*mp->connect)();
