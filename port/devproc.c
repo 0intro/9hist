@@ -55,7 +55,7 @@ enum
  */
 Dirtab procdir[] =
 {
-	"args",		{Qargs},	0,			0440,
+	"args",	{Qargs},		0,			0660,
 	"ctl",		{Qctl},		0,			0000,
 	"fd",		{Qfd},		0,			0444,
 	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
@@ -508,7 +508,7 @@ procargs(Proc *p, char *buf, int nbuf)
 	a = p->args;
 	n = p->nargs;	
 	for(j = 0; j < nbuf - 1; j += m){
-		if(n == 0)
+		if(n <= 0)
 			break;
 		if(j != 0)
 			buf[j++] = ' ';
@@ -545,7 +545,9 @@ procread(Chan *c, void *va, long n, vlong off)
 
 	switch(QID(c->qid)){
 	case Qargs:
+		qlock(&p->debug);
 		j = procargs(p, p->genbuf, sizeof p->genbuf);
+		qunlock(&p->debug);
 		if(offset >= j)
 			return 0;
 		if(offset+n > j)
@@ -835,9 +837,9 @@ mntscan(Mntwalk *mw, Proc *p)
 static long
 procwrite(Chan *c, void *va, long n, vlong off)
 {
-	int id;
+	int id, m;
 	Proc *p, *t, *et;
-	char *a, buf[ERRMAX];
+	char *a, *arg, buf[ERRMAX];
 	ulong offset = off;
 
 	a = va;
@@ -863,6 +865,23 @@ procwrite(Chan *c, void *va, long n, vlong off)
 		error(Eprocdied);
 
 	switch(QID(c->qid)){
+	case Qargs:
+		if(n == 0)
+			error(Eshort);
+		if(n >= ERRMAX)
+			error(Etoobig);
+		arg = malloc(n+1);
+		if(arg == nil)
+			error(Enomem);
+		memmove(arg, va, n);
+		m = n;
+		if(arg[m-1] != 0)
+			arg[m++] = 0;
+		free(p->args);
+		p->nargs = m;
+		p->args = arg;
+		break;
+
 	case Qmem:
 		if(p->state != Stopped)
 			error(Ebadctl);
