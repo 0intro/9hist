@@ -71,7 +71,7 @@
 #define	SCREENSEGM	0xFFF80000
 #define	SCREENPMEG	0x7E
 #define	ROMSEGM		0xFFE80000
-#define	ROMEND		0xFFEA0000
+#define	ROMEND		0xFFEC0000
 #define	PG2ROM		((ROMEND-ROMSEGM)/BY2PG)
 #define	IOSEGM0		ROMSEGM		/* see mmuinit() */
 #define	NIOSEGM		((SCREENSEGM-ROMSEGM)/BY2SEGM)
@@ -112,6 +112,8 @@
 #define	ENAB		0x40000000		/* ASI 2 */
 #define	ENABCACHE	0x10
 #define	ENABRESET	0x04
+#define	VACLINESZ	16			/* cache line size */
+#define	VACSIZE		(1<<16)			/* total cache size */
 
 /*
  * Virtual addresses
@@ -119,8 +121,10 @@
 #define	VTAG(va)	((va>>22)&0x03F)
 #define	VPN(va)		((va>>13)&0x1FF)
 
-#define	PARAM		((char*)0x40500000)
-#define	TLBFLUSH_	0x01
+/*
+ * Rom addresses
+ */
+#define	PUTCXSEGM	0xFFE80118
 
 /*
  * Address spaces

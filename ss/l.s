@@ -324,7 +324,7 @@ TEXT	putcxsegm(SB), $0
 	MOVW	R7, R8			/* context */
 	MOVW	4(FP), R9		/* segment addr */
 	MOVW	8(FP), R10		/* segment value */
-	MOVW	$0xFFE80118, R7
+	MOVW	$PUTCXSEGM, R7
 	JMPL	(R7)
 	RETURN
 
@@ -388,35 +388,35 @@ TEXT	putwD16(SB), $0
 
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
-	ADD	$(1<<4), R7
+	ADD	$VACLINESZ, R7
 	MOVW	R8, (R7, 0xD)
 	RETURN
 

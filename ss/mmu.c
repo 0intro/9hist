@@ -142,9 +142,9 @@ mmuinit(void)
 	ulong ktop, l, i, j, c, pte;
 
 	/*
-	 * TEMP: just map the first 4M of bank 0 for the kernel - philw
+	 * TEMP: just map the first 8M of bank 0 for the kernel - philw
 	 */
-	ktop = 4*1024*1024;
+	ktop = 8*1024*1024;
 	/*
 	 * First map lots of memory as kernel addressable in all contexts
 	 */
@@ -270,8 +270,8 @@ putpmeg(ulong virt, ulong phys)
 	/*
 	 * Flush old entries from cache
 	 */
-	for(i=0; i<0x100; i+=16)
-		putwD16(virt+(i<<4), 0);
+	for(i=0; i<VACSIZE; i+=16*VACLINESZ)
+		putwD16(virt+i, 0);
 	putw4(virt, phys);
 }
 

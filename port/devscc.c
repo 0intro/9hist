@@ -486,6 +486,21 @@ sccspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	}
 }
 
+void
+sccrawput(int port, int c)
+{
+	SCC *sp = scc[port];
+
+	if(c == '\n') {
+		sccrawput(port, '\r');
+		delay(100);
+	}
+
+	while((*sp->ptr&TxReady)==0)
+		;
+	*sp->data = c;
+}
+
 static void	sccstopen(Queue*, Stream*);
 static void	sccstclose(Queue*);
 static void	sccoput(Queue*, Block*);
