@@ -6,7 +6,6 @@
 #include "io.h"
 #include "ureg.h"
 #include "../port/error.h"
-#include "../port/netif.h"
 
 enum {
 	Ninq		= 255,
