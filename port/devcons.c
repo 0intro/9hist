@@ -891,6 +891,7 @@ setterm(char *f)
 static struct
 {
 	QLock;
+	ulong	randomcount;
 	Rendez	producer;
 	Rendez	consumer;
 	uchar	buf[4096];
@@ -902,7 +903,6 @@ static struct
 	uchar	wakeme;
 } rb;
 
-ulong randomcount;
 
 static int
 rbnotfull(void*)
@@ -920,9 +920,11 @@ genrandom(void*)
 	up->priority = up->basepri;
 
 	for(;;){
+		for(;;)
+			if(++rb.randomcount > 1000000)
+				break;
 		if(!rbnotfull(0))
 			sleep(&rb.producer, rbnotfull, 0);
-		randomcount++;
 	}
 }
 
@@ -940,27 +942,22 @@ randominit(void)
 void
 randomclock(void)
 {
-	uchar *p;
-
-	if(randomcount == 0)
+	if(rb.randomcount == 0 || !rbnotfull(0))
 		return;
 
-	if(!rbnotfull(0))
+	rb.bits = (rb.bits<<2) ^ rb.randomcount;
+	rb.randomcount = 0;
+
+	rb.next++;
+	if(rb.next != 8/2)
 		return;
-
-	rb.bits = (rb.bits<<2) ^ randomcount;
-	randomcount = 0;
-
-	rb.next += 2;
-	if(rb.next != 8)
-		return;
-
 	rb.next = 0;
-	*rb.wp ^= rb.bits ^ *rb.rp;
-	p = rb.wp+1;
-	if(p == rb.ep)
-		p = rb.buf;
-	rb.wp = p;
+
+	*rb.wp ^= rb.bits;
+	if(rb.wp+1 == rb.ep)
+		rb.wp = rb.buf;
+	else
+		rb.wp = rb.wp+1;
 
 	if(rb.wakeme)
 		wakeup(&rb.consumer);
@@ -978,7 +975,6 @@ rbnotempty(void*)
 static ulong
 randomread(uchar *p, ulong n)
 {
-	int i, sofar;
 	uchar *e;
 
 	if(waserror()){
@@ -987,23 +983,19 @@ randomread(uchar *p, ulong n)
 	}
 
 	qlock(&rb);
-	for(sofar = 0; sofar < n; sofar += i){
-		i = rb.wp - rb.rp;
-		if(i == 0){
+	for(e = p + n; p < e; ){
+		if(rb.wp == rb.rp){
 			rb.wakeme = 1;
+			wakeup(&rb.producer);
 			sleep(&rb.consumer, rbnotempty, 0);
 			rb.wakeme = 0;
 			continue;
 		}
-		if(i < 0)
-			i = rb.ep - rb.rp;
-		if(i > n)
-			i = n;
-		memmove(p + sofar, rb.rp, i);
-		e = rb.rp + i;
-		if(e == rb.ep)
-			e = rb.buf;
-		rb.rp = e;
+		*p++ = *rb.rp;
+		if(rb.rp+1 == rb.ep)
+			rb.rp = rb.buf;
+		else
+			rb.rp = rb.rp+1;
 	}
 	qunlock(&rb);
 	poperror();
