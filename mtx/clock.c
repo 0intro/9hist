@@ -28,16 +28,16 @@ delayloopinit(void)
 void
 clockinit(void)
 {
-	/* XXX the hardcoding of these values is WRONG */
+	/* XXX this should not be hard coded! */
 	m->cpuhz = 300000000;
 	m->bushz = 66666666;
 
 	m->dechz = m->bushz/4;			/* true for all 604e */
-	m->tbhz = m->dechz;				/* conjecture; manual says bugger all */
+	m->tbhz = m->dechz;				/* conjecture; manual doesn't say */
 
 	delayloopinit();
 
-	clkreload = m->dechz/HZ-1;		/* decremented at 1/4 bus clock speed */
+	clkreload = m->dechz/HZ-1;
 	putdec(clkreload);
 }
 

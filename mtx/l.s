@@ -49,10 +49,6 @@
 	/* set R2 to correct value */
 	MOVW	$setSB(SB), R2
 
-	/* save SPR(SPRG3), or else we can't go back to firmware! */
-	MOVW SPR(SPRG3), R3
-	MOVW R3, initsprg3(SB)
-
 	/* debugger sets R1 to top of usable memory +1 */
 	MOVW R1, memsize(SB)
 
@@ -70,7 +66,6 @@
 	RETURN		/* not reached */
 
 GLOBL	mach0(SB), $(MAXMACH*BY2PG)
-GLOBL	initsprg3(SB), $4
 GLOBL	memsize(SB), $4
 
 /*
@@ -284,18 +279,6 @@ tas0:
 	SYNC
 	ISYNC
 	RETURN
-
-TEXT	firmware(SB), $0
-	MOVW	initsprg3(SB), R3
-	MOVW	R3, SPR(SPRG3)
-//	MOVW	$0x4000, R3
-//	MOVW	R3, SPR(SPRG3)
-	MOVW	R0, SPR(HID0)
-	MOVW	$MSR_IP, R4
-	MOVW	R4, SPR(SRR1)
-	MOVW	$0xfff00100, R5
-	MOVW	R5, SPR(SRR0)
-	RFI
 
 TEXT	getpvr(SB), $0
 	MOVW	SPR(PVR), R3

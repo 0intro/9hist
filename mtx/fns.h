@@ -16,7 +16,6 @@ void	delayloopinit(void);
 void	eieio(void);
 void	evenaddr(ulong);
 void	faultpower(Ureg*, ulong addr, int read);
-void	firmware(void);
 void	fpinit(void);
 void	fprestore(FPsave*);
 void	fpsave(FPsave*);
@@ -91,7 +90,7 @@ Pcidev* pcimatch(Pcidev*, int, int);
 Pcidev* pcimatchtbdf(int);
 void	pcireset(void);
 void	pcisetbme(Pcidev*);
-#define	procrestore(p)
+#define procrestore(p)
 void	procsave(Proc*);
 void	procsetup(Proc*);
 void	putdec(ulong);
@@ -114,6 +113,7 @@ void	tlbflushall(void);
 void	uartinstall(void);
 void	uartwait(void);	/* debugging */
 #define	userureg(ur) (((ur)->status & MSR_PR) != 0)
+void	watchreset(void);
 void	wbflush(void);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))

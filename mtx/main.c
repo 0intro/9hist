@@ -240,7 +240,7 @@ exit(int ispanic)
 	else
 		delay(1000);
 
-	firmware();
+	watchreset();
 }
 
 /*

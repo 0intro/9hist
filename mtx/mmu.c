@@ -14,16 +14,8 @@
  *	mmu pids, with a background kproc to purge stale pids en mass.
  */
 
-static struct {
-	Lock;
-	ulong	base;		/* start of page table in kernel virtual space */
-	ulong	size;			/* number of bytes in page table */
-	ulong	mask;		/* hash mask */
-	int		slotgen;		/* next pte (byte offset) when pteg is full */
-
-	int		pidlock;
-	int		pidgen;		/* next mmu pid to use */
-} ptab;
+static ulong	ptabsize;			/* number of bytes in page table */
+static ulong	ptabmask;		/* hash mask */
 
 /*
  *	VSID is 24 bits.  3 are required to distinguish segments in user
@@ -42,20 +34,28 @@ mmuinit(void)
 {
 	int lhash, mem;
 	extern ulong memsize;	/* passed in from ROM monitor */
+	ulong v;
 
-	/* heuristically size the hash table */
-	lhash = 10;			/* log of hash table size */
-	mem = (1<<23);
-	while(mem < memsize) {
-		lhash++;
-		mem <<= 1;
+	if(ptabsize == 0) {
+		/* heuristically size the hash table */
+		lhash = 10;
+		mem = (1<<23);
+		while(mem < memsize) {
+			lhash++;
+			mem <<= 1;
+		}
+		ptabsize = (1<<(lhash+6));
+		ptabmask = (1<<lhash)-1;
 	}
 
-	ptab.size = (1<<(lhash+6));
-	ptab.base = (ulong)xspanalloc(ptab.size, 0, ptab.size);
-	putsdr1(PADDR(ptab.base) | ((1<<(lhash-10))-1));
-	ptab.pidgen = PIDBASE;
-	ptab.mask = (1<<lhash)-1;
+	m->ptabbase = (ulong)xspanalloc(ptabsize, 0, ptabsize);
+	putsdr1(PADDR(m->ptabbase) | (ptabmask>>10));
+	m->mmupid = PIDBASE;
+
+	v = getdec();
+	memset((void*)m->ptabbase, 0, ptabsize);
+	v -= getdec();
+	print("memset took %lud cycles, dechz %lud\n", v, m->dechz);
 }
 
 void
@@ -114,14 +114,13 @@ putmmu(ulong va, ulong pa, Page *pg)
 		panic("putmmu pid");
 
 	vsid = VSID(mp, va>>28);
-	hash = (vsid ^ (va>>12)&0xffff) & ptab.mask;
+	hash = (vsid ^ (va>>12)&0xffff) & ptabmask;
 	ptehi = PTE0(1, vsid, 0, va);
 
-	pteg = ptab.base + BY2PTEG*hash;
+	pteg = m->ptabbase + BY2PTEG*hash;
 	p = (ulong*)pteg;
 	ep = (ulong*)(pteg+BY2PTEG);
 	q = nil;
-	ilock(&ptab);
 	tlbflush(va);
 	while(p < ep) {
 		x = p[0];
@@ -135,13 +134,12 @@ if(q[1] == pa) print("putmmu already set pte\n");
 		p += 2;
 	}
 	if(q == nil) {
-		q = (ulong*)(pteg+ptab.slotgen);
-		ptab.slotgen = (ptab.slotgen + BY2PTE) & (BY2PTEG-1);
+		q = (ulong*)(pteg+m->slotgen);
+		m->slotgen = (m->slotgen + BY2PTE) & (BY2PTEG-1);
 	}
 	q[0] = ptehi;
 	q[1] = pa;
 	sync();
-	iunlock(&ptab);
 
 	ctl = &pg->cachectl[m->machno];
 	switch(*ctl) {
@@ -164,14 +162,10 @@ newmmupid(void)
 {
 	int pid;
 
-	/* can't use lock() here as we're called from within sched() */
-	while(!tas(&ptab.pidlock))
-		;
-	pid = ptab.pidgen++;
-	if(pid > PIDMAX)
-		pid = PIDBASE;
-	ptab.pidlock = 0;
-	coherence();
+	pid = m->mmupid++;
+	if(m->mmupid > PIDMAX)
+		panic("ran out of mmu pids");
+//		m->mmupid = PIDBASE;
 	up->mmupid = pid;
 	return pid;
 }

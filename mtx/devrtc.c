@@ -21,8 +21,9 @@ enum{
 	/*
 	 *  register offsets into time of day clock
 	 */
-	NVflags=	0x1ff0,
-	NVctl=	0x1ff8,
+	NVflags=		0x1ff0,
+	NVwatchdog=	0x1ff7,
+	NVctl=		0x1ff8,
 	NVsec,
 	NVmin,
 	NVhour,	
@@ -36,6 +37,14 @@ enum{
 	RTread = (1<<6),
 	RTsign = (1<<5),
 	RTcal = 0x1f,
+
+	/* NVwatchdog */
+	WDsteer = (1<<7),		/* 0 -> intr, 1 -> reset */
+	WDmult = (1<<2),		/* 5 bits of multiplier */
+	WDres0 = (0<<0),		/* 1/16 sec resolution */
+	WDres1 = (1<<0),		/* 1/4 sec resolution */
+	WDres2 = (2<<0),		/* 1 sec resolution */
+	WDres3 = (3<<0),		/* 4 sec resolution */
 
 	Qdir = 0,
 	Qrtc,
@@ -242,6 +251,14 @@ nvget(int offset)
 static void
 nvcksum(void)
 {
+}
+
+void
+watchreset(void)
+{
+	splhi();
+	nvput(NVwatchdog, WDsteer|(1*WDmult)|WDres0);
+	for(;;);
 }
 
 static int
