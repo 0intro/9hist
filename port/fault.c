@@ -247,6 +247,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 void
 faulterror(char *s)
 {
+	print("faulterror %s\n", s);
 	if(u->nerrlab) {
 		postnote(u->p, 1, s, NDebug);
 		error(s);

@@ -45,7 +45,7 @@ enum
 	/* file types */
 	Qdir=		0,
 
-	Maxxfer=	32*512,		/* maximum transfer size/cmd */
+	Maxxfer=	BY2PG,		/* maximum transfer size/cmd */
 	Npart=		8+2,		/* 8 sub partitions, disk, and partition */
 	Nrepl=		64,		/* maximum replacement blocks */
 };
@@ -167,7 +167,7 @@ hardreset(void)
 	int drive;
 
 	hard = xalloc(conf.nhard * sizeof(Drive));
-	hardc = xalloc(((conf.nhard+1)/2 + 1) * sizeof(Controller));
+	hardc = xalloc(((conf.nhard+1)/2) * sizeof(Controller));
 	
 	for(drive = 0; drive < conf.nhard; drive++){
 		dp = &hard[drive];
@@ -285,9 +285,12 @@ hardread(Chan *c, void *a, long n)
 
 	buf = smalloc(Maxxfer);
 	if(waserror()){
+		print("hard read error\n");
 		free(buf);
 		nexterror();
 	}
+
+if(a&KZERO)print("rd k 0x%lux d 0x%lux\n", a, n);
 
 	dp = &hard[DRIVE(c->qid.path)];
 	pp = &dp->p[PART(c->qid.path)];
@@ -326,9 +329,12 @@ hardwrite(Chan *c, void *a, long n)
 	pp = &dp->p[PART(c->qid.path)];
 	buf = smalloc(Maxxfer);
 	if(waserror()){
+		print("hard write error\n");
 		free(buf);
 		nexterror();
 	}
+
+if(a&KZERO)print("wr k 0x%lux d 0x%lux\n", a, n);
 
 	/*
 	 *  if not starting on a sector boundary,
@@ -401,7 +407,7 @@ cmdreadywait(Controller *cp)
 
 	start = m->ticks;
 	while((inb(cp->pbase+Pstatus) & (Sready|Sbusy)) != Sready)
-		if(TK2MS(m->ticks - start) > 1){
+		if(TK2MS(m->ticks - start) > 5){
 			DPRINT("cmdreadywait failed\n");
 			error(Eio);
 		}
@@ -430,7 +436,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 	Controller *cp;
 	long lblk;
 	int cyl, sec, head;
-	int loop;
+	int loop, s;
 
 	if(dp->online == 0)
 		error(Eio);
@@ -451,46 +457,38 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 	lblk = start + pp->start;
 	if(lblk >= pp->end)
 		return 0;
+	if(lblk+len > pp->end)
+		len = pp->end - lblk;
 	cyl = lblk/(dp->sectors*dp->heads);
 	sec = (lblk % dp->sectors) + 1;
 	head = (dp->drive<<4) | ((lblk/dp->sectors) % dp->heads);
 
-	/*
-	 *  go for it
-	 */
 	cp = dp->cp;
 	qlock(cp);
-	cp->sofar = 0;
-	cp->buf = buf;
 	if(waserror()){
 		cp->buf = 0;
 		qunlock(cp);
 		nexterror();
 	}
 
-	/*
-	 *  can't xfer past end of disk
-	 */
-	if(lblk+len > pp->end)
-		len = pp->end - lblk;
-	cp->nsecs = len;
-
 	cmdreadywait(cp);
 
 	/*
-	 *  start the transfer
+	 *  splhi to make command atomic
 	 */
+	s = splhi();
+	cp->sofar = 0;
+	cp->buf = buf;
+	cp->nsecs = len;
 	cp->cmd = cmd;
 	cp->dp = dp;
 	cp->status = 0;
-
-	outb(cp->pbase+Pcount, cp->nsecs-cp->sofar);
+	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, sec);
 	outb(cp->pbase+Pdh, 0x20 | head);
 	outb(cp->pbase+Pcyllsb, cyl);
 	outb(cp->pbase+Pcylmsb, cyl>>8);
 	outb(cp->pbase+Pcmd, cmd);
-
 	if(cmd == Cwrite){
 		loop = 0;
 		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
@@ -498,8 +496,25 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 				panic("hardxfer");
 		outss(cp->pbase+Pdata, cp->buf, dp->bytes/2);
 	}
+	splx(s);
 
+	/*
+	 *  wait for command to complete.  if we get a note,
+	 *  remember it but keep waiting to let the disk finish
+	 *  the current command.
+	 */
+	loop = 0;
+	while(waserror()){
+		DPRINT("interrupted hardxfer\n");
+		if(loop++ > 10){
+			print("hard disk error\n");
+			nexterror();
+		}
+	}
 	sleep(&cp->r, cmddone, cp);
+	poperror();
+	if(loop)
+		nexterror();
 
 	if(cp->status & Serr){
 		DPRINT("hd%d err: lblk %ld status %lux, err %lux\n",
@@ -510,10 +525,11 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 		error(Eio);
 	}
 	cp->buf = 0;
+	len = cp->sofar*dp->bytes;
 	qunlock(cp);
 	poperror();
 
-	return cp->sofar*dp->bytes;
+	return len;
 }
 
 /*
@@ -594,6 +610,7 @@ hardident(Drive *dp)
 	Controller *cp;
 	char *buf;
 	Ident *ip;
+	int s;
 
 	cp = dp->cp;
 	buf = smalloc(Maxxfer);
@@ -605,6 +622,7 @@ hardident(Drive *dp)
 
 	cmdreadywait(cp);
 
+	s = splhi();
 	cp->nsecs = 1;
 	cp->sofar = 0;
 	cp->cmd = Cident;
@@ -612,6 +630,8 @@ hardident(Drive *dp)
 	cp->buf = buf;
 	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Cident);
+	splx(s);
+
 	sleep(&cp->r, cmddone, cp);
 	if(cp->status & Serr){
 		DPRINT("bad disk ident status\n");
@@ -654,6 +674,7 @@ hardprobe(Drive *dp, int cyl, int sec, int head)
 	buf = smalloc(Maxxfer);
 	qlock(cp);
 	if(waserror()){
+		free(buf);
 		qunlock(cp);
 		nexterror();
 	}
@@ -664,6 +685,7 @@ hardprobe(Drive *dp, int cyl, int sec, int head)
 	cp->dp = dp;
 	cp->status = 0;
 	cp->nsecs = 1;
+	cp->sofar = 0;
 
 	outb(cp->pbase+Pcount, 1);
 	outb(cp->pbase+Psector, sec+1);
@@ -932,6 +954,8 @@ hardintr(Ureg *ur)
 			inss(cp->pbase+Pdata, addr, dp->bytes/2);
 		}
 		cp->sofar++;
+		if(cp->sofar > cp->nsecs)
+			print("hardintr %d %d\n", cp->sofar, cp->nsecs);
 		if(cp->sofar >= cp->nsecs){
 			cp->lastcmd = cp->cmd;
 			if (cp->cmd == Cread)
