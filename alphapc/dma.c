@@ -3,7 +3,6 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"io.h"
 
 typedef struct DMAport	DMAport;
 typedef struct DMA	DMA;
@@ -63,6 +62,25 @@ DMA dma[2] = {
 	 1 },
 };
 
+static void
+dmastatus(DMA *dp, int chan, char c)
+{
+	int a, l, s;
+
+	ilock(dp);
+	outb(dp->cbp, 0);
+	a = inb(dp->addr[chan]);
+	a |= inb(dp->addr[chan])<<8;
+	a |= inb(dp->page[chan])<<16;
+	a |= inb(0x400|dp->page[chan])<<24;
+	outb(dp->cbp, 0);
+	l = inb(dp->count[chan]);
+	l |= inb(dp->count[chan])<<8;
+	s = inb(dp->cmd);
+	iunlock(dp);
+	print("%c: addr %uX len %uX stat %uX\n", c, a, l, s);
+}
+
 /*
  *  DMA must be in the first 16MB.  This gets called early by the
  *  initialisation routines of any devices which require DMA to ensure
@@ -73,6 +91,16 @@ dmainit(int chan, int maxtransfer)
 {
 	DMA *dp;
 	DMAxfer *xp;
+	static int once;
+
+	if(once == 0){
+		outb(dma[0].mc, 0);
+		outb(dma[1].mc, 0);
+		outb(dma[0].cmask, 0);
+		outb(dma[1].cmask, 0);
+		outb(dma[1].mode, 0xC0);
+		once = 1;
+	}
 
 	if(maxtransfer > 64*1024)
 		maxtransfer = 64*1024;
@@ -85,7 +113,7 @@ dmainit(int chan, int maxtransfer)
 			return 1;
 		return 0;
 	}
-outb(dp->mc, 0);
+//dmastatus(dp, chan, 'I');
 
 	xp->bva = xspanalloc(maxtransfer, BY2PG, 64*1024);
 	if(xp->bva == nil)
@@ -105,25 +133,6 @@ outb(dp->mc, 0);
 	xp->isread = 0;
 
 	return 0;
-}
-
-static void
-dmastatus(DMA *dp, int chan, char c)
-{
-	int a, l, s;
-
-	ilock(dp);
-	outb(dp->cbp, 0);
-	a = inb(dp->addr[chan]);
-	a |= inb(dp->addr[chan])<<8;
-	a |= inb(dp->page[chan])<<16;
-	a |= inb(0x400|dp->page[chan])<<24;
-	outb(dp->cbp, 0);
-	l = inb(dp->count[chan]);
-	l |= inb(dp->count[chan])<<8;
-	s = inb(dp->cmd);
-	iunlock(dp);
-	print("%c: addr %uX len %uX stat %uX\n", c, a, l, s);
 }
 
 void
@@ -159,6 +168,9 @@ dmasetup(int chan, void *va, long len, int isread)
 	chan = chan & 3;
 //print("va%lux+", va);
 #define tryPCI
+#ifndef PCIWADDR
+#define PCIWADDR(va)	PADDR(va)
+#endif /* PCIWADDR */
 #ifdef notdef
 	xp = &dp->x[chan];
 
@@ -209,7 +221,7 @@ dmasetup(int chan, void *va, long len, int isread)
 	outb(dp->count[chan], ((len>>dp->shift)-1)>>8);
 	outb(dp->sbm, chan);		/* enable the channel */
 	iunlock(dp);
-dmastatus(dp, chan, 'S');
+//dmastatus(dp, chan, 'S');
 
 	return len;
 }
@@ -241,7 +253,7 @@ dmaend(int chan)
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
 
-dmastatus(dp, chan, 'E');
+//dmastatus(dp, chan, 'E');
 	/*
 	 *  disable the channel
 	 */

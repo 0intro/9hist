@@ -39,7 +39,7 @@ enum {
 };
 
 #define DPRINT if(floppydebug)print
-int floppydebug = 1;
+int floppydebug = 0;
 
 /*
  *  types of drive (from PC equipment byte)
@@ -106,7 +106,8 @@ static void	floppywait(void);
 static long	floppyxfer(FDrive*, int, void*, long, long);
 
 Dirtab floppydir[]={
-	"fd0disk",		{Qdata + 0},	0,	0660,
+//	"fd0disk",		{Qdata + 0},	0,	0660,
+	"fd0disk",		{Qdata + 0},	0,	0666,
 	"fd0ctl",		{Qctl + 0},	0,	0660,
 	"fd1disk",		{Qdata + 1},	0,	0660,
 	"fd1ctl",		{Qctl + 1},	0,	0660,
@@ -535,7 +536,6 @@ floppycmd(void)
 			microdelay(8);	/* for machine independence */
 		}
 		outb(Pfdata, fl.cmd[i]);
-microdelay(8);	/* for machine independence */
 	}
 	return 0;
 }
@@ -639,11 +639,7 @@ cmddone(void *)
 static void
 floppywait(void)
 {
-vlong t0, t1;
-t0 = fastticks(nil);
 	tsleep(&fl.r, cmddone, 0, 5000);
-t1 = fastticks(nil);
-print("wait %lld ticks\n", t1-t0);
 	if(!cmddone(0)){
 		floppyintr(0);
 		fl.confused = 1;
@@ -685,6 +681,26 @@ floppyrecal(FDrive *dp)
 
 	dp->confused = 0;
 	return 0;
+}
+
+static void
+dumpreg(void)
+{
+	int i;
+
+	fl.ncmd = 0;
+	fl.cmd[fl.ncmd++] = Fdumpreg;
+	if(floppycmd() < 0)
+		return;
+	floppywait();
+	if(fl.nstat < 0){
+		print("dumpreg bad %d\n", fl.nstat);
+		fldump();
+		return;
+	}
+	for(i = 0; i < fl.nstat; i++)
+		print(" %2.2uX", fl.stat[i]);
+	print("\n");
 }
 
 static void
@@ -794,7 +810,7 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
 	/* retry on error (until it gets ridiculous) */
 	tries = 0;
 	while(waserror()){
-		if(tries++ > 2/*0*/)
+		if(tries++ > 20)
 			nexterror();
 		DPRINT("floppyxfer: retrying\n");
 		/*floppyon(dp);*/
@@ -840,9 +856,6 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
 	/*
 	 *  give bus to DMA, floppyintr() will read result
 	 */
-delay(10);
-print("msr 0x%2.2uX\n", inb(Pmsr));
-xdmastatus(DMAchan);
 	floppywait();
 	dmaend(DMAchan);
 	poperror();

@@ -28,6 +28,8 @@ static int fddregs[] = {
 	0,
 };
 
+#define OUTB(p, d)	outb(p, d); microdelay(10);
+
 void
 fdc37c93xdump(void)
 {
@@ -35,27 +37,30 @@ fdc37c93xdump(void)
 
 	config = Config;
 
-	outb(config, 0x55);
-	outb(config, 0x55);
+	OUTB(config, 0x55);
+	OUTB(config, 0x55);
 
-	outb(config+Index, 0x20);
+	OUTB(config+Index, 0x20);
 	x = inb(config+Data);
 	print("fdc37c93x: Device ID 0x%2.2uX\n", x);
+	OUTB(config+Index, 0x22);
+	x = inb(config+Data);
+	print("fdc37c93x: Power/Control 0x%2.2uX\n", x);
 
-	outb(config+Index, 0x07);
-	outb(config+Data, 0);
+	OUTB(config+Index, 0x07);
+	OUTB(config+Data, 0);
 	for(i = 0; fddregs[i]; i++){
-		outb(config+Index, fddregs[i]);
+		OUTB(config+Index, fddregs[i]);
 		x = inb(config+Data);
 		print("FDD%2.2uX: 0x%2.2uX\n", fddregs[i], x);
 	}
 
-	outb(config, 0x70);
-	outb(config, 0x06);
-	outb(config, 0x74);
-	outb(config, 0x02);
-	outb(config, 0x30);
-	outb(config, 0x01);
+	OUTB(config+Index, 0x70);
+	OUTB(config+Data, 0x06);
+	OUTB(config+Index, 0x74);
+	OUTB(config+Data, 0x02);
+	OUTB(config+Index, 0x30);
+	OUTB(config+Data, 0x01);
 
-	outb(config, 0xAA);
+	OUTB(config, 0xAA);
 }
