@@ -1661,11 +1661,18 @@ bitstring(GBitmap *bp, Point pt, GFont *f, uchar *p, long l, Fcode fc)
 	Rectangle rect;
 	ushort r;
 	GCacheinfo *c;
+	int x;
+	Fcode clr;
 
-	full = (fc==S || fc==notS);	/* for reverse-video */
+	clr = 0;
+	full = (fc&~S)^(D&~S);	/* result involves source */
 	if(full){
 		rect.min.y = 0;
 		rect.max.y = f->height;
+		/* set clr to result under fc if source pixel is zero */
+		/* hard to do without knowing layout of bits, so we cheat */
+		clr = (fc&3);	/* fc&3 is result if source is zero */
+		clr |= clr<<2;	/* fc&(3<<2) is result if source is one */
 	}
 
 	while(l > 0){
@@ -1678,10 +1685,17 @@ bitstring(GBitmap *bp, Point pt, GFont *f, uchar *p, long l, Fcode fc)
 		if(!full){
 			rect.min.y = c->top;
 			rect.max.y = c->bottom;
-		}else if(c->left > 0)
-			gbitblt(bp, pt, f->b,
-				Rect(pt.x, pt.y, pt.x+c->left, pt.y+f->height),
-				fc==S? 0 : F);
+		}else{
+			if(c->left > 0)
+				gbitblt(bp, pt, bp,
+					Rect(pt.x, pt.y, pt.x+c->left, pt.y+f->height),
+					clr);
+			x = c->left+(c->xright-c->x);
+			if(x < c->width)
+				gbitblt(bp, Pt(pt.x+x, pt.y), bp,
+					Rect(pt.x+x, pt.y, pt.x+c->width, pt.y+f->height),
+					clr);
+		}
 		rect.min.x = c->x;
 		rect.max.x = c->xright;
 		gbitblt(bp, Pt(pt.x+c->left, pt.y+rect.min.y), f->b, rect, fc);

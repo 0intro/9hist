@@ -7,105 +7,28 @@
 #include 	"arp.h"
 #include 	"ipdat.h"
 
-/* Head of running timer chain */
-Timer 	*timers;
-QLock 	timerlock;
-Rendez	Tcpack;
+static	Timer 	*timers;	/* List of active timers */
+static	QLock 	tl;		/* Protect timer list */
+static	Rendez	Tcpack;
 Rendez	tcpflowr;
 
-void
-tcpackproc(void *junk)
+static void
+deltimer(Timer *t)
 {
-	Timer *t,*tp;
-	Timer *expired;
+	if(timers == t)
+		timers = t->next;
 
-	USED(junk);
-	for(;;) {
-		expired = 0;
+	if(t->next)
+		t->next->prev = t->prev;
 
-		qlock(&timerlock);
-		for(t = timers;t != 0; t = tp) {
-			tp = t->next;
-			if(tp == t)
-				panic("Timer loop at %lux\n",(long)tp);
-	
- 			if(t->state == TIMER_RUN)
-			if(--(t->count) == 0){
-
-				/* Delete from active timer list */
-				if(timers == t)
-					timers = t->next;
-				if(t->next != 0)
-					t->next->prev = t->prev;
-				if(t->prev != 0)
-					t->prev->next = t->next;
-
-				t->state = TIMER_EXPIRE;
-				/* Put on head of expired timer list */
-				t->next = expired;
-				expired = t;
-			}
-		}
-		qunlock(&timerlock);
-
-		for(;;) {
-			t = expired;
-			if(t == 0)
-				break;
-
-			expired = t->next;
-			if(t->state == TIMER_EXPIRE)
-			if(t->func)
-				(*t->func)(t->arg);
-		}
-
-		tsleep(&Tcpack, return0, 0, MSPTICK);
-	}
+	if(t->prev)
+		t->prev->next = t->next;
 }
 
-void
-start_timer(Timer *t)
-{
-
-	if(t == 0 || t->start == 0)
-		return;
-
-	qlock(&timerlock);
-
-	t->count = t->start;
-	if(t->state != TIMER_RUN){
-		t->state = TIMER_RUN;
-		/* Put on head of active timer list */
-		t->prev = 0;
-		t->next = timers;
-		if(t->next != 0)
-			t->next->prev = t;
-		timers = t;
-	}
-	qunlock(&timerlock);
-}
-
-void
-stop_timer(Timer *t)
-{
-	if(t == 0)
-		return;
-
-	qlock(&timerlock);
-
-	if(t->state == TIMER_RUN){
-		/* Delete from active timer list */
-		if(timers == t)
-			timers = t->next;
-		if(t->next != 0)
-			t->next->prev = t->prev;
-		if(t->prev != 0)
-			t->prev->next = t->next;
-	}
-	t->state = TIMER_STOP;
-
-	qunlock(&timerlock);
-}
+/*
+ * Poke each tcp connection to recompute window size and
+ * acknowledgement timer
+ */
 
 void
 tcpflow(void *x)
@@ -125,9 +48,77 @@ tcpflow(void *x)
 				break;
 			if(cp->readq && cp->ref != 0 && !QFULL(cp->readq->next)) {
 				tcprcvwin(cp);
-				tcp_acktimer(cp);
+				tcpacktimer(cp);
 			}
 		}
 	}
 }
 
+void
+tcpackproc(void *junk)
+{
+	Timer *t,*tp;
+	Timer *expired;
+
+	USED(junk);
+	for(;;) {
+		expired = 0;
+
+		qlock(&tl);
+		for(t = timers;t != 0; t = tp) {
+			tp = t->next;
+ 			if(t->state == TIMER_RUN)
+			if(--(t->count) == 0){
+				deltimer(t);
+				t->state = TIMER_EXPIRE;
+				t->next = expired;
+				expired = t;
+			}
+		}
+		qunlock(&tl);
+
+		for(;;) {
+			t = expired;
+			if(t == 0)
+				break;
+
+			expired = t->next;
+			if(t->state == TIMER_EXPIRE)
+			if(t->func)
+				(*t->func)(t->arg);
+		}
+		tsleep(&Tcpack, return0, 0, MSPTICK);
+	}
+}
+
+void
+tcpgo(Timer *t)
+{
+	if(t == 0 || t->start == 0)
+		return;
+
+	qlock(&tl);
+	t->count = t->start;
+	if(t->state != TIMER_RUN) {
+		t->state = TIMER_RUN;
+		t->prev = 0;
+		t->next = timers;
+		if(t->next)
+			t->next->prev = t;
+		timers = t;
+	}
+	qunlock(&tl);
+}
+
+void
+tcphalt(Timer *t)
+{
+	if(t == 0)
+		return;
+
+	qlock(&tl);
+	if(t->state == TIMER_RUN)
+		deltimer(t);
+	t->state = TIMER_STOP;
+	qunlock(&tl);
+}

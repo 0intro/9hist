@@ -11,24 +11,21 @@ extern int tcpdbg;
 #define DPRINT	if(tcpdbg) print
 
 void
-state_upcall(Ipconv *s, char oldstate, char newstate)
+tcpxstate(Ipconv *s, char oldstate, char newstate)
 {
-	Block *bp;
 	int len;
+	Block *bp;
 	Tcpctl *tcb = &s->tcpctl;
-
-	DPRINT("state_upcall: %s -> %s err %s\n", 
-	      tcpstate[oldstate], tcpstate[newstate], s->err);
 
 	if(oldstate == newstate)
 		return;
 
 	switch(newstate) {
 	case Closed:
-		s->psrc = 0;
+		s->psrc = 0;		/* This connection is toast */
 		s->pdst = 0;
 		s->dst = 0;
-		/* NO break */
+
 	case Close_wait:		/* Remote closes */
 		if(s->err) {
 			len = strlen(s->err);
@@ -46,7 +43,7 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 			qunlock(s);
 			nexterror();
 		}
-		if(s->readq == 0){
+		if(s->readq == 0) {
 			if(newstate == Close_wait)
 				putb(&tcb->rcvq, bp);
 			else
@@ -84,7 +81,7 @@ tcpstart(Ipconv *s, int mode, ushort window, char tos)
 	switch(mode){
 	case TCP_PASSIVE:
 		tcb->flags |= CLONE;
-		setstate(s, Listen);
+		tcpsetstate(s, Listen);
 		break;
 
 	case TCP_ACTIVE:
@@ -95,9 +92,9 @@ tcpstart(Ipconv *s, int mode, ushort window, char tos)
 			qunlock(tcb);
 			nexterror();
 		}
-		send_syn(tcb);
-		setstate(s, Syn_sent);
-		tcp_output(s);
+		tcpsndsyn(tcb);
+		tcpsetstate(s, Syn_sent);
+		tcpoutput(s);
 		poperror();
 		qunlock(tcb);
 		sleep(&tcb->syner, notsyner, tcb);

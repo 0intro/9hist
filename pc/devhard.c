@@ -6,7 +6,7 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-#define DPRINT if(0)print
+#define DPRINT if(1)print
 
 typedef	struct Drive		Drive;
 typedef	struct Ident		Ident;
@@ -53,44 +53,6 @@ enum
 #define DRIVE(x)	(((x)>>4)&0x7)
 #define MKQID(d,p)	(((d)<<4) | (p))
 
-/*
- *  ident sector from drive
- */
-struct Ident
-{
-	ushort	magic;		/* drive type magic */
-	ushort	lcyls;		/* logical number of cylinders */
-	ushort	rcyl;		/* number of removable cylinders */
-	ushort	lheads;		/* logical number of heads */
-	ushort	b2t;		/* unformatted bytes/track */
-	ushort	b2s;		/* unformated bytes/sector */
-	ushort	ls2t;		/* logical sectors/track */
-	ushort	gap;		/* bytes in inter-sector gaps */
-	ushort	sync;		/* bytes in sync fields */
-	ushort	magic2;		/* must be 0x0000 */
-	ushort	serial[10];	/* serial number */
-	ushort	type;		/* controller type (0x0003) */
-	ushort	bsize;		/* buffer size/512 */
-	ushort	ecc;		/* ecc bytes returned by read long */
-	ushort	firm[4];	/* firmware revision */
-	ushort	model[20];	/* model number */
-	ushort	s2i;		/* number of sectors/interrupt */
-	ushort	dwtf;		/* double word transfer flag */
-	ushort	alernate;
-	ushort	piomode;
-	ushort	dmamode;
-	ushort	reserved[76];
-	ushort	ncyls;		/* native number of cylinders */
-	ushort	nheads;		/* native number of heads, sectors */
-	ushort	dlcyls;		/* default logical number of cyinders */
-	ushort	dlheads;	/* default logical number of heads, sectors */
-	ushort	interface;
-	ushort	power;		/* 0xFFFF if power commands supported */
-	ushort	flags;
-	ushort	ageprog;	/* MSB = age, LSB = program */
-	ushort	reserved2[120];
-};
-
 struct Partition
 {
 	ulong	start;
@@ -126,8 +88,6 @@ struct Drive
 	int	sectors;	/* sectors/track */
 	int	heads;		/* heads/cyl */
 	long	cyl;		/* cylinders/drive */
-
-	Ident	id;		/* disk properties */
 };
 
 /*
@@ -161,8 +121,9 @@ static void	hardintr(Ureg*);
 static long	hardxfer(Drive*, Partition*, int, long, long, char*);
 static void	hardident(Drive*);
 static void	hardsetbuf(Drive*, int);
-static void	hardinitparam(Drive*);
+static void	hardparams(Drive*);
 static void	hardpart(Drive*);
+static int	hardprobe(Drive*, int, int, int);
 
 static int
 hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
@@ -237,66 +198,24 @@ Chan*
 hardattach(char *spec)
 {
 	Drive *dp;
-	static int drivecomment=1;
 
 	for(dp = hard; dp < &hard[conf.nhard]; dp++){
-		if(!waserror()){
-			/*
-			 *  the following is magic to determine the parameters
-			 *  (number of cylinders/sectors/heads) on an IDE drive.
-			 *  I haven't found a method that is guaranteed to work.
-			 *  For some drives, it may be necessary to compile the
-			 *  numbers into this driver and circumvent this code.
-			 *  The BIOS disk type & tables doesn't help since the
-			 *  types are inconsistent from one BIOS to the next.
-			 */
-			dp->bytes = 512;	/* until we know better */
-			hardsetbuf(dp, 0);	/* turned off during ident */
-			hardident(dp);
-			hardsetbuf(dp, 1);
-			/*
-			 *  for now use the configuration word to identify the
-			 *  wayward 6386 disk.  BUG!!!  This word isn't
-			 *  meant to identify disks, but we have nothing
-			 *  better.
-			 */
-			switch(dp->id.magic){
-			case 0x324A:	/* hard drive on the AT&T 6386, it lies */
-				dp->cyl = dp->id.lcyls - 4;
-				dp->heads = dp->id.lheads;
-				dp->sectors = dp->id.ls2t - 1;
-				break;
-			default:	/* others: we hope this works */
-				dp->cyl = dp->id.lcyls;
-				dp->heads = dp->id.lheads;
-				dp->sectors = dp->id.ls2t;
-				break;
-			}
-			dp->bytes = 512;
-			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
-			dp->online = 1;
-			/*
-			 *  Try reading the partition table (last disk sector).
-			 *  If an error occurs set the drive parameters and try
-			 *  again.  This works if the parameters reported
-			 *  by the disk are the physical parameters rather than
-			 *  the current logical ones (as they are on the NCR 3170).
-			 *
-			 *  We don't routinely set the parameters since it confuses
-			 *  some disks (on the Gateway and AT&T Safari for example).
-			 */
-			if(waserror()){
-				hardinitparam(dp);	/* set drive parameters */
-				hardpart();
-			} else {
-				hardpart();
-				poperror();
-			}
-			poperror();
-		} else
+		if(waserror()){
 			dp->online = 0;
+			continue;
+		}
+		if(!dp->online){
+			hardparams(dp);
+			dp->online = 1;
+			hardsetbuf(dp, 1);
+		}
+
+		/*
+		 *  read Plan 9 partition table
+		 */
+		hardpart(dp);
+		poperror();
 	}
-	drivecomment=0;	/* only the first time */
 	return devattach('w', spec);
 }
 
@@ -629,35 +548,42 @@ hardsetbuf(Drive *dp, int on)
 }
 
 /*
- *  set the drive parameters
+ *  ident sector from drive
  */
-static void
-hardinitparam(Drive *dp)
+struct Ident
 {
-	Controller *cp = dp->cp;
-
-	qlock(cp);
-	if(waserror()){
-		qunlock(cp);
-		nexterror();
-	}
-
-	cmdreadywait(cp);
-
-	cp->cmd = Cinitparam;
-	outb(cp->pbase+Psector, dp->sectors);
-	outb(cp->pbase+Pdh, 0x20 | (dp->heads-1) | (dp->drive<<4));
-	outb(cp->pbase+Pcmd, Cinitparam);
-
-	sleep(&cp->r, cmddone, cp);
-
-	if(cp->status & Serr)
-		DPRINT("hd%d initparam err: status %lux, err %lux\n",
-			dp-hard, cp->status, cp->error);
-
-	poperror();
-	qunlock(cp);
-}
+	ushort	magic;		/* drive type magic */
+	ushort	lcyls;		/* logical number of cylinders */
+	ushort	rcyl;		/* number of removable cylinders */
+	ushort	lheads;		/* logical number of heads */
+	ushort	b2t;		/* unformatted bytes/track */
+	ushort	b2s;		/* unformated bytes/sector */
+	ushort	ls2t;		/* logical sectors/track */
+	ushort	gap;		/* bytes in inter-sector gaps */
+	ushort	sync;		/* bytes in sync fields */
+	ushort	magic2;		/* must be 0x0000 */
+	ushort	serial[10];	/* serial number */
+	ushort	type;		/* controller type (0x0003) */
+	ushort	bsize;		/* buffer size/512 */
+	ushort	ecc;		/* ecc bytes returned by read long */
+	ushort	firm[4];	/* firmware revision */
+	ushort	model[20];	/* model number */
+	ushort	s2i;		/* number of sectors/interrupt */
+	ushort	dwtf;		/* double word transfer flag */
+	ushort	alernate;
+	ushort	piomode;
+	ushort	dmamode;
+	ushort	reserved[76];
+	ushort	ncyls;		/* native number of cylinders */
+	ushort	nheads;		/* native number of heads, sectors */
+	ushort	dlcyls;		/* default logical number of cyinders */
+	ushort	dlheads;	/* default logical number of heads, sectors */
+	ushort	interface;
+	ushort	power;		/* 0xFFFF if power commands supported */
+	ushort	flags;
+	ushort	ageprog;	/* MSB = age, LSB = program */
+	ushort	reserved2[120];
+};
 
 /*
  *  get parameters from the drive
@@ -667,6 +593,7 @@ hardident(Drive *dp)
 {
 	Controller *cp;
 	char *buf;
+	Ident *ip;
 
 	cp = dp->cp;
 	buf = smalloc(Maxxfer);
@@ -690,7 +617,8 @@ hardident(Drive *dp)
 		DPRINT("bad disk ident status\n");
 		error(Eio);
 	}
-	memmove(&dp->id, buf, dp->bytes);
+	ip = (Ident*)buf;
+
 	/*
 	 * this function appears to respond with an extra interrupt after
 	 * the ident information is read, except on the safari.  The following
@@ -700,6 +628,11 @@ hardident(Drive *dp)
 	 */
 	if (cp->cmd == Cident2)
 		tsleep(&cp->r, return0, 0, 10);
+
+	dp->cyl = ip->lcyls;
+	dp->heads = ip->lheads;
+	dp->sectors = ip->ls2t;
+	dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
 	cp->cmd = 0;
 	cp->buf = 0;
 	free(buf);
@@ -707,6 +640,96 @@ hardident(Drive *dp)
 	qunlock(cp);
 }
 
+/*
+ *  probe the given sector to see if it exists
+ */
+static int
+hardprobe(Drive *dp, int cyl, int sec, int head)
+{
+	Controller *cp;
+	char *buf;
+	int rv;
+
+	cp = dp->cp;
+	buf = smalloc(Maxxfer);
+	qlock(cp);
+	if(waserror()){
+		qunlock(cp);
+		nexterror();
+	}
+
+	cmdreadywait(cp);
+
+	cp->cmd = Cread;
+	cp->dp = dp;
+	cp->status = 0;
+	cp->nsecs = 1;
+
+	outb(cp->pbase+Pcount, 1);
+	outb(cp->pbase+Psector, sec+1);
+	outb(cp->pbase+Pdh, 0x20 | head);
+	outb(cp->pbase+Pcyllsb, cyl);
+	outb(cp->pbase+Pcylmsb, cyl>>8);
+	outb(cp->pbase+Pcmd, Cread);
+
+	sleep(&cp->r, cmddone, cp);
+
+	if(cp->status & Serr)
+		rv = -1;
+	else
+		rv = 0;
+
+	cp->buf = 0;
+	free(buf);
+	poperror();
+	qunlock(cp);
+	return rv;
+}
+
+/*
+ *  figure out the drive parameters
+ */
+static void
+hardparams(Drive *dp)
+{
+	int i, hi, lo;
+
+	/*
+	 *  first try the easy way, ask the drive and make sure it
+	 *  isn't lying.
+	 */
+	dp->bytes = 512;
+	hardident(dp);
+	if(hardprobe(dp, dp->cyl-1, dp->sectors-1, dp->heads-1) == 0)
+		return;
+
+	/*
+	 *  the drive lied, determine parameters by seeing which ones
+	 *  work to read sectors.
+	 */
+	for(i = 0; i < 32; i++)
+		if(hardprobe(dp, 0, 0, i) < 0)
+			break;
+	dp->heads = i;
+	for(i = 0; i < 128; i++)
+		if(hardprobe(dp, 0, i, 0) < 0)
+			break;
+	dp->sectors = i;
+	for(i = 512; ; i += 512)
+		if(hardprobe(dp, i, dp->sectors-1, dp->heads-1) < 0)
+			break;
+	lo = i - 512;
+	hi = i;
+	for(; hi-lo > 1;){
+		i = lo + (hi - lo)/2;
+		if(hardprobe(dp, i, dp->sectors-1, dp->heads-1) < 0)
+			hi = i;
+		else
+			lo = i;
+	}
+	dp->cyl = lo + 1;
+	dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
+}
 
 /*
  *  Read block replacement table.

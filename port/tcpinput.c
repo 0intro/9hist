@@ -19,14 +19,12 @@ char *tcpstate[] =
 };
 
 void
-sndrst(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
+sndrst(Ipaddr source, Ipaddr dest, ushort length, Tcp *seg)
 {
 	Block *hbp;
 	Port tmp;
 	char rflags;
 	Tcphdr ph;
-
-	USED(tos);		/* is this right??? */
 
 	if(seg->flags & RST)
 		return;
@@ -85,7 +83,7 @@ tcpflushincoming(Ipconv *s)
 	seg.seq = tcb->snd.ptr;
 	seg.ack = tcb->last_ack = tcb->rcv.nxt;
 
-	sndrst(s->dst, Myip[Myself], 0, 0, &seg);
+	sndrst(s->dst, Myip[Myself], 0, &seg);
 	localclose(s, 0);
 }
 
@@ -130,7 +128,7 @@ tcpincoming(Ipifc *ifc, Ipconv *s, Tcp *segp, Ipaddr source)
 }
 
 void
-tcp_input(Ipifc *ifc, Block *bp)
+tcpinput(Ipifc *ifc, Block *bp)
 {
 	Ipconv *s, **p, **etab;
 	Ipconv *spec, *gen;
@@ -198,7 +196,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		}
 		if(s == 0){
 			freeb(bp);   
-			sndrst(source, dest, tos, length, &seg);
+			sndrst(source, dest, length, &seg);
 			return;
 		}
 	}
@@ -212,7 +210,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 	switch(tcb->state) {
 	case Closed:
 		freeb(bp);
-		sndrst(source, dest, tos, length, &seg);
+		sndrst(source, dest, length, &seg);
 		goto done;
 	case Listen:
 		if(seg.flags & RST) {
@@ -221,13 +219,13 @@ tcp_input(Ipifc *ifc, Block *bp)
 		} 
 		if(seg.flags & ACK) {
 			freeb(bp);
-			sndrst(source, dest, tos, length, &seg);
+			sndrst(source, dest, length, &seg);
 			goto done;
 		}
 		if(seg.flags & SYN) {
 			proc_syn(s, tos, &seg);
-			send_syn(tcb);
-			setstate(s, Syn_received);		
+			tcpsndsyn(tcb);
+			tcpsetstate(s, Syn_received);		
 			if(length != 0 || (seg.flags & FIN)) 
 				break;
 			freeb(bp);
@@ -239,7 +237,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		if(seg.flags & ACK) {
 			if(!seq_within(seg.ack, tcb->iss+1, tcb->snd.nxt)) {
 				freeb(bp);
-				sndrst(source, dest, tos, length, &seg);
+				sndrst(source, dest, length, &seg);
 				goto done;
 			}
 		}
@@ -253,7 +251,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		if(seg.flags & ACK)
 		if(PREC(tos) != PREC(tcb->tos)){
 			freeb(bp);
-			sndrst(source, dest, tos, length, &seg);
+			sndrst(source, dest, length, &seg);
 			goto done;
 		}
 
@@ -261,10 +259,10 @@ tcp_input(Ipifc *ifc, Block *bp)
 			proc_syn(s, tos, &seg);
 			if(seg.flags & ACK){
 				update(s, &seg);
-				setstate(s, Established);
+				tcpsetstate(s, Established);
 			}
 			else 
-				setstate(s, Syn_received);
+				tcpsetstate(s, Syn_received);
 
 			if(length != 0 || (seg.flags & FIN))
 				break;
@@ -291,7 +289,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 	if(s->readq == 0)
 	if(tcb->state == Closed) {
 		freeb(bp);
-		sndrst(source, dest, tos, length, &seg);
+		sndrst(source, dest, length, &seg);
 		goto done;
 	}
 
@@ -309,7 +307,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		if(seg.flags & RST) {
 			if(tcb->state == Syn_received
 			   && !(tcb->flags & (CLONE|ACTIVE))) 
-				setstate(s, Listen);
+				tcpsetstate(s, Listen);
 			else
 				localclose(s, Econrefused);
 
@@ -317,9 +315,10 @@ tcp_input(Ipifc *ifc, Block *bp)
 			goto done;
 		}
 
+		/* This tos stuff should be removed */
 		if(PREC(tos) != PREC(tcb->tos) || (seg.flags & SYN)){
 			freeb(bp);
-			sndrst(source, dest, tos, length, &seg);
+			sndrst(source, dest, length, &seg);
 			goto done;
 		}
 
@@ -330,16 +329,13 @@ tcp_input(Ipifc *ifc, Block *bp)
 
 		switch(tcb->state) {
 		case Syn_received:
-			if(seq_within(seg.ack, tcb->snd.una+1, tcb->snd.nxt)){
-				update(s, &seg);
-				setstate(s, Established);
-			}
-			else {
+			if(!seq_within(seg.ack, tcb->snd.una+1, tcb->snd.nxt)){
 				freeb(bp);
-				sndrst(source, dest, tos, length, &seg);
+				sndrst(source, dest, length, &seg);
 				goto done;
 			}
-			break;
+			update(s, &seg);
+			tcpsetstate(s, Established);
 		case Established:
 		case Close_wait:
 			update(s, &seg);
@@ -347,7 +343,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		case Finwait1:
 			update(s, &seg);
 			if(tcb->sndcnt == 0)
-				setstate(s, Finwait2);
+				tcpsetstate(s, Finwait2);
 			break;
 		case Finwait2:
 			update(s, &seg);
@@ -355,9 +351,9 @@ tcp_input(Ipifc *ifc, Block *bp)
 		case Closing:
 			update(s, &seg);
 			if(tcb->sndcnt == 0) {
-				setstate(s, Time_wait);
+				tcpsetstate(s, Time_wait);
 				tcb->timer.start = MSL2 * (1000 / MSPTICK);
-				start_timer(&tcb->timer);
+				tcpgo(&tcb->timer);
 			}
 			break;
 		case Last_ack:
@@ -369,7 +365,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 			}			
 		case Time_wait:
 			tcb->flags |= FORCE;
-			start_timer(&tcb->timer);
+			tcpgo(&tcb->timer);
 		}
 
 		if((seg.flags&URG) && seg.up) {
@@ -409,7 +405,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 
 				tcprcvwin(s);
 	
-				start_timer(&tcb->acktimer);
+				tcpgo(&tcb->acktimer);
 
 				if(tcb->max_snd <= tcb->rcv.nxt-tcb->last_ack)
 					tcb->flags |= FORCE;
@@ -418,7 +414,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 				/* no process to read the data, send a reset */
 				if(bp)
 					freeb(bp);
-				sndrst(source, dest, tos, length, &seg);
+				sndrst(source, dest, length, &seg);
 				goto done;
 			}
 		}
@@ -430,35 +426,35 @@ tcp_input(Ipifc *ifc, Block *bp)
 			case Syn_received:
 			case Established:
 				tcb->rcv.nxt++;
-				setstate(s, Close_wait);
+				tcpsetstate(s, Close_wait);
 				break;
 			case Finwait1:
 				tcb->rcv.nxt++;
 				if(tcb->sndcnt == 0) {
-					setstate(s, Time_wait);
+					tcpsetstate(s, Time_wait);
 					tcb->timer.start = MSL2 * (1000/MSPTICK);
-					start_timer(&tcb->timer);
+					tcpgo(&tcb->timer);
 				}
 				else 
-					setstate(s, Closing);
+					tcpsetstate(s, Closing);
 				break;
 			case Finwait2:
 				tcb->rcv.nxt++;
-				setstate(s, Time_wait);
+				tcpsetstate(s, Time_wait);
 				tcb->timer.start = MSL2 * (1000/MSPTICK);
-				start_timer(&tcb->timer);
+				tcpgo(&tcb->timer);
 				break;
 			case Close_wait:
 			case Closing:
 			case Last_ack:
 				break;
 			case Time_wait:
-				start_timer(&tcb->timer);
+				tcpgo(&tcb->timer);
 				break;
 			}
 		}
 
-		while(tcb->reseq != 0) {
+		while(tcb->reseq) {
 			if(seq_ge(tcb->rcv.nxt, tcb->reseq->seg.seq) == 0)
 				break;
 
@@ -470,7 +466,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		break;
 	}
 output:
-	tcp_output(s);
+	tcpoutput(s);
 done:
 	qunlock(tcb);
 }
@@ -521,7 +517,7 @@ update(Ipconv *s, Tcp *seg)
 	/* Adjust the timers acorrding to the round trip time */
 	if(run_timer(&tcb->rtt_timer))
 	if(seq_ge(seg->ack, tcb->rttseq)) {
-		stop_timer(&tcb->rtt_timer);
+		tcphalt(&tcb->rtt_timer);
 		if((tcb->flags&RETRAN) == 0) {
 			tcb->backoff = 0;
 			rtt = tcb->rtt_timer.start - tcb->rtt_timer.count;
@@ -550,9 +546,9 @@ update(Ipconv *s, Tcp *seg)
 	if(seq_gt(seg->ack, tcb->snd.up))
 		tcb->snd.up = seg->ack;
 
-	stop_timer(&tcb->timer);
+	tcphalt(&tcb->timer);
 	if(tcb->snd.una != tcb->snd.nxt)
-		start_timer(&tcb->timer);
+		tcpgo(&tcb->timer);
 
 	if(seq_lt(tcb->snd.ptr, tcb->snd.una))
 		tcb->snd.ptr = tcb->snd.una;
@@ -595,7 +591,7 @@ proc_syn(Ipconv *s, char tos, Tcp *seg)
 
 /* Generate an initial sequence number and put a SYN on the send queue */
 void
-send_syn(Tcpctl *tcb)
+tcpsndsyn(Tcpctl *tcb)
 {
 	static int start;
 
@@ -630,16 +626,16 @@ add_reseq(Tcpctl *tcb, char tos, Tcp *seg, Block *bp, ushort length)
 	if(rp1 == 0 || seq_lt(seg->seq, rp1->seg.seq)) {
 		rp->next = rp1;
 		tcb->reseq = rp;
-	} 
-	else {
-		for(;;){
-			if(rp1->next == 0 || seq_lt(seg->seq, rp1->next->seg.seq)) {
-				rp->next = rp1->next;
-				rp1->next = rp;
-				break;
-			}
-			rp1 = rp1->next;
+		return;
+	}
+
+	for(;;) {
+		if(rp1->next == 0 || seq_lt(seg->seq, rp1->next->seg.seq)) {
+			rp->next = rp1->next;
+			rp1->next = rp;
+			break;
 		}
+		rp1 = rp1->next;
 	}
 }
 
@@ -648,7 +644,8 @@ get_reseq(Tcpctl *tcb, char *tos, Tcp *seg, Block **bp, ushort *length)
 {
 	Reseq *rp;
 
-	if((rp = tcb->reseq) == 0)
+	rp = tcb->reseq;
+	if(rp == 0)
 		return;
 
 	tcb->reseq = rp->next;
@@ -818,16 +815,13 @@ init_tcpctl(Ipconv *s)
 	tcb->ssthresh = 65535;
 	tcb->srtt = tcp_irtt;
 
-	/* Initialize timer intervals */
 	tcb->timer.start = tcb->srtt / MSPTICK;
-	tcb->timer.func = (void(*)(void*))tcp_timeout;
-	tcb->timer.arg = (void *)s;
+	tcb->timer.func = tcptimeout;
+	tcb->timer.arg = s;
 	tcb->rtt_timer.start = MAX_TIME; 
-
-	/* Initialise ack timer */
 	tcb->acktimer.start = TCP_ACK / MSPTICK;
-	tcb->acktimer.func = (void(*)(void*))tcp_acktimer;
-	tcb->acktimer.arg = (void *)s;
+	tcb->acktimer.func = tcpacktimer;
+	tcb->acktimer.arg = s;
 }
 
 /*
@@ -840,8 +834,8 @@ localclose(Ipconv *s, char reason[])
 	Tcpctl *tcb = &s->tcpctl;
 	Block *bp;
 
-	stop_timer(&tcb->timer);
-	stop_timer(&tcb->rtt_timer);
+	tcphalt(&tcb->timer);
+	tcphalt(&tcb->rtt_timer);
 	s->err = reason;
 
 	/* flush receive queue */
@@ -857,7 +851,7 @@ localclose(Ipconv *s, char reason[])
 
 	tcb->reseq = 0;
 	s->err = reason;
-	setstate(s, Closed);
+	tcpsetstate(s, Closed);
 }
 
 int
@@ -899,14 +893,14 @@ seq_ge(int x, int y)
 }
 
 void
-setstate(Ipconv *s, char newstate)
+tcpsetstate(Ipconv *s, char newstate)
 {
 	char oldstate;
 	Tcpctl *tcb = &s->tcpctl;
 
 	oldstate = tcb->state;
 	tcb->state = newstate;
-	state_upcall(s, oldstate, newstate);
+	tcpxstate(s, oldstate, newstate);
 }
 
 Block *
@@ -1004,7 +998,8 @@ ntohtcp(Tcp *tcph, Block **bpp)
 	if(!*bpp)
 		return -1;
 
-	for(optr = h->tcpopt, i = TCP_HDRSIZE; i < hdrlen;) {
+	optr = h->tcpopt;
+	for(i = TCP_HDRSIZE; i < hdrlen;) {
 		switch(*optr++){
 		case EOL_KIND:
 			return hdrlen;

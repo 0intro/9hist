@@ -7,9 +7,12 @@
 #include	"ureg.h"
 #include	"init.h"
 
+/* configuration parameters */
 int mousetype;
 int pmutype;
-uchar	*sp;	/* stack pointer for /boot */
+int resettype;
+
+uchar *sp;	/* stack pointer for /boot */
 
 void
 main(void)
@@ -41,24 +44,24 @@ main(void)
 }
 
 /*
- *  this should be changed to describe architecture dependencies outside the
- *  PC model
+ *  This tries to capture architecture dependencies since things
+ *  like power management/reseting/mouse are outside the hardware
+ *  model.
  */
 void
 ident(void)
 {
 	char *id = (char*)(ROMBIOS + 0xFF40);
 
-	/* check for a safari (tres special) */
 	if(strncmp(id, "AT&TNSX", 7) == 0){
 		mousetype = MousePS2;
 		pmutype = PMUnsx20;
+		resettype = Resetheadland;
 	}else if(strncmp(id, "NCRD.0", 6) == 0){
 		mousetype = MousePS2;
-		pmutype = PMUother;
+		resettype = Reset8042;
 	}else{
 		mousetype = Mouseserial;
-		pmutype = PMUother;
 	}
 }
 
@@ -184,12 +187,22 @@ bootargs(ulong base)
  	int i, ac;
 	uchar *av[32];
 	uchar **lsp;
+	char *cp = BOOTLINE;
+	char buf[64];
 
 	sp = (uchar*)base + BY2PG - MAXSYSARG*BY2WD;
 
 	ac = 0;
 	av[ac++] = pusharg("/386/9safari");
 	av[ac++] = pusharg("-p");
+	cp[64] = 0;
+	if(strncmp(cp, "fd!", 3) == 0){
+		sprint(buf, "local!#f/fd%ddisk", atoi(cp+3));
+		av[ac++] = pusharg(buf);
+	} else if(strncmp(cp, "hd!", 3) == 0){
+		sprint(buf, "local!#w/hd%ddisk", atoi(cp+3));
+		av[ac++] = pusharg(buf);
+	}
 
 	/* 4 byte word align stack */
 	sp = (uchar*)((ulong)sp & ~3);
@@ -413,9 +426,16 @@ exit(int ispanic)
 	print("exiting\n");
 	if(ispanic)
 		for(;;);
-	i8042reset();		/* via keyboard controller */
-	print("can't reset via software, do something drastic!\n");
-	for(;;);
+
+	switch(resettype){
+	case Resetheadland:
+		headreset();
+	case Reset8042:
+		i8042reset();		/* via keyboard controller */
+	default:
+		print("Reset the machine!\n");
+		for(;;);
+	}
 }
 
 /*

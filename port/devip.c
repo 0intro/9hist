@@ -23,9 +23,10 @@ Ipifc	*ipifc[Nrprotocol+1];
 QLock	ipalloc;			/* Protocol port allocation lock */
 Ipconv	**tcpbase;
 
-Streamput   udpstiput, udpstoput, tcpstiput, tcpstoput, iliput, iloput, bsdiput, bsdoput;
-Streamopen  udpstopen, tcpstopen, ilopen, bsdopen;
-Streamclose udpstclose, tcpstclose, ilclose, bsdclose;
+Streamput	udpstiput, udpstoput, tcpstiput, tcpstoput;
+Streamput	iliput, iloput, bsdiput, bsdoput;
+Streamopen	udpstopen, tcpstopen, ilopen, bsdopen;
+Streamclose	udpstclose, tcpstclose, ilclose, bsdclose;
 
 Qinfo tcpinfo = { tcpstiput, tcpstoput, tcpstopen, tcpstclose, "tcp", 0, 1 };
 Qinfo udpinfo = { udpstiput, udpstoput, udpstopen, udpstclose, "udp" };
@@ -76,8 +77,8 @@ ipinit(void)
 Chan *
 ipattach(char *spec)
 {
-	Chan *c;
 	int i;
+	Chan *c;
 
 	/* fail if ip is not yet configured */
 	if(Ipoutput == 0)
@@ -169,8 +170,8 @@ ipcreateconv(Ipifc *ifc, int id)
 Ipconv*
 ipincoming(Ipifc *ifc, Ipconv *from)
 {
-	Ipconv **p, **etab;
 	Ipconv *new;
+	Ipconv **p, **etab;
 
 	/* look for an unused existing conversation */
 	etab = &ifc->conv[Nipconv];
@@ -554,10 +555,11 @@ udpstoput(Queue *q, Block *bp)
 	hnputs(uh->udpplen, ptcllen);
 	hnputl(uh->udpsrc, Myip[Myself]);
 	hnputs(uh->udpsport, cp->psrc);
-	if(cp->headers){
+	if(cp->headers) {
 		hnputl(uh->udpdst, addr);
 		hnputs(uh->udpdport, port);
-	} else {
+	}
+	else {
 		hnputl(uh->udpdst, cp->dst);
 		hnputs(uh->udpdport, cp->pdst);
 	}
@@ -627,14 +629,17 @@ tcpstoput(Queue *q, Block *bp)
 	switch(tcb->state) {
 	case Listen:
 		tcb->flags |= ACTIVE;
-		send_syn(tcb);
-		setstate(s, Syn_sent);
+		tcpsndsyn(tcb);
+		tcpsetstate(s, Syn_sent);
 
 		/* No break */
 	case Syn_sent:
 	case Syn_received:
 	case Established:
 	case Close_wait:
+		/*
+		 * Push data
+		 */
 		qlock(tcb);
 		if(waserror()) {
 			qunlock(tcb);
@@ -649,7 +654,7 @@ tcpstoput(Queue *q, Block *bp)
 			f->next = bp;
 		}
 		tcprcvwin(s);
-		tcp_output(s);
+		tcpoutput(s);
 		poperror();
 		qunlock(tcb);
 		break;
@@ -686,7 +691,7 @@ tcpstopen(Queue *q, Stream *s)
 	if(tcpbase == 0)
 		tcpbase = ipifc[s->dev]->conv;
 	ifc = ipifc[s->dev];
-	initipifc(ifc, IP_TCPPROTO, tcp_input, 1500, 512, ETHER_HDR);
+	initipifc(ifc, IP_TCPPROTO, tcpinput, 1500, 512, ETHER_HDR);
 	ipc = ipcreateconv(ifc, s->id);
 
 	ipc->readq = RD(q);
@@ -730,8 +735,8 @@ iplocalfill(Chan *c, char *buf, int len)
 void
 ipstatusfill(Chan *c, char *buf, int len)
 {
-	int connection;
 	Ipconv *cp;
+	int connection;
 
 	if(len < 64)
 		error(Ebadarg);
@@ -759,9 +764,9 @@ iphavecon(Ipconv *s)
 int
 iplisten(Chan *c)
 {
-	Ipconv **p, **etab, *new;
 	Ipconv *s;
 	int connection;
+	Ipconv **p, **etab, *new;
 
 	connection = STREAMID(c->qid.path);
 	s = ipcreateconv(ipifc[c->dev], connection);
@@ -850,20 +855,20 @@ tcpstclose(Queue *q)
 	case Established:
 		tcb->sndcnt++;
 		tcb->snd.nxt++;
-		setstate(s, Finwait1);
+		tcpsetstate(s, Finwait1);
 		goto output;
 
 	case Close_wait:
 		tcb->sndcnt++;
 		tcb->snd.nxt++;
-		setstate(s, Last_ack);
+		tcpsetstate(s, Last_ack);
 	output:
 		qlock(tcb);
 		if(waserror()) {
 			qunlock(tcb);
 			nexterror();
 		}
-		tcp_output(s);
+		tcpoutput(s);
 		poperror();
 		qunlock(tcb);
 		break;

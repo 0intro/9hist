@@ -7,13 +7,14 @@
 #include 	"arp.h"
 #include 	"ipdat.h"
 
-extern int tcpdbg;
 #define DPRINT if(tcpdbg) print
-extern ushort tcp_mss;
-int tcptimertype = 0;
+
+extern	int tcpdbg;
+extern	ushort tcp_mss;
+	int tcptimertype;
 
 void
-tcp_output(Ipconv *s)
+tcpoutput(Ipconv *s)
 {
 	Block *hbp,*dbp, *sndq;
 	ushort ssize, dsize, usable, sent;
@@ -30,7 +31,7 @@ tcp_output(Ipconv *s)
 		return;
 	}
 
-	for(;;){
+	for(;;) {
 		qlen = tcb->sndcnt;
 		sent = tcb->snd.ptr - tcb->snd.una;
 		sndq = tcb->sndq;
@@ -40,16 +41,15 @@ tcp_output(Ipconv *s)
 		if((tcb->flags & SYNACK) == 0)
 			break;
 
+		/* Compute usable segment based on offered window and limit
+		 * window probes to one
+		 */
 		if(tcb->snd.wnd == 0){
-			/* Allow only one closed-window probe at a time */
 			if(sent != 0)
 				break;
-			/* Force a closed-window probe */
 			usable = 1;
-		} else {
-			/* usable window = offered window - unacked bytes in transit
-			 * limited by the congestion window
-			 */
+		}
+		else {
 			usable = MIN(tcb->snd.wnd,tcb->cwind) - sent;
 			if(sent != 0)
 			if(qlen - sent < tcb->mss) 
@@ -61,20 +61,18 @@ tcp_output(Ipconv *s)
 		dsize = ssize;
 		seg.up = 0;
 
-		DPRINT("tcp_out: ssize = %lux\n", ssize);
 		if(ssize == 0)
 		if((tcb->flags&FORCE) == 0)
 			break;
 
-		/* Stop ack timer if one will be piggy backed on data */
-		stop_timer(&tcb->acktimer);
+		tcphalt(&tcb->acktimer);
 
 		tcb->flags &= ~FORCE;
 		tcprcvwin(s);
 
+		/* By default we will generate an ack */
 		seg.source = s->psrc;
 		seg.dest = s->pdst;
-		/* Every state except SYN_SENT */
 		seg.flags = ACK; 	
 		seg.mss = 0;
 
@@ -137,11 +135,11 @@ tcp_output(Ipconv *s)
 			tcb->timer.start = backoff(tcb->backoff) *
 			 (2 * tcb->mdev + tcb->srtt + MSPTICK) / MSPTICK;
 			if(!run_timer(&tcb->timer))
-				start_timer(&tcb->timer);
+				tcpgo(&tcb->timer);
 
 			/* If round trip timer isn't running, start it */
 			if(!run_timer(&tcb->rtt_timer)){
-				start_timer(&tcb->rtt_timer);
+				tcpgo(&tcb->rtt_timer);
 				tcb->rttseq = tcb->snd.ptr;
 			}
 		}
@@ -165,12 +163,12 @@ tcprxmit(Ipconv *s)
 
 	/* Shrink congestion window to 1 packet */
 	tcb->cwind = tcb->mss;
-	tcp_output(s);
+	tcpoutput(s);
 	qunlock(tcb);
 }
 
 void
-tcp_timeout(void *arg)
+tcptimeout(void *arg)
 {
 	Tcpctl *tcb;
 	Ipconv *s;
@@ -181,10 +179,11 @@ tcp_timeout(void *arg)
 	switch(tcb->state){
 	default:
 		tcb->backoff++;
-		if (tcb->backoff >= MAXBACKOFF)
+		if (tcb->backoff >= MAXBACKOFF) {
 			localclose(s, Etimedout);
-		else 
-			tcprxmit(s);
+			break;
+		}
+		tcprxmit(s);
 		break;
 
 	case Time_wait:
@@ -207,14 +206,14 @@ backoff(int n)
 }
 
 void
-tcp_acktimer(Ipconv *s)
+tcpacktimer(Ipconv *s)
 {
 	Tcpctl *tcb = &s->tcpctl;
 
 	qlock(tcb);
 	tcb->flags |= FORCE;
 	tcprcvwin(s);
-	tcp_output(s);
+	tcpoutput(s);
 	qunlock(tcb);
 }
 
