@@ -318,6 +318,34 @@ udpctl(Conv *c, char **f, int n)
 }
 
 void
+udpadvise(Block *bp, char *msg)
+{
+	Udphdr *h;
+	Ipaddr source, dest;
+	ushort psource, pdest;
+	Conv *s, **p;
+
+	h = (Udphdr*)(bp->rp);
+
+	dest = nhgetl(h->udpdst);
+	source = nhgetl(h->udpsrc);
+	psource = nhgets(h->udpsport);
+	pdest = nhgets(h->udpdport);
+
+	/* Look for a connection */
+	for(p = udp.conv; *p; p++) {
+		s = *p;
+		if(s->rport == pdest && s->lport == psource)
+		if(s->raddr == dest && s->laddr == source){
+			qhangup(s->rq, msg);
+			qhangup(s->wq, msg);
+			break;
+		}
+	}
+	freeblist(bp);
+}
+
+void
 udpinit(Fs *fs)
 {
 	udp.name = "udp";
@@ -329,6 +357,7 @@ udpinit(Fs *fs)
 	udp.create = udpcreate;
 	udp.close = udpclose;
 	udp.rcv = udpiput;
+	udp.advise = udpadvise;
 	udp.ipproto = IP_UDPPROTO;
 	udp.nc = 16;
 	udp.ptclsize = sizeof(Udpcb);
