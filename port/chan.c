@@ -21,8 +21,6 @@ incref(Ref *r)
 	return x;
 }
 
-#include "ureg.h"
-
 int
 decref(Ref *r)
 {
@@ -82,7 +80,8 @@ newchan(void)
 		lock(&chanalloc);
 		if(c = chanalloc.free) {
 			chanalloc.free = c->next;
-			/* if closed before changed, this calls rooterror, a nop */
+			/* if you get an error before associating with a dev,
+			   close calls rootclose, a nop */
 			c->type = 0;
 			c->flag = 0;
 			c->ref = 1;
@@ -553,7 +552,7 @@ namec(char *name, int amode, int omode, ulong perm)
 	case Amount:
 		/*
 		 * When mounting on an already mounted upon directory, one wants
-		 * the second mount to be attached to the original directory, not
+		 * subsequent mounts to be attached to the original directory, not
 		 * the replacement.
 		 */
 		if((nc=walk(c, elem, 0)) == 0)
@@ -662,8 +661,6 @@ nameok(char *elem)
 
 /*
  * name[0] should not be a slash.
- * Advance name to next element in path, copying current element into elem.
- * Return pointer to next element, skipping slashes.
  */
 char*
 nextelem(char *name, char *elem)

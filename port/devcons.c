@@ -257,7 +257,7 @@ echo(int c)
 }
 
 /*
- * turn '\r' into '\n' before putting it into the queue
+ *  turn '\r' into '\n' before putting it into the queue
  */
 int
 kbdcr2nl(IOQ *q, int ch)
@@ -268,8 +268,8 @@ kbdcr2nl(IOQ *q, int ch)
 }
 
 /*
- * Put character into read queue at interrupt time.
- * Always called splhi from proc 0.
+ *  Put character into read queue at interrupt time.
+ *  Always called splhi from processor 0.
  */
 int
 kbdputc(IOQ *q, int ch)
@@ -312,9 +312,6 @@ consactive(void)
 	return printq.in != printq.out;
 }
 
-/*
- * I/O interface
- */
 enum{
 	Qdir,
 	Qcons,
@@ -718,7 +715,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	case Qrcons:
 	case Qcons:
 		/*
-		 * Damn. Can't page fault in putstrn, so copy the data locally.
+		 * Can't page fault in putstrn, so copy the data locally.
 		 */
 		l = n;
 		while(l > 0){
@@ -733,7 +730,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Qtime:
-		if(n<=0 || boottime!=0)	/* only one write please */
+		if(n<=0 || boottime!=0)	/* write once file */
 			return 0;
 		if(n >= sizeof cbuf)
 			n = sizeof cbuf - 1;
@@ -856,7 +853,8 @@ conswstat(Chan *c, char *dp)
 }
 
 /*
- * Rand is huge and not worth it here.  Be small.  Borrowed from the white book.
+ *  Rand is huge and not worth it here.  Be small.
+ *  Borrowed from the white book.
  */
 ulong	randn;
 void

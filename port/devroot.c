@@ -9,18 +9,21 @@
 enum{
 	Qdir,
 	Qbin,
-	Qboot,
-	Qcfs,
 	Qdev,
 	Qenv,
-	Qkfs,
 	Qproc,
+
+	Qboot,
+	Qcfs,
+	Qkfs,
 };
 
 extern long	cfslen;
 extern ulong	cfscode[];
 extern long	kfslen;
 extern ulong	kfscode[];
+extern ulong	bootlen;
+extern ulong	bootcode[];
 
 Dirtab rootdir[]={
 	"bin",		{Qbin|CHDIR},	0,			0777,
@@ -83,6 +86,10 @@ rootclone(Chan *c, Chan *nc)
 int	 
 rootwalk(Chan *c, char *name)
 {
+	if(strcmp(name, "..") == 0) {
+		c->qid.path = Qdir|CHDIR;
+		return 1;
+	}
 	return devwalk(c, name, rootdir, nroot, rootgen);
 }
 
@@ -114,8 +121,6 @@ rootclose(Chan *c)
 	USED(c);
 }
 
-#include	"boot.h"
-
 long	 
 rootread(Chan *c, void *buf, long n, ulong offset)
 {
@@ -125,10 +130,10 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 		return devdirread(c, buf, n, rootdir, nroot, rootgen);
 
 	case Qboot:		/* boot */
-		if(offset >= sizeof bootcode)
+		if(offset >= bootlen)
 			return 0;
-		if(offset+n > sizeof bootcode)
-			n = sizeof bootcode - offset;
+		if(offset+n > bootlen)
+			n = bootlen - offset;
 		memmove(buf, ((char*)bootcode)+offset, n);
 		return n;
 

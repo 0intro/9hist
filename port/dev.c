@@ -119,8 +119,9 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:
 			/*
-			 * devices with interesting directories usually don't get
-			 * here, which is good because we've lost the name by now.
+			 *  given a channel, we cannot derive the directory name
+			 *  that the channel was generated from since it was lost
+			 *  by namec.
 			 */
 			if(c->qid.path & CHDIR){
 				devdir(c, c->qid, ".", 0L, eve, CHDIR|0700, &dir);
@@ -177,7 +178,6 @@ devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 	for(i=0;; i++)
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:
-			/* Deal with union directories? */
 			goto Return;
 		case 0:
 			break;
@@ -185,7 +185,7 @@ devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 			if(eqqid(c->qid, dir.qid)) {
 				if(strcmp(u->p->user, dir.uid) == 0)	/* User */
 					mode = dir.mode;
-				else if(strcmp(u->p->user, eve) == 0)	/* Bootes is group */
+				else if(strcmp(u->p->user, eve) == 0)	/* eve is group */
 					mode = dir.mode<<3;
 				else
 					mode = dir.mode<<6;		/* Other */

@@ -65,9 +65,6 @@ bootcreate(Chan *c, char *name, int omode, ulong perm)
 	error(Eperm);
 }
 
-/*
- * sysremove() knows this is a nop
- */
 void	 
 bootclose(Chan *c)
 {
@@ -91,9 +88,9 @@ bootwrite(Chan *c, void *buf, long n, ulong offset)
 
 	switch(c->qid.path & ~CHDIR){
 	case Qmem:
-		/* kernel memory.  BUG: shouldn't be so easygoing. BUG: mem mapping? */
+		/* kernel memory */
 		if(offset>=KZERO && offset<KZERO+conf.npage*BY2PG){
-/*			print("%ux, %d\n", c->offset, n);/**/
+/* print("%ux, %d\n", c->offset, n);/**/
 			if(offset+n > KZERO+conf.npage*BY2PG)
 				n = KZERO+conf.npage*BY2PG - offset;
 			memmove((char*)offset, buf, n);

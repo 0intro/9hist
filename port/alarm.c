@@ -63,6 +63,7 @@ newalarm(void)
 	panic("newalarm");
 }
 
+/* allocate locks here since you can't allocate them at interrupt time (on the SGI) */
 void
 alarminit(void)
 {
@@ -70,7 +71,7 @@ alarminit(void)
 
 	alarmtab = ialloc(conf.nalarm*sizeof(Alarm), 0);
 	for(i=0; i<conf.nalarm; i++){
-		lock(&alarmtab[i]);	/* allocate locks, as they are used at interrupt time */
+		lock(&alarmtab[i]);
 		unlock(&alarmtab[i]);
 	}
 	lock(&alarms);

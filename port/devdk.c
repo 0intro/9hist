@@ -82,9 +82,6 @@ struct Dkmsg {
 #define	W_VALUE(x)	(1<<((x)+4))
 #define WS_2K	7
 
-/*
- *  one per datakit line
- */
 struct Line {
 	QLock;
 	int	lineno;
@@ -148,7 +145,7 @@ typedef enum {
 } Lstate;
 
 /*
- *  datakit error to errno 
+ *  map datakit error to errno 
  */
 enum {
 	DKok,
@@ -160,17 +157,17 @@ enum {
 	DKinuse,
 	DKreject,
 };
-int dkerr[]={
-	[DKok]Egreg,
-	[DKbusy]Einuse,		/* destination busy */
-	[DKnetotl]Enetotl,	/* network not answering */
-	[DKdestotl]Edestotl,	/* destination not answering */ 
-	[DKbadnet]Ebadnet,	/* unassigned destination */
-	[DKnetbusy]Enetbusy,	/* network overload */
-	[DKinuse]Einuse,	/* server already exists */
-	[DKreject]Erejected	/* call rejected by destination */
+char* dkerr[]={
+	[DKok]"",
+	[DKbusy]"host overloaded",
+	[DKnetotl]"network not answering",
+	[DKdestotl]"host not answering",
+	[DKbadnet]"unknown address",
+	[DKnetbusy]"network overloaded",
+	[DKinuse]"server in use",
+	[DKreject]"connection refused", 
 };
-#define DKERRS sizeof(dkerr)/sizeof(int)
+#define DKERRS sizeof(dkerr)/sizeof(char*)
 
 /*
  *  imported
@@ -837,7 +834,10 @@ dkwrite(Chan *c, void *a, long n, ulong offset)
 		} else if(strcmp(field[0], "reject")==0){
 			if(m < 3)
 				error(Ebadarg);
-			dkanswer(c, strtoul(field[1], 0, 0), strtoul(field[2], 0, 0));
+			for(m = 0; m < DKERRS-1; m++)
+				if(strcmp(field[2], dkerr[m]) == 0)
+					break;
+			dkanswer(c, strtoul(field[1], 0, 0), m);
 		} else
 			return streamwrite(c, a, n, 0);
 		return n;
@@ -1116,9 +1116,9 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	DPRINT("got reply %d\n", lp->state);
 	if(lp->state != Lconnected) {
 		if(lp->err >= DKERRS)
-			error(dkerr[0]);
+			errors(dkerr[0]);
 		else
-			error(dkerr[lp->err]);
+			errors(dkerr[lp->err]);
 	}
 
 	/*
