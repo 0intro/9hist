@@ -236,7 +236,7 @@ i8042reset(void)
 static void
 serialmouse(int port, char *type, int setspeed)
 {
-	if(mousetype)
+	if(mousetype == Mouseserial)
 		error(Emouseset);
 
 	if(port >= 2 || port < 0)
@@ -505,18 +505,17 @@ kbdintr(Ureg *ur, void *arg)
  *  set up a ps2 mouse
  */
 static void
-ps2mouse(void)
+ps2mouse(int frominit)
 {
 	int x;
 
-	if(mousetype)
-		error(Emouseset);
+	if(mousetype == MousePS2)
+		return;
 
 	if(ct82c710() == 0)
 		return;
 
 	/* enable kbd/mouse xfers and interrupts */
-	setvec(Mousevec, kbdintr, 0);
 	x = splhi();
 	ccc &= ~Cmousedis;
 	ccc |= Cmouseint;
@@ -529,10 +528,13 @@ ps2mouse(void)
 	if(outready() < 0)
 		print("mouse init failed\n");
 	outb(Cmd, 0xA8);
-	if(outready() < 0)
-		print("mouse init failed\n");
+	if(outready() < 0){
+		splx(x);
+		return;
+	}
 
 	/* make mouse streaming, enabled */
+	setvec(Mousevec, kbdintr, 0);
 	mousecmd(0xEA);
 	mousecmd(0xF4);
 	splx(x);
@@ -564,7 +566,7 @@ mousectl(char *arg)
 			break;
 		}
 	} else if(strcmp(field[0], "ps2") == 0){
-		ps2mouse();
+		ps2mouse(0);
 	} else if(strcmp(field[0], "accelerated") == 0){
 		switch(mousetype){
 		case MousePS2:
@@ -622,7 +624,7 @@ kbdinit(void)
 
 	/* enable kbd xfers and interrupts */
 	ccc &= ~Ckbddis;
-	ccc |= Csf | Ckbdint | Cscs1;
+	ccc |= Csf | Ckbdint | Cscs1 | Cmousedis;
 	if(outready() < 0)
 		print("kbd init failed\n");
 	outb(Cmd, 0x60);

@@ -13,7 +13,7 @@ char	sys[2*NAMELEN];
 char	username[NAMELEN];
 char	bootfile[3*NAMELEN];
 char	conffile[NAMELEN];
-char 	reply[64];
+char 	reply[256];
 int	printcol;
 int	mflag;
 int	fflag;
@@ -21,11 +21,13 @@ int	kflag;
 int	aflag;
 int	pflag;
 int	afd = -1;
+
+char	*bargv[Nbarg];
+int	bargc;
+
 static void	swapproc(void);
 static void	recover(Method*);
 static Method	*rootserver(char*);
-char	*bargv[6];
-int	bargc;
 
 void
 boot(int argc, char *argv[])
@@ -213,7 +215,7 @@ rootserver(char *arg)
 			outin(prompt, reply, sizeof(reply));
 		mp = findmethod(reply);
 		if(mp){
-			for(cp = reply; *cp; cp++){
+			for(cp = reply; bargc < Nbarg-1 && *cp; cp++){
 				while(*cp && *cp != ' ')
 					cp++;
 				while(*cp == ' ')

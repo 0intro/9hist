@@ -968,7 +968,6 @@ parapage(int page)
 static void
 s3page(int page)
 {
-#ifdef notdef
 	uchar crt51;
 
 	/*
@@ -984,15 +983,6 @@ s3page(int page)
 	outb(CRX, 0x51);
 	crt51 = (0xF3 & inb(CR))|((page & 0x30)>>2);
 	outb(CR, crt51);
-{
-uchar crt35;
-outb(CRX, 0x35);
-crt35 = inb(CR);
-print("page #%ux, crt51=#%ux, crt35=#%ux\n", page, crt51, crt35);
-}
-#else
-	crout(0x35, (page<<2) & 0x0f);
-#endif /* notdef
 }
 
 void

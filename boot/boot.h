@@ -22,8 +22,12 @@ extern char	terminal[];
 extern char	username[NAMELEN];
 extern char	bootfile[];
 extern char	conffile[];
+enum
+{
+	Nbarg=	16,
+};
 extern int	bargc;
-extern char	*bargv[];
+extern char	*bargv[Nbarg];
 extern int	afd;
 
 /* libc equivalent */
