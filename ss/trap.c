@@ -99,7 +99,7 @@ excname(ulong tbr)
 void
 trap(Ureg *ur)
 {
-	int user, x, fpunsafe;
+	int user, x;
 	char buf[64];
 	ulong tbr, iw;
 
@@ -113,7 +113,6 @@ trap(Ureg *ur)
 	if(u)
 		u->dbgreg = ur;
 
-	fpunsafe = 0;
 	user = !(ur->psr&PSRPSUPER);
 	/* SS2 bug: flush cache line holding trap entry in table */
 	if(conf.ss2cachebug)
@@ -122,8 +121,8 @@ trap(Ureg *ur)
 		if(u && u->p->state==Running){
 			/* if active, FPop at head of Q is probably an excep */
 			if(u->p->fpstate == FPactive){
-				fpunsafe = 1;
-				m->fpunsafe = 1;
+				fpquiet();
+				savefpregs(&u->fpsave);
 				u->p->fpstate = FPinactive;
 			}
 		}
@@ -151,8 +150,8 @@ trap(Ureg *ur)
 		case 1:				/* instr. access */
 		case 9:				/* data access */
 			if(u && u->p->fpstate==FPactive) {
-				fpunsafe = 1;
-				m->fpunsafe = 1;
+				fpquiet();
+				savefpregs(&u->fpsave);
 				u->p->fpstate = FPinactive;
 			}
 			if(u){
@@ -205,11 +204,6 @@ trap(Ureg *ur)
 			panic("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
 	}
     Return:
-	/*
-	 * Handled the interrupt; now it's safe to look at the FPQ
-	 */
-	if(fpunsafe)
-		fpquiet();
 	if(user){
 		notify(ur);
 		if(u->p->fpstate == FPinactive) {
@@ -366,19 +360,27 @@ dumpstack(void)
 	ulong l, v;
 	int i;
 	extern ulong etext;
-print("no dumpstack\n");
-return;
+	static int dumping;
+
+	if(dumping == 1){
+		print("no dumpstack\n");
+		return;
+	}
+
+	dumping = 1;
 	if(u){
 		i = 0;
 		for(l=(ulong)&l; l<USERADDR+BY2PG; l+=4){
 			v = *(ulong*)l;
-			if(KTZERO < v && v < (ulong)&etext)
+			if(KTZERO < v && v < (ulong)&etext){
 				print("%lux=%lux  ", l, v);
-			++i;
-			if((i&7) == 0)
-				print("\n");
+				++i;
+				if((i&3) == 0)
+					print("\n");
+			}
 		}
 	}
+	print("\n");
 }
 
 void

@@ -277,7 +277,6 @@ screenputs(char *s, int n)
 	int i;
 	char buf[4];
 
-	lock(&screenlock);
 	while(n > 0){
 		i = chartorune(&r, s);
 		if(i == 0){
@@ -306,7 +305,6 @@ screenputs(char *s, int n)
 			out.pos = gsubfstring(&gscreen, out.pos, defont, buf, flipD[S]);
 		}
 	}
-	unlock(&screenlock);
 }
 
 int

@@ -146,7 +146,6 @@ init0(void)
 	kproc("alarm", alarmkproc, 0);
 	chandevinit();
 
-
 	if(!waserror()){
 		ksetterm("sun %s");
 		ksetenv("cputype", "sparc");
@@ -291,12 +290,9 @@ confinit(void)
 	putw4(va, INVALIDPTE);
 
 	/*
-	 * Look for a frame buffer.  This isn't done the way the
-	 * ROM does it.  Instead we ask if we know the machine type
-	 * and just use the builtin frame buffer if we can.  Otherwise
-	 * we just look in slot 3 which is where it usually is.
-	 * The ROM scans the slots in a specified order and uses
-	 * the first one it finds.  Too much bother.
+	 * Look for a frame buffer.  Do it the way the
+	 * ROM does it: scan the slots in a specified order and use
+	 * the first one it finds.
 	 *
 	 * If we find a frame buffer, we always use it as a console
 	 * rather than the attached terminal, if any.  This means

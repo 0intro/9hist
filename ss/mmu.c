@@ -5,51 +5,6 @@
 #include "fns.h"
 #include "io.h"
 
-#define SERIALPORT	0xF0000000	/* MMU bypass */
-
-static int
-rawputc(int c)
-{
-	if(c == '\n')
-		rawputc('\r');
-	while((getsysspaceb(SERIALPORT+4) & (1<<2)) == 0)
-		delay(10);
-	putsysspaceb(SERIALPORT+6, c);
-	if(c == '\n')
-		delay(20);
-	return c;
-}
-
-void
-rawputs(char *s)
-{
-	while(*s)
-		rawputc(*s++);
-}
-
-void
-rawprint(char *fmt, ...)
-{
-	char buf[PRINTSIZE];
-
-	doprint(buf, buf+sizeof(buf), fmt, (&fmt+1));
-	rawputs(buf);
-}
-
-static void
-rawpanic(char *fmt, ...)
-{
-	char buf[PRINTSIZE];
-	int s;
-
-	s = splhi();
-	doprint(buf, buf+sizeof(buf), fmt, (&fmt+1));
-	rawputs("rawpanic: ");
-	rawputs(buf);
-	systemreset();
-	splx(s);
-}
-
 /*
  *  WARNING:	Even though all MMU data is in the mach structure or
  *		pointed to by it, this code will not work on a multi-processor

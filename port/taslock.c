@@ -8,24 +8,22 @@
 void
 lock(Lock *l)
 {
-	Lock *ll = l;
 	int i;
 	ulong pc;
 
 	pc = getcallerpc(((uchar*)&l) - sizeof(l));
-	for(i = 0; i < 100000000; i++){
-    		if (tas(&ll->key) == 0){
+
+	for(i = 0; i < 10000000; i++){
+    		if (tas(&l->key) == 0){
 			if(u)
 				u->p->hasspin = 1;
-			ll->pc = pc;
+			l->pc = pc;
 			return;
 		}
 	}
-	i = l->key;
 	l->key = 0;
-
-	panic("lock loop 0x%lux key 0x%lux pc 0x%lux held by pc 0x%lux\n", l, i,
-		pc, l->pc);
+	panic("lock loop 0x%lux key 0x%lux pc 0x%lux held by pc 0x%lux\n",
+			l->key, i, pc, l->pc);
 }
 
 int
@@ -42,8 +40,6 @@ canlock(Lock *l)
 void
 unlock(Lock *l)
 {
-	int s;
-
 	l->pc = 0;
 	l->key = 0;
 	if(u && u->p)

@@ -168,7 +168,12 @@ screenputs(char *s, int n)
 
 	if(!conf.monitor)
 		return;
-	lock(&screenlock);
+
+	if((getpsr()&SPL(15))){
+		if(!canlock(&screenlock))
+			return;	/* don't deadlock trying to print in interrupt */
+	}else
+		lock(&screenlock);
 	while(n > 0){
 		i = chartorune(&r, s);
 		if(i == 0){

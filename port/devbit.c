@@ -251,10 +251,10 @@ bitreset(void)
 	ulong r;
 	Arena *a;
 
-	memmove(&bdefont0, defont, sizeof(*defont));
-	bdefont = &bdefont0;
 	if(!conf.monitor)
 		return;
+	memmove(&bdefont0, defont, sizeof(*defont));
+	bdefont = &bdefont0;
 	bit.map = smalloc(DMAP*sizeof(GBitmap*));
 	bit.nmap = DMAP;
 	getcolor(0, &r, &r, &r);

@@ -330,6 +330,11 @@ TEXT	duartreadtimer+0(SB), $0
 	MOVW	R1, SR
 	RTS
 
+TEXT	getsr+0(SB), $0
+	MOVL	$0, R0
+	MOVW	SR, R0
+	RTS
+
 GLOBL	mousetab(SB), $128
 DATA	mousetab+  0(SB)/4, -1		/* x down,        */
 DATA	mousetab+  4(SB)/4,  1		/*         y up   */

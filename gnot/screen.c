@@ -67,7 +67,11 @@ screenputs(char *s, int n)
 	int i;
 	char buf[4];
 
-	lock(&screenlock);
+	if(getsr() & 0x0700){
+		if(!canlock(&screenlock))
+			return;	/* don't deadlock trying to print in interrupt */
+	}else
+		lock(&screenlock);
 	while(n > 0){
 		i = chartorune(&r, s);
 		if(i == 0){
