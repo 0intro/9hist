@@ -19,6 +19,7 @@ struct
 }chanalloc;
 
 #define SEP(c) ((c) == 0 || (c) == '/')
+void cleancname(Cname*, int);
 
 int
 incref(Ref *r)
@@ -426,6 +427,9 @@ domount(Chan *c)
 			nc->mh = m;
 			nc->xmh = m;
 			incref(m);
+			cnameclose(nc->name);
+			nc->name = c->name;
+			incref(c->name);
 			cclose(c);
 			c = nc;
 			poperror();
@@ -459,7 +463,16 @@ undomount(Chan *c)
 		for(f = *h; f; f = f->hash) {
 			for(t = f->mount; t; t = t->next) {
 				if(eqchan(c, t->to, 1)) {
+					/*
+					 * We want to come out on the left hand side of the mount
+					 * point using the element of the union that we entered on.
+					 * To do this, find the element that has a from name of
+					 * c->name->s.
+					 */
+					if(strcmp(t->head->from->name->s, c->name->s) != 0)
+						continue;
 					nc = cclone(t->head->from, 0);
+					/* don't need to update nc->name because c->name is same! */
 					cclose(c);
 					c = nc;
 					break;
@@ -470,21 +483,6 @@ undomount(Chan *c)
 	poperror();
 	runlock(&pg->ns);
 	return c;
-}
-
-int
-walkname(Chan **cp, char *name, int domnt)
-{
-	Chan *c;
-
-	if(walk(cp, name, domnt) < 0)
-		return -1;
-	c = *cp;
-	if(c->name == nil)
-		c->name = newcname(name);
-	else
-		c->name = addelem(c->name, name);
-	return 0;
 }
 
 int
@@ -507,10 +505,19 @@ walk(Chan **cp, char *name, int domnt)
 
 	ac->flag &= ~CCREATE;	/* not inherited through a walk */
 	if(devtab[ac->type]->walk(ac, name) != 0) {
-		if(dotdot)
-			*cp = undomount(*cp);
+		/* walk succeeded: update name associated with *cp (ac) */
+		c = *cp;
+		if(c->name == nil)
+			c->name = newcname(name);
+		else
+			c->name = addelem(c->name, name);
+		
+		if(dotdot){
+			cleancname(c->name, c->name->s[0]=='#');	/* could be cheaper */
+			*cp = undomount(c);
+		}
 		if(domnt)
-			*cp = domount(*cp);
+			*cp = domount(c);
 		return 0;
 	}
 

@@ -36,6 +36,7 @@ KMap*		kmap(Page*);
 void		kmapinit(void);
 void		kmapinval(void);
 void		kunmap(KMap*);
+void		links(void);
 void		mmunewpage(Page*);
 void		mouseintr(void);
 int		newtlbpid(Proc*);

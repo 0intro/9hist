@@ -201,7 +201,7 @@ loop:
 	spllo();
 	for(;;){
 		idlehands();
-		if((++(m->fairness) & 3) == 0){
+		if((++(m->fairness) & 0x3) == 0){
 			/*
 			 *  once in a while, run process that's been waiting longest
 			 *  regardless of movetime
@@ -235,7 +235,7 @@ loop:
 					continue;
 				for(; p; p = p->rnext){
 					if(p->mp == MACHP(m->machno)
-					|| p->movetime < m->ticks)
+					|| p->movetime < MACHP(0)->ticks)
 						goto found;
 				}
 			}
@@ -249,7 +249,7 @@ found:
 
 	l = 0;
 	for(p = rq->head; p; p = p->rnext){
-		if(p->mp == MACHP(m->machno) || p->movetime < m->ticks)
+		if(p->mp == MACHP(m->machno) || p->movetime < MACHP(0)->ticks)
 			break;
 		l = p;
 	}
@@ -275,7 +275,7 @@ found:
 
 	p->state = Scheding;
 	if(p->mp != MACHP(m->machno))
-		p->movetime = m->ticks + HZ/10;
+		p->movetime = MACHP(0)->ticks + HZ/10;
 	p->mp = MACHP(m->machno);
 	return p;
 }
@@ -998,7 +998,7 @@ scheddump(void)
 		print("rq%ld:", rq-runq);
 		for(p = rq->head; p; p = p->rnext)
 			print(" %lud(%lud, %lud)", p->pid, m->ticks - p->readytime,
-				m->ticks - p->movetime);
+				MACHP(0)->ticks - p->movetime);
 		print("\n");
 		delay(150);
 	}

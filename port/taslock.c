@@ -35,7 +35,7 @@ lock(Lock *l)
 
 	pc = getcallerpc(&l);
 
-lockstats.locks++;
+	lockstats.locks++;
 	if(tas(&l->key) == 0){
 		l->pc = pc;
 		l->p = up;
@@ -43,7 +43,7 @@ lockstats.locks++;
 		return;
 	}
 
-lockstats.glare++;
+	lockstats.glare++;
 	cansched = up != nil && up->state == Running;
 	if(cansched){
 		oldpri = up->priority;
@@ -53,7 +53,7 @@ lockstats.glare++;
 		oldpri = 0;
 
 	for(;;){
-lockstats.inglare++;
+		lockstats.inglare++;
 		i = 0;
 		while(l->key){
 			if(conf.nmach < 2 && cansched){
@@ -90,7 +90,7 @@ ilock(Lock *l)
 	int cansched;
 
 	pc = getcallerpc(&l);
-lockstats.locks++;
+	lockstats.locks++;
 
 	x = splhi();
 	if(tas(&l->key) == 0){
@@ -101,11 +101,7 @@ lockstats.locks++;
 		return;
 	}
 
-lockstats.glare++;
-if(l->glare++ > 10000){
-print("glare %lux\n", l);
-l->glare = 0;
-}
+	lockstats.glare++;
 	cansched = up != nil && up->state == Running;
 	if(cansched){
 		oldpri = up->priority;
@@ -117,7 +113,7 @@ l->glare = 0;
 		panic("ilock: no way out: pc %uX\n", pc);
 
 	for(;;){
-lockstats.inglare++;
+		lockstats.inglare++;
 		splx(x);
 		while(l->key)
 			;

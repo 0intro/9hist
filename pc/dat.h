@@ -28,7 +28,6 @@ struct Lock
 	ulong	pc;
 	Proc	*p;
 	ushort	isilock;
-	ulong	glare;
 };
 
 struct Label

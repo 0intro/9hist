@@ -1971,7 +1971,7 @@ void
 addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 {
 	Reseq *rp, *rp1;
-	int i, x;
+	int i;
 
 	rp = malloc(sizeof(Reseq));
 	if(rp == nil){
