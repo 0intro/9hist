@@ -271,8 +271,12 @@ udpiput(Media *m, Block *bp)
 		hnputl(bp->rp, raddr);
 		if(Mediaforme(dst) > 0)
 			hnputl(bp->rp+4, laddr);
-		else
+		else if(m != 0)
 			hnputl(bp->rp+4, m->myip[0]);
+		else if(media != 0)
+			hnputl(bp->rp+4, media->myip[0]);
+		else
+			hnputl(bp->rp+4, laddr);
 		hnputs(bp->rp+8, rport);
 		hnputs(bp->rp+10, lport);
 	} else {
