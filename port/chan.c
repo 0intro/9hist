@@ -164,6 +164,7 @@ okchan(char *msg, int n)
 	int s;
 	Chan *c;
 
+	return;
 	s = splhi();
 	for(c = chanalloc.list; c; c = c->link)
 		okchan1(c, msg, n);

@@ -300,6 +300,12 @@ iomapinit(void)
 
 	/* Invalidate the old entries */
 	IO(ulong, Tir) = 0;
+
+	/* Invalidate R4030 I/O cache */
+	for(i=0; i<8; i++){
+		*(ulong*)0xE0000034 = i<<2;
+		*(ulong*)0xE000004C = 0;
+	}
 }
 
 /*
