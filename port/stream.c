@@ -604,7 +604,7 @@ pullup(Block *bp, int n)
 	n -= BLEN(bp);
 	while(nbp = bp->next){
 		i = BLEN(nbp);
-		if(i > n) {
+		if(i >= n) {
 			memmove(bp->wptr, nbp->rptr, n);
 			bp->wptr += n;
 			nbp->rptr += n;
@@ -622,7 +622,7 @@ pullup(Block *bp, int n)
 }
 
 /*
- *  expand a block list to be one byte, len bytes long
+ *  expand a block list to be one block, len bytes long
  */
 Block*
 expandb(Block *bp, int len)

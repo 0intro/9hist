@@ -38,10 +38,16 @@ void	iliput(Queue *, Block *);
 void	iloput(Queue *, Block *);
 void	ilopen(Queue *, Stream *);
 void	ilclose(Queue *);
+/* BSD authentication Protocol checker */
+void	bsdiput(Queue *, Block *);
+void	bsdoput(Queue *, Block *);
+void	bsdopen(Queue *, Stream *);
+void	bsdclose(Queue *);
 
 Qinfo tcpinfo = { tcpstiput, tcpstoput, tcpstopen, tcpstclose, "tcp", 0, 1 };
 Qinfo udpinfo = { udpstiput, udpstoput, udpstopen, udpstclose, "udp" };
 Qinfo ilinfo  = { iliput,    iloput,    ilopen,    ilclose,    "il"  };
+Qinfo bsdinfo = { bsdiput,   bsdoput,	bsdopen,   bsdclose,   "bsd", 0, 1 };
 
 Qinfo *protocols[] = { &tcpinfo, &udpinfo, &ilinfo, 0 };
 
@@ -274,6 +280,18 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		else if(cp->stproto == &ilinfo)
 			ilstart(cp, IL_ACTIVE, 20);
 
+		/*
+		 *  stupid hack for BSD port's 512, 513, & 514
+		 *  to make it harder for user to lie about his
+		 *  identity. -- presotto
+		 */
+		switch(cp->pdst){
+		case 512:
+		case 513:
+		case 514:
+			pushq(c->stream, &bsdinfo);
+			break;
+		}
 	}
 	else if(strcmp(field[0], "disconnect") == 0) {
 		if(cp->stproto != &udpinfo)
@@ -985,4 +1003,86 @@ ip_conn(Ipconv *ic, Port dst, Port src, Ipaddr dest, char proto)
 	}
 
 	return 0;
+}
+
+/*
+ *  Fuck me sideways with a bargepole!!! -- philw
+ *
+ *  BSD authentication protocol, used on ports 512, 513, & 514.
+ *  This makes sure that a user can only write the REAL user id.
+ *
+ *  q->ptr is number of nulls seen
+ */
+void
+bsdopen(Queue *q, Stream *s)
+{
+	RD(q)->ptr = q;
+	WR(q)->ptr = q;
+}
+void
+bsdclose(Queue *q)
+{
+	Block *bp;
+
+	bp = allocb(0);
+	bp->type = M_HANGUP;
+	PUTNEXT(q->other, bp);
+}
+void
+bsdiput(Queue *q, Block *bp)
+{
+	PUTNEXT(q, bp);
+}
+void
+bsdoput(Queue *q, Block *bp)
+{
+	uchar *luser;
+	uchar *p;
+	Block *nbp;
+	int n;
+
+	/* just pass it on if we've done authentication */
+	if(q->ptr == 0 || bp->type != M_DATA){
+		PUTNEXT(q, bp);
+		return;
+	}
+
+	/* collect into a single block */
+	lock(q);
+	if(q->first == 0)
+		q->first = pullup(bp, blen(bp));
+	else{
+		nbp = q->first;
+		nbp->next = bp;
+		q->first = pullup(nbp, blen(nbp));
+	}
+	bp = q->first;
+	if(bp == 0){
+		unlock(q);
+		bsdclose(q);
+		return;
+	}
+
+	/* look for 2 nulls to indicate stderr port and local user */
+	luser = memchr(bp->rptr, 0, BLEN(bp));
+	if(luser == 0){
+		unlock(q);
+		return;
+	}
+	luser++;
+	if(memchr(luser, 0, bp->wptr - luser) == 0){
+		unlock(q);
+		return;
+	}
+
+	/* if luser is a lie, hangup */
+	if(memcmp(luser, u->p->user, strlen(u->p->user)+1) != 0)
+		bsdclose(q);
+
+	/* mark queue as authenticated and pass data to remote side */
+	q->ptr = 0;
+	q->first = 0;
+	bp->flags |= S_DELIM;
+	PUTNEXT(q, bp);
+	unlock(q);
 }

@@ -27,8 +27,7 @@ enum {
 	Qvgasize=	2,
 	Qvgatype=	3,
 	Qvgaport=	4,
-	Qvgaiport=	5,
-	Nvga=		5,
+	Nvga=		4,
 };
 
 Dirtab vgadir[]={
@@ -36,7 +35,6 @@ Dirtab vgadir[]={
 	"vgatype",	{Qvgatype},	0,		0666,
 	"vgasize",	{Qvgasize},	0,		0666,
 	"vgaport",	{Qvgaport},	0,		0666,
-	"vgaiport",	{Qvgaiport},	0,		0666,
 };
 
 /* a routine from ../port/devcons.c */
@@ -141,8 +139,6 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 		for (port=offset; port<offset+n; port++)
 			*cp++ = inb(port);
 		return n;
-	case Qvgaiport:
-		error(Eio);
 	}
 }
 
@@ -173,20 +169,6 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 			error(Ebadarg);
 		for (port=offset; port<offset+n; port++)
 			outb(port, *cp++);
-		return n;
-	case Qvgaiport:
-		port = offset / 256;
-		switch (port) {
-		case EMISCW:	outfunc = genout;	break;
-		case SRX:	outfunc = srout;	break;
-		case GRX:	outfunc = grout;	break;
-		case ARW:	outfunc = arout;	break;
-		case CRX:	outfunc = crout;	break;
-		default:
-			error(Ebadarg);
-		}
-		for (i = offset%256; i < (offset%256) + n; i++)
-			outfunc(i, *cp++);
 		return n;
 	}
 }
