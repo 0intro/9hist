@@ -1256,13 +1256,11 @@ gc82543pci(void)
 
 		switch((p->did<<16)|p->vid){
 		case (0x1000<<16)|0x8086:	/* LSI L2A1157 (82542) */
+		case (0x1004<<16)|0x8086:	/* Intel PRO/1000 T */
+		case (0x1008<<16)|0x8086:	/* Intel PRO/1000 XT */
 		default:
 			continue;
 		case (0x1001<<16)|0x8086:	/* Intel PRO/1000 F */
-			break;
-		case (0x1004<<16)|0x8086:	/* Intel PRO/1000 T */
-			break;
-		case (0x1008<<16)|0x8086:	/* Intel PRO/1000 XT */
 			break;
 		}
 

@@ -390,6 +390,7 @@ arpenter(Fs *fs, int version, uchar *ip, uchar *mac, int n, int refresh)
 		a = newarp6(arp, ip, ifc, 0);
 		a->state = AOK;
 		a->type = type;
+		a->ctime = NOW;
 		memmove(a->mac, mac, type->maclen);
 	}
 
