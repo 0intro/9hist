@@ -457,7 +457,7 @@ blen(Block *bp)
 }
 
 /*
- * bround - round a block to chain to some 2^n number of bytes
+ * bround - round a block chain to some 2^n number of bytes
  */
 int
 bround(Block *bp, int amount)
@@ -466,7 +466,8 @@ bround(Block *bp, int amount)
 	int len, pad;
 
 	len = 0;
-	SET(last);
+	SET(last);	/* Ken's magic */
+
 	while(bp) {
 		len += BLEN(bp);
 		last = bp;
@@ -476,9 +477,12 @@ bround(Block *bp, int amount)
 	pad = ((len + amount) & ~amount) - len;
 	if(pad) {
 		last->next = allocb(pad);
-		memset(last->next->rptr, 0, pad);
-		last->next->flags |= S_DELIM;
 		last->flags &= ~S_DELIM;
+		last = last->next;
+		memset(last->wptr, 0, pad);
+		last->wptr += pad;
+		last->flags |= S_DELIM;
+		
 	}
 
 	return len + pad;
@@ -1362,14 +1366,16 @@ void
 dumpqueues(void)
 {
 	Queue *q;
-	int count;
+	int count, qcount;
 	Block *bp;
 	Bclass *bcp;
 
 	print("\n");
+	qcount = 0;
 	for(q = qlist; q < qlist + conf.nqueue; q++, q++){
 		if(!(q->flag & QINUSE))
 			continue;
+		qcount++;
 		print("%s %ux  R n %d l %d f %ux r %ux", q->info->name, q, q->nb,
 			q->len, q->flag, &(q->r));
 		print("  W n %d l %d f %ux r %ux\n", WR(q)->nb, WR(q)->len, WR(q)->flag,
@@ -1377,7 +1383,7 @@ dumpqueues(void)
 		dumpblocks(q, 'R');
 		dumpblocks(WR(q), 'W');
 	}
-	print("\n");
+	print("%d queues\n", qcount);
 	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){
 		lock(bcp);
 		for(count = 0, bp = bcp->first; bp; count++, bp = bp->next)

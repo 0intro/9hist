@@ -173,6 +173,7 @@ loop:
 		p->nchild = 0;
 		p->child = 0;
 		p->exiting = 0;
+		p->pgrp = 0;
 		p->fpstate = FPinit;
 		memset(p->pidonmach, 0, sizeof p->pidonmach);
 		memset(p->seg, 0, sizeof p->seg);
