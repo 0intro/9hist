@@ -228,7 +228,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 
 		n = devtab[c->type]->read(c, kaddr, ask, daddr);
 		if(n != ask)
-			error(Eioload);
+			faulterror(Eioload);
 		if(ask < BY2PG)
 			memset(kaddr+ask, 0, BY2PG-ask);
 
@@ -256,7 +256,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 
 		n = devtab[c->type]->read(c, kaddr, BY2PG, daddr);
 		if(n != BY2PG)
-			error(Eioload);
+			faulterror(Eioload);
 
 		poperror();
 		kunmap(k);

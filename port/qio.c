@@ -838,7 +838,7 @@ qbread(Queue *q, int len)
 	} else
 		dowakeup = 0;
 
-	/* split block if its too big and this is not a message oriented queue */
+	/* split block if it's too big and this is not a message-oriented queue */
 	nb = b;
 	if(n > len){
 		if((q->state&Qmsg) == 0){
