@@ -1253,7 +1253,7 @@ usbreset(void)
 
 	if(isaconfig("usb", 0, &isa) == 0) {
 		XPRINT("usb not in plan9.ini\n");
-//		return;
+		return;
 	}
 	ub = &ubus;
 	memset(&cfg, 0, sizeof(cfg));
