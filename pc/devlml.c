@@ -647,6 +647,10 @@ static void lmlintr(Ureg *, void *);
 static void
 lmlreset(void)
 {
+// LMLSEG
+	Physseg segbuf;
+	Physseg segreg;
+//
 	ulong regpa;
 	int i;
 
@@ -699,6 +703,24 @@ lmlreset(void)
 	lmlmap.pci = pciBaseAddr;
 	lmlmap.statcom = PADDR(codeData->statCom);
 	lmlmap.codedata = (ulong)codeData;
+
+// LMLSEG
+	memset(&segbuf, 0, sizeof(segbuf));
+	segbuf.attr = SG_PHYSICAL;
+	segbuf.name = smalloc(NAMELEN);
+	snprint(segbuf.name, NAMELEN, "lmlmjpg");
+	segbuf.pa = PADDR(codeData);
+	segbuf.size = sizeof(CodeData);
+	addphysseg(&segbuf);
+
+	memset(&segreg, 0, sizeof(segreg));
+	segreg.attr = SG_PHYSICAL;
+	segreg.name = smalloc(NAMELEN);
+	snprint(segreg.name, NAMELEN, "lmlregs");
+	segreg.pa = (ulong)regpa;
+	segreg.size = pcidev->mem[0].size;
+	addphysseg(&segreg);
+//
 
 	return; 
 }

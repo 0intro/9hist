@@ -120,19 +120,27 @@ allocb(int size)
 	ulong addr;
 	int n;
 
-	n = sizeof(Block) + size + (BY2V-1);
+	n = sizeof(Block) + size;
 	b = mallocz(n+Hdrspc, 0);
 	if(b == 0)
 		exhausted("Blocks");
 	memset(b, 0, sizeof(Block));
 
+	/* align start of data portion by rounding up */
 	addr = (ulong)b;
-	addr = ROUND(addr + sizeof(Block), BY2V);
+	addr = ROUND(addr + sizeof(Block), BLOCKALIGN);
 	b->base = (uchar*)addr;
+
+	/* align end of data portion by rounding down */
 	b->lim = ((uchar*)b) + msize(b);
-	b->rp = b->base;
-	n = b->lim - b->base - size;
-	b->rp += n & ~(BY2V-1);
+	addr = (ulong)(b->lim);
+	addr = addr & ~(BLOCKALIGN-1);
+	b->lim = (uchar*)addr;
+
+	/* leave sluff at beginning for added headers */
+	b->rp = b->lim - ROUND(size, BLOCKALIGN);
+	if(b->rp < b->base)
+		panic("allocb");
 	b->wp = b->rp;
 
 	return b;

@@ -215,7 +215,8 @@ udpkick(Conv *c, int)
 		hnputs(uh->udpdport, c->rport);
 		if(ipcmp(c->laddr, IPnoaddr) == 0)
 			findlocalip(f, c->laddr, c->raddr);
-		v6tov4(uh->udpsrc, c->laddr);
+		if(v6tov4(uh->udpsrc, c->laddr) < 0)
+			memset(uh->udpsrc, 0, sizeof(uh->udpsrc));
 		break;
 	}
 	hnputs(uh->udpsport, c->lport);

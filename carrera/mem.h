@@ -18,6 +18,7 @@
 
 #define	MAXMACH		1			/* max # cpus system can run */
 #define	KSTACK		4096			/* Size of kernel stack */
+#define BLOCKALIGN	8
 
 /*
  * Time

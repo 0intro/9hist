@@ -15,6 +15,7 @@
 #define	PGSHIFT		13			/* log(BY2PG) */
 #define 	ROUND(s, sz)	(((s)+(sz-1))&~(sz-1))
 #define 	PGROUND(s)	ROUND(s, BY2PG)
+#define BLOCKALIGN	8
 
 #define	BY2PTE		8			/* bytes per pte entry */
 #define	PTE2PG		(BY2PG/BY2PTE)	/* pte entries per page */
