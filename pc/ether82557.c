@@ -854,7 +854,7 @@ i82557pci(void)
 static int
 reset(Ether* ether)
 {
-	int an, i, phyaddr, port, x;
+	int anar, anlpar, bmcr, bmsr, force, i, phyaddr, port, x;
 	unsigned short sum;
 	Block *bp, **bpp;
 	Adapter *ap;
@@ -945,10 +945,14 @@ reset(Ether* ether)
 		 *	0x0040		10BASE-T Full Duplex
 		 *	0x0020		10BASE-T
 		 */
-		an = miir(ctlr, phyaddr, 0x04);
-		an &= miir(ctlr, phyaddr, 0x05) & 0x03E0;
-		if(an & 0x380)
-			ether->mbps = 100;
+		anar = miir(ctlr, phyaddr, 0x04);
+		anlpar = miir(ctlr, phyaddr, 0x05) & 0x03E0;
+		anar &= anlpar;
+		bmcr = 0;
+		if(anar & 0x380)
+			bmcr = 0x2000;
+		if(anar & 0x0140)
+			bmcr |= 0x0100;
 
 		switch((ctlr->eeprom[6]>>8) & 0x001F){
 
@@ -957,19 +961,87 @@ reset(Ether* ether)
 			/*
 			 * The DP83840[A] requires some tweaking for
 			 * reliable operation.
+			 * The manual says bit 10 should be unconditionally
+			 * set although it supposedly only affects full-duplex
+			 * operation (an & 0x0140).
 			 */
 			x = miir(ctlr, phyaddr, 0x17) & ~0x0520;
-			x |= 0x0020;
+			x |= 0x0420;
 			for(i = 0; i < ether->nopt; i++){
 				if(cistrcmp(ether->opt[i], "congestioncontrol"))
 					continue;
 				x |= 0x0100;
 				break;
 			}
-			if(an & 0x0140)
-				x |= 0x0400;
 			miiw(ctlr, phyaddr, 0x17, x);
+
+			/*
+			 * If the link partner can't autonegotiate, determine
+			 * the speed from elsewhere.
+			 */
+			if(anlpar == 0){
+				miir(ctlr, phyaddr, 0x01);
+				bmsr = miir(ctlr, phyaddr, 0x01);
+				x = miir(ctlr, phyaddr, 0x19);
+				if((bmsr & 0x0004) && !(x & 0x0040))
+					bmcr = 0x2000;
+			}
 			break;
+
+		case 0x07:				/* Intel 82555 */
+			/*
+			 * Auto-negotiation may fail if the other end is
+			 * a DP83840A and the cable is short.
+			 */
+			miir(ctlr, phyaddr, 0x01);
+			bmsr = miir(ctlr, phyaddr, 0x01);
+			if((miir(ctlr, phyaddr, 0) & 0x1000) && !(bmsr & 0x0020)){
+				miiw(ctlr, phyaddr, 0x1A, 0x2010);
+				x = miir(ctlr, phyaddr, 0);
+				miiw(ctlr, phyaddr, 0, 0x0200|x);
+				for(i = 0; i < 3000; i++){
+					delay(1);
+					if(miir(ctlr, phyaddr, 0x01) & 0x0020)
+						break;
+				}
+				miiw(ctlr, phyaddr, 0x1A, 0x2000);
+					
+				anar = miir(ctlr, phyaddr, 0x04);
+				anlpar = miir(ctlr, phyaddr, 0x05) & 0x03E0;
+				anar &= anlpar;
+				bmcr = 0;
+				if(anar & 0x380)
+					bmcr = 0x2000;
+				if(anar & 0x0140)
+					bmcr |= 0x0100;
+			}
+			break;
+		}
+
+		/*
+		 * Force speed and duplex if no auto-negotiation.
+		 */
+		if(anlpar == 0){
+			force = 0;
+			for(i = 0; i < ether->nopt; i++){
+				if(cistrcmp(ether->opt[i], "fullduplex") == 0){
+					force = 1;
+					bmcr |= 0x0100;
+					ctlr->configdata[19] |= 0x40;
+				}
+				else if(cistrcmp(ether->opt[i], "speed") == 0){
+					force = 1;
+					x = strtol(&ether->opt[i][6], 0, 0);
+					if(x == 10)
+						bmcr &= ~0x2000;
+					else if(x == 100)
+						bmcr |= 0x2000;
+					else
+						force = 0;
+				}
+			}
+			if(force)
+				miiw(ctlr, phyaddr, 0x00, bmcr);
 		}
 
 		ctlr->configdata[8] = 1;

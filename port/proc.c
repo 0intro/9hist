@@ -433,7 +433,8 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 			/* undo the sleep1() */
 			up->r = 0;
 			r->p = 0;
-			up->state = Running;
+			if(up->state == Wakeme)
+				up->state = Running;
 		}
 		unlock(&up->rlock);
 		splx(s);

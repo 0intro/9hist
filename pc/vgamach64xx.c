@@ -96,8 +96,7 @@ mach64xxlinear(VGAscr* scr, int* size, int* align)
 	return aperture;
 }
 
-enum {					/* MM offset */
-
+enum {
 	CurClr0		= 0x0B,		/* I/O Select */
 	CurClr1		= 0x0C,
 	CurOffset	= 0x0D,
@@ -110,9 +109,9 @@ enum {					/* MM offset */
 static uchar mmoffset[] = {
 	[CurClr0]	0x18,
 	[CurClr1]	0x19,
-	[CurOffset]	0x1a,
-	[CurHVposn]	0x1b,
-	[CurHVoff]	0x1c,
+	[CurOffset]	0x1A,
+	[CurHVposn]	0x1B,
+	[CurHVoff]	0x1C,
 
 	[GenTestCntl]	0x34,
 };
@@ -159,6 +158,16 @@ mach64xxcurload(VGAscr* scr, Cursor* curs)
 	p = KADDR(scr->aperture);
 	p += scr->storage;
 
+	/*
+	 * Initialise the 64x64 cursor RAM array.
+	 * The cursor mode gives the following truth table:
+	 *	p1 p0	colour
+	 *	 0  0	Cursor Colour 0
+	 *	 0  1	Cursor Colour 1
+	 *	 1  0	Transparent
+	 *	 1  1	Complement
+	 * Put the cursor into the top-right of the 64x64 array.
+	 */
 	for(y = 0; y < 16; y++){
 		for(i = 0; i < (64-16)/8; i++){
 			*p++ = 0xAA;
