@@ -600,13 +600,9 @@ TEXT sa1100_power_resume(SB), $-4
 	MOVW	R0,R0
 	/* flush i&d caches */
 	MCR		CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
-	/* drain prefetch */
-	MOVW	R0,R0						
-	MOVW	R0,R0
-	MOVW	R0,R0
-	MOVW	R0,R0
 	/* flush tlb */
 	MCR		CpMMU, 0, R0, C(CpTLBFlush), C(0x7), 0
+	/* drain prefetch */
 	MOVW	R0,R0						
 	MOVW	R0,R0
 	MOVW	R0,R0

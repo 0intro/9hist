@@ -252,7 +252,8 @@ screeninit(void)
 	blanktime = 3;	/* minutes */
 
 	screenwin();
-	screenputs = bitsyscreenputs;
+//	screenputs = bitsyscreenputs;
+	screenputs = nil;
 }
 
 void

@@ -42,6 +42,26 @@ checkflash(void)
 }
 
 static void
+checkktext(void)
+{
+	ulong *p;
+	ulong s;
+
+	s = 0;
+	for (p = (ulong*)_start; p < (ulong*)etext; p++){
+		if(*p == 0)
+			iprint("0x%lux->0\n", p);
+		if (((ulong)p & 0x1fff) == 0){
+			iprint("page 0x%lux checksum 0x%lux\n",
+				(ulong)(p-1)&~0x1fff, s);
+			s = 0;
+		}
+		s += *p;
+	}
+	iprint("page 0x%lux checksum 0x%lux\n", (ulong)(p-1)&~0x1fff, s);
+}
+
+static void
 checkpagetab(void)
 {
 	extern ulong l1table;
@@ -54,29 +74,6 @@ checkpagetab(void)
 	iprint("page table checksum is 0x%lux\n", s);
 }
 
-static void
-checkktext(void)
-{
-	/* check the kernel text */
-	ulong *p, *q;
-	ulong s;
-
-	s = 0;
-	if (savedtext == nil){
-		savedtext=malloc((ulong)etext-(ulong)_start);
-		if (savedtext == nil)
-			iprint("can't malloc savedtext\n");
-		memmove(savedtext, _start, (ulong)etext-(ulong)_start);
-	}else{
-		for (p = (ulong*)_start, q = (ulong*)savedtext; p < (ulong*)(etext); p++,q++) {
-			if (*p != *q) {
-				iprint("0x%lux: 0x%lux != 0x%lux\n", p, *p, *q);
-				s++;
-			}
-		}
-		if (s == 0) iprint("ktext ok\n");
-	}
-}
 
 static void
 dumpitall(void)
@@ -111,7 +108,7 @@ dumpitall(void)
 		powerregs->pwer, powerregs->pspr, powerregs->pgsr, powerregs->posr);
 	checkpagetab();
 	checkflash();
-//	checkktext();
+	checkktext();
 	iprint("\n\n");
 }
 
@@ -149,6 +146,8 @@ void	(*restart)(void) = nil;
 static void
 sa1100_power_off(void)
 {
+	/* Set KAPD and EAPD bits */
+	memconfregs->mdrefr |= 0x30000000;
 
 	/* enable wakeup by µcontroller, on/off switch
 	 * or real-time clock alarm
@@ -159,7 +158,7 @@ sa1100_power_off(void)
 	resetregs->rcsr =  RCSR_all;
 
 	/* disable internal oscillator, float CS lines */
-	powerregs->pcfr = PCFR_opde | PCFR_fp | PCFR_fs;
+	powerregs->pcfr = PCFR_opde;
 	powerregs->pgsr = 0;
 	/* set resume address. The loader jumps to it */
 	powerregs->pspr = (ulong)sa1100_power_resume;
@@ -168,17 +167,15 @@ sa1100_power_off(void)
 //sa1100_power_resume();
 
 	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
-/*	Doesn't work [sjm]
-	delay(90);
-	powerregs->ppcr = 0;
-	delay(90);
-*/
 
 	/* set all GPIOs to input mode  */
 	gpioregs->direction = 0;
 	delay(100);
 	/* enter sleep mode */
 
+/*	Doesn't work [sjm]
+	powerregs->ppcr = 0;
+*/
 	powerregs->pmcr = PCFR_suspend;
 	for(;;);
 }
@@ -214,7 +211,7 @@ deepsleep(void) {
 	µcpower(0);
 	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%ux\n", &xsp, xlink, power_pl);
 	dumpitall();
-	delay(100);
+	delay(1000);
 	uartpower(0);
 	rs232power(0);
 	clockpower(0);
@@ -225,6 +222,7 @@ deepsleep(void) {
 	mecr = memconfregs->mecr;
 	if(setpowerlabel()){
 		/* return here with mmu back on */
+		trapresume();
 
 		/* Turn off memory auto power */
 //		memconfregs->mdrefr &= ~0x30000000;
@@ -238,15 +236,15 @@ deepsleep(void) {
 			gpioregs->edgestatus = (1<<IRQgpio0);
 			intrregs->icip = (1<<IRQgpio0);
 		}
-		trapresume();
 		clockpower(1);
 		gpclkregs->r0 = 1<<0;
 		rs232power(1);
 		uartpower(1);
-		dumpitall();
 		delay(100);
 		xlink = getcallerpc(&xlink);
 		iprint("\nresuming execution, sp = 0x%lux, pc = 0x%lux, psw = 0x%ux\n", &xsp, xlink, splhi());
+		dumpitall();
+		delay(1000);
 //		irpower(1);
 //		audiopower(1);
 		µcpower(1);
