@@ -9,6 +9,7 @@ void	clockinit(void);
 void	delay(int);
 void	evenaddr(ulong);
 void	flushmmu(void);
+char*	getconf(char*);
 ulong	getfar(void);
 ulong	getfsr(void);
 #define	getpgcolor(a)	0
@@ -45,6 +46,7 @@ void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	screenputs(char*, int);
 void	setr13(int, ulong*);
+uchar*	tarlookup(uchar*, char*, int*);
 void	touser(void*);
 void	trapdump(char *tag);
 void	trapinit(void);
@@ -52,6 +54,7 @@ int	tas(void*);
 int	uartstageoutput(Uart*);
 void	uartkick(void*);
 void	uartrecv(Uart*, char);
+int	unsac(uchar*, uchar*, int, int);
 void	vectors(void);
 void	vtable(void);
 void	wbflush(void);

@@ -98,21 +98,9 @@ sacinit(void)
 {
 	SacHeader *hdr;
 	uchar *p;
-	char *s;
 	int i;
 
-print("sacinit\n");
-	s = getconf("flash");
-	if(s == nil) {
-		print("devsac: no flash file system\n");
-		return;
-	}
-
-	p = (uchar*)strtoul(s, 0, 0);
-	if(p == 0) {
-		print("devsac: bad address for flash file system\n");
-		return;
-	}
+	p = (uchar*)Flash_tar+4;
 	data = tarlookup(p, sacfs, &i);
 	if(data == 0) {
 		print("devsac: could not find file: %s\n", sacfs);
@@ -120,7 +108,7 @@ print("sacinit\n");
 	}
 	hdr = (SacHeader*)data;
 	if(getl(hdr->magic) != Magic) {
-print("devsac: bad magic\n");
+		print("devsac: bad magic\n");
 		return;
 	}
 	blocksize = getl(hdr->blocksize);

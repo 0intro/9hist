@@ -100,8 +100,8 @@ struct Mach
 	int	machno;			/* physical id of processor */
 	ulong	splpc;			/* pc of last caller to splhi */
 
-	Proc*	proc;			/* current process on this processor */
-	Proc*	externup;		/* extern register Proc *up */
+	Proc	*proc;			/* current process */
+	ulong	mmupid;			/* process id currently in mmu & cache */
 
 	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
@@ -171,7 +171,7 @@ struct
 #define	MACHP(n)	((Mach *)(MACHADDR+(n)*BY2PG))
 
 extern Mach	*m;
-#define up	(((Mach*)MACHADDR)->externup)
+extern Proc	*up;
 
 enum
 {

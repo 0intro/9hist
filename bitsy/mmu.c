@@ -222,30 +222,35 @@ static ulong mmubits[16] =
 void
 putmmu(ulong va, ulong pa, Page*)
 {
-	Page *p;
+	Page *pg;
 	ulong *t;
 
-//iprint("putmmu(0x%.8lux, 0x%.8lux)\n", va, pa);
+print("putmmu(0x%.8lux, 0x%.8lux)\n", va, pa);
 	/* always point L1 entry to L2 page, can't hurt */
-	p = up->l1page[va>>20];
-	if(p == nil){
-		p = auxpage();
-		if(p == nil)
-			pexit("out of memory", 1);
-		p->va = VA(kmap(p));
-		up->l1page[va>>20] = p;
-		memset((uchar*)(p->va), 0, BY2PG);
+	pg = up->l1page[va>>20];
+	if(pg == nil){
+		pg = up->mmufree;
+		if(pg != nil){
+			up->mmufree = pg->next;
+		} else {
+			pg = auxpage();
+			if(pg == nil)
+				pexit("out of memory", 1);
+		}
+		pg->va = VA(kmap(pg));
+		up->l1page[va>>20] = pg;
+		memset((uchar*)(pg->va), 0, BY2PG);
 	}
-	l1table[va>>20] = L1PageTable | L1Domain0 | (p->pa & L1PTBaseMask);
+	l1table[va>>20] = L1PageTable | L1Domain0 | (pg->pa & L1PTBaseMask);
 	cacheflushaddr((ulong)&l1table[va>>20]);
-//iprint("%lux[%lux] = %lux\n", l1table, va>>20, l1table[va>>20]);
+print("%lux[%lux] = %lux\n", l1table, va>>20, l1table[va>>20]);
 	up->l1table[va>>20] = l1table[va>>20];
-	t = (ulong*)p->va;
+	t = (ulong*)pg->va;
 
 	/* set L2 entry */
 	t[(va & (OneMeg-1))>>PGSHIFT] = mmubits[pa & (PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE)]
 		| (pa & ~(PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE));
-//iprint("%lux[%lux] = %lux\n", (ulong)t, (va & (OneMeg-1))>>PGSHIFT, t[(va & (OneMeg-1))>>PGSHIFT]);
+print("%lux[%lux] = %lux\n", (ulong)t, (va & (OneMeg-1))>>PGSHIFT, t[(va & (OneMeg-1))>>PGSHIFT]);
 	cacheflushaddr((ulong)&t[(va & (OneMeg-1))>>PGSHIFT]);
 
 	wbflush();
@@ -298,8 +303,12 @@ mmurelease(Proc* p)
 }
 
 void
-mmuswitch(Proc* p)
+mmuswitch(Proc *p)
 {
+	if(m->mmupid == p->pid && p->newtlb == 0)
+		return;
+	m->mmupid = p->pid;
+
 	if(p->newtlb){
 		mmuptefree(p);
 		p->newtlb = 0;

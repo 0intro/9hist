@@ -8,12 +8,12 @@
 #include	"init.h"
 #include	"pool.h"
 
-Mach *m;
-Conf conf;
+Mach	*m;
+Proc	*up;
+Conf	conf;
+int 	noprint;
 
 static void	gpioinit(void);
-
-int  noprint;
 
 void
 main(void)

@@ -36,8 +36,8 @@ configsac(Method *mp)
 	write(fd, "brick", 5);
 	close(fd);
 
-
 	sprint(cmd, "/%s/init", cputype);
+	print("starting %s\n", cmd);
 	execl(cmd, "init", "-c", 0);
 	fatal(cmd);
 }

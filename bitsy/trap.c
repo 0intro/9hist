@@ -147,12 +147,21 @@ faultarm(Ureg *ureg, ulong va, int user, int read)
 	up->insyscall = insyscall;
 }
 
+/* all Pabt+1 faults are caused by loads or stores.  The Lbit of
+ * the instruction distinquishes between them.
+ */
+enum
+{
+	Lbit = 1<<20,	/* load instruction */
+};
+
 /*
  *  here on all exceptions other than syscall (SWI)
  */
 void
 trap(Ureg *ureg)
 {
+	ulong inst;
 	int i, found;
 	Vctl *v;
 	int user;
@@ -175,12 +184,13 @@ trap(Ureg *ureg)
 		panic("unknown trap");
 		break;
 	case PsrMabt:	/* prefetch fault */
-//iprint("prefetch abort at 0x%lux\n", ureg->pc);
+print("%d: prefetch abort at 0x%lux\n", m->lastpid, ureg->pc);
 		faultarm(ureg, ureg->pc, user, 1);
 		break;
 	case PsrMabt+1:	/* data fault */
 		va = getfar();
-//iprint("data fault pc 0x%lux(0x%lux) va 0x%lux fsr 0x%lux\n", ureg->pc, *(ulong*)(ureg->pc), va, getfsr());
+		inst = *(ulong*)(ureg->pc);
+print("%d: data fault pc 0x%lux(0x%lux) va 0x%lux fsr 0x%lux\n", m->lastpid, ureg->pc, inst, va, getfsr());
 		switch(getfsr() & 0xf){
 		case 0x0:
 			panic("vector exception at %lux\n", ureg->pc);
@@ -208,7 +218,7 @@ trap(Ureg *ureg)
 		case 0x5:
 		case 0x7:
 			/* translation fault, i.e., no pte entry */
-			faultarm(ureg, va, user, 1);
+			faultarm(ureg, va, user, inst & Lbit);
 			break;
 		case 0x9:
 		case 0xb:
@@ -222,7 +232,7 @@ trap(Ureg *ureg)
 		case 0xd:
 		case 0xf:
 			/* permission error, copy on write or real permission error */
-			faultarm(ureg, va, user, 0);
+			faultarm(ureg, va, user, inst & Lbit);
 			break;
 		}
 		break;
@@ -569,8 +579,10 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	*--sp = nargs;
 
 	ureg = up->dbgreg;
+	memset(ureg, 0, 15*sizeof(ulong));
 	ureg->r13 = (ulong)sp;
 	ureg->pc = entry;
+print("execregs pc 0x%lux sp 0x%lux\n", ureg->pc, ureg->r13);
 	return USTKTOP-BY2WD;		/* address of user-level clock */
 }
 

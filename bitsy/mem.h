@@ -63,6 +63,13 @@
 #define KSTACK		(16*1024)		/* Size of kernel stack */
 
 /*
+ *  Offsets into flash
+ */
+#define Flash_bootldr	(FLASHZERO+0x0)		/* boot loader */
+#define Flash_kernel	(FLASHZERO+0x10000)	/* boot kernel */
+#define	Flash_tar	(FLASHZERO+0x100000)	/* tar file containing fs.sac */
+
+/*
  *  virtual MMU
  */
 #define PTEMAPMEM	(1024*1024)	
