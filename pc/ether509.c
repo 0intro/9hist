@@ -10,8 +10,7 @@
 #include "etherif.h"
 
 enum {
-	IDport		= 0x0100,	/* anywhere between 0x0100 and 0x01F0 */
-
+	IDport		= 0x0110,	/* anywhere between 0x0100 and 0x01F0 */
 					/* Commands */
 	GlobalReset	= 0x00,		/* Global Reset */
 	SelectWindow	= 0x01,		/* SelectWindow command */
@@ -39,19 +38,23 @@ enum {
 	Command		= 0x0E,		/* all windows */
 	Status		= 0x0E,
 
-	EEPROMdata	= 0x0C,		/* window 0 */
-	EEPROMcmd	= 0x0A,
-	ResourceConfig	= 0x08,
-	AddressConfig	= 0x06,
-	ConfigControl	= 0x04,
+	ManufacturerID	= 0x00,		/* window 0 */
 	ProductID	= 0x02,
-	ManufacturerID	= 0x00,
+	ConfigControl	= 0x04,
+	AddressConfig	= 0x06,
+	ResourceConfig	= 0x08,
+	EEPROMcmd	= 0x0A,
+	EEPROMdata	= 0x0C,
 
 					/* AddressConfig Bits */
 	XcvrTypeMask	= 0xC000,	/* Transceiver Type Select */
 	Xcvr10BaseT	= 0x0000,
 	XcvrAUI		= 0x4000,
 	XcvrBNC		= 0xC000,
+
+					/* ConfigControl */
+	Rst		= 0x04,		/* Reset Adapter */
+	Ena		= 0x01,		/* Enable Adapter */
 
 	TxFreeBytes	= 0x0C,		/* window 1 */
 	TxStatus	= 0x0B,
@@ -402,8 +405,7 @@ activate(void)
 	 *    The data comes back 1 bit at a time.
 	 *    We seem to need a delay here between reading the bits.
 	 *
-	 * If the ID doesn't match, the adapter
-	 * probably isn't there, so barf.
+	 * If the ID doesn't match, there are no more adapters.
 	 */
 	outb(IDport, 0x87);
 	for(x = 0, i = 0; i < 16; i++){
@@ -417,6 +419,7 @@ activate(void)
 	/*
 	 * 3. Read the Address Configuration from the EEPROM.
 	 *    The Address Configuration field is at offset 0x08 in the EEPROM).
+	 * 6. Tag the adapter so it won't respond in future.
 	 * 6. Activate the adapter by writing the Activate command
 	 *    (0xFF).
 	 */
@@ -426,6 +429,7 @@ activate(void)
 		acr <<= 1;
 		acr |= inb(IDport) & 0x01;
 	}
+	outb(IDport, 0xD1);
 	outb(IDport, 0xFF);
 
 	/*
@@ -435,7 +439,7 @@ activate(void)
 	 *    Enable the adapter. 
 	 */
 	port = (acr & 0x1F)*0x10 + 0x200;
-	outb(port+ConfigControl, 0x01);
+	outs(port+ConfigControl, Ena);
 
 	return port;
 }
@@ -443,18 +447,39 @@ activate(void)
 static ulong
 tcm509(Ether *ether)
 {
-	USED(ether);
-	return 0;
-
-#ifdef notdef
+	static int reset;
 	ulong port;
 	Adapter *ap;
 
+	/*
+	 * One time only:
+	 *	write ID sequence to get the attention of all adapters;
+	 *	global-reset all adapters;
+	 *	untag all adapters.
+	 */
+	if(reset == 0){
+		idseq();
+		outb(IDport, 0xC0);
+		delay(2);
+		outb(IDport, 0xD0);
+		reset = 1;
+	}
+
+	/*
+	 * Attempt to activate adapters until one matches our
+	 * address criteria.
+	 */
 	while(port = activate()){
+		if(ether->port == 0 || ether->port == port)
+			return port;
+
+		ap = malloc(sizeof(Adapter));
+		ap->port = port;
+		ap->next = adapter;
+		adapter = ap;
 	}
 
 	return 0;
-#endif /* notdef */
 }
 
 static ulong
@@ -472,7 +497,7 @@ tcm579(Ether *ether)
 			continue;
 		COMMAND(port+0xC80, GlobalReset, 0);
 		delay(1000);
-		outb(port+0xC80+ConfigControl, 0x01);
+		outs(port+0xC80+ConfigControl, Ena);
 		COMMAND(port+0xC80, SelectWindow, 0);
 		if(ether->port == 0 || ether->port == port)
 			return port;

@@ -591,7 +591,7 @@ qnotfull(void *a)
 {
 	Queue *q = a;
 
-	return q->len < q->limit;
+	return q->len < q->limit || (q->state & Qclosed);
 }
 
 /*

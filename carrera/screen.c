@@ -120,6 +120,8 @@ screenwin(void)
 	Dac *d;
 	ulong zbuf[16];
 
+	memset(Screenvirt, 0, 3*1024*1024);
+
 	gtexture(&gscreen, gscreen.r, &bgrnd, S);
 	w = defont0.info[' '].width;
 	h = defont0.height;
