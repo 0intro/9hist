@@ -647,9 +647,11 @@ struct Block
 	uchar	*wp;			/* first empty byte */
 	uchar	*lim;			/* 1 past the end of the buffer */
 	uchar	*base;			/* start of the buffer */
+	uchar	flag;
 
 	Rendez	r;			/* waiting reader */
 };
+#define BLEN(b)		((b)->wp - (b)->rp)
 
 struct Queue
 {
@@ -675,10 +677,13 @@ struct Queue
 
 enum
 {
-	Qstarve=1,	/* consumer starved */
-	Qmsg=1,		/* message oriented */
+	/* Block.flag */
+	Bfilled=1,		/* block filled */
+
+	/* Queue.state */	
+	Qstarve=1,		/* consumer starved */
+	Qmsg=2,			/* message stream */
 };
-#define BLEN(b)		((b)->wp - (b)->rp)
 
 
 enum
