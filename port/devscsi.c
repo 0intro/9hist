@@ -9,9 +9,6 @@
 #define	DPRINT	if(debug)kprint
 
 #define DATASIZE	(32*512)
-#undef DATASIZE
-#define	DATASIZE	(64*1024)
-
 
 static Scsi	staticcmd;	/* BUG: should be one per scsi device */
 
@@ -450,6 +447,7 @@ scsiinquiry(int dev, void *p, int size)
 int
 scsiwp(int dev)
 {
+/* Device specific
 	Scsi *cmd;
 	int r, status;
 
@@ -467,6 +465,9 @@ scsiwp(int dev)
 	if ((status&0xffff) != 0x6000)
 		error(Eio);
 	return r;
+*/
+	USED(dev);
+	return 0;
 }
 
 int

@@ -14,7 +14,7 @@ void	pager(void*);
 
 enum
 {
-	Maxpages = 500,	/* Max number of pageouts per segment pass */
+	Maxpages = SEGMAXSIZE/BY2PG,	/* Max # of pageouts per segment pass */
 };
 
 	Image 	swapimage;

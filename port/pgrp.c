@@ -229,6 +229,6 @@ resrcwait(char *reason)
 	if(u == 0)
 		panic("resrcwait");
 
-	tsleep(&u->p->sleep, return0, 0, 1000);
+	tsleep(&u->p->sleep, return0, 0, 300);
 	u->p->psstate = p;
 }

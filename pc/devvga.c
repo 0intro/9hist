@@ -587,8 +587,7 @@ mbbrect(Rectangle r)
 		mbb.max.x = r.max.x;
 	if (r.max.y > mbb.max.y)
 		mbb.max.y = r.max.y;
-	if (Dy(mbb) > 32 || Dx(mbb) > 32)
-		mousescreenupdate();
+	mousescreenupdate();
 }
 
 void

@@ -64,6 +64,8 @@ struct Target
 	ulong	flags;
 	uchar	sync;
 	uchar	transfer;
+	uchar	cmdphase;
+
 	Target	*active;		/* link on active list */
 
 	int	target;			/* SCSI Unit and logical unit */
@@ -73,6 +75,7 @@ struct Target
 	struct {			/* DMA things */
 		ulong	dmaaddr;
 		ulong	dmalen;
+		ulong	dmatx;
 		int	rflag;
 
 		ulong	*dmacnt;
@@ -113,9 +116,8 @@ static Target target[NCtlr][NTarget];
 static	void	dmamap(Target*);
 
 /*
- * Set up and start a data transfer.
- * We don't load the command phase here as
- * we may be continuing a stopped operation.
+ * Set up and start a data transfer. This maybe
+ * a continuation.
  */
 static void
 start(Target *tp)
@@ -129,7 +131,7 @@ start(Target *tp)
 	 */
 	*dev->addr = Rlun;
 	*dev->data = tp->lun;
-	*dev->addr = Rsync;
+	*dev->data = tp->cmdphase;
 	*dev->data = tp->sync;
 
 	/*
@@ -150,16 +152,14 @@ start(Target *tp)
 	/*
 	 * Load the command into the chip.
 	 */
-	*dev->addr = Rownid;
-	*dev->data = tp->clen;
-	*dev->addr = Rcdb;
+	if(tp->cmdphase < 0x40) {
+		*dev->addr = Rownid;
+		*dev->data = tp->clen;
+		*dev->addr = Rcdb;
 
-print("start %d cdb: ", tp->target);
-	for(count = 0; count < tp->clen; count++) {
-		*dev->data = tp->cdb[count];
-		print("%2.2lux ", tp->cdb[count]);
+		for(count = 0; count < tp->clen; count++)
+			*dev->data = tp->cdb[count];
 	}
-print("\n");
 	dmamap(tp);
 
 	/*
@@ -182,8 +182,7 @@ arbitrate(Target *dev)
 
 	tp = dev->active;
 
-	*dev->addr = Rcmdphase;
-	*dev->data = 0x00;
+	tp->cmdphase = 0x00;
 
 	if(tp->flags & Fidentified) {
 		start(tp);
@@ -198,6 +197,7 @@ arbitrate(Target *dev)
 	tp->flags |= Fidentifying|Fretry;
 	*dev->addr = Rlun;
 	*dev->data = tp->lun;
+	*dev->data = 0x00;				/* cmdphase */
 	*dev->addr = Rdestid;
 	*dev->data = tp->target;
 	*dev->addr = Rcmd;
@@ -211,23 +211,25 @@ done(void *arg)
 }
 
 static int
-scsiio(int nbus, int unit, int rw, uchar *cmd, int cbytes, void *data, int dbytes)
+scsiio(int nbus, Scsi *p, int rw)
 {
 	ulong s;
 	int status;
 	Target *ctlr, **l, *f, *tp;
 
-	tp = &target[nbus][unit];
+	tp = &target[nbus][p->target];
 	ctlr = tp->ctlr;
 
 	qlock(tp);
 	tp->flags |= Fbusy;
 	tp->rflag = rw;
-	tp->dmaaddr = (ulong)data;
-	tp->dmalen = dbytes;
+	tp->dmaaddr = (ulong)p->data.base;
+	tp->dmalen = p->data.lim - p->data.base;
+	tp->dmatx = 0;
 	tp->status = 0x6002;
-	memmove(tp->cdb, cmd, cbytes);
-	tp->clen = cbytes;
+
+	tp->clen = p->cmd.lim - p->cmd.base;
+	memmove(tp->cdb, p->cmd.base, tp->clen);
 
 	s = splhi();
 	qlock(ctlr);
@@ -258,19 +260,17 @@ scsiio(int nbus, int unit, int rw, uchar *cmd, int cbytes, void *data, int dbyte
 	sleep(tp, done, tp);
 
 	status = tp->status;
+	p->data.ptr += tp->dmatx;
+
 	qunlock(tp);
-print("status: #%4.4lux\n", status);
+
 	return status;
 }
 
 int
 scsiexec(Scsi *p, int read)
 {
-	int rw, s;
-	ulong clen, dlen;
-
-	clen = p->cmd.lim - p->cmd.base;
-	dlen = p->data.lim - p->data.base;
+	int rw;
 
 	rw = 1;
 	if(read == ScsiIn)
@@ -279,9 +279,9 @@ scsiexec(Scsi *p, int read)
 	if(p->target == CtlrID)
 		return 0x6002;
 
-	s = scsiio(1, p->target, rw, p->cmd.base, clen, p->data.base, dlen);
-	p->status = s;
-	return s;
+	p->status = scsiio(1, p, rw);
+
+	return p->status;
 }
 
 /*
@@ -384,19 +384,19 @@ identify(Target *tp, uchar status)
 
 	switch(status){
 
-	case 0x11:					/* select complete */
+	case 0x11:				/* select complete */
 		delay(7);
 		*dev->addr = Rcmd;
 		*dev->data = Catn;
 		break;
 
-	case 0x8E:					/* service required - MSGOUT */
+	case 0x8E:				/* service required - MSGOUT */
 		/*
 		 * Send a synchronous data transfer request.
 		 * The target may act strangely here and not respond
 		 * correctly.
 		 */
-		tp->sync = 0x00;			/* asynchronous transfer mode */
+		tp->sync = 0x00;		/* asynchronous transfer mode */
 		tp->flags |= Fidentified;
 		*dev->addr = Rtchi;
 		*dev->data = 0x00;
@@ -423,8 +423,8 @@ identify(Target *tp, uchar status)
 		}
 		break;
 
-	case 0x1F:					/* transfer complete - MSGIN */
-	case 0x4F:					/* unexpected MSGIN */
+	case 0x1F:				/* transfer complete - MSGIN */
+	case 0x4F:				/* unexpected MSGIN */
 		/*
 		 * Collect the response. The first 3 bytes
 		 * of an extended message are:
@@ -480,7 +480,7 @@ identify(Target *tp, uchar status)
 		*dev->data = Mnop;
 		break;
 
-	case 0x20:					/* transfer info paused */
+	case 0x20:				/* transfer info paused */
 		delay(7);
 		*dev->addr = Rcmd;
 		*dev->data = Cnack;
@@ -492,8 +492,7 @@ identify(Target *tp, uchar status)
 		 * Fretry should be set, so we will
 		 * pick up from here.
 		 */
-		*dev->addr = Rcmdphase;
-		*dev->data = 0x30;			/* command phase has begun */
+		tp->cmdphase = 0x30;		/* command phase has begun */
 		complete(dev);
 		break;
 
@@ -506,8 +505,8 @@ identify(Target *tp, uchar status)
 static void
 saveptr(Target *tp)
 {
-	ulong count;
 	Target *dev;
+	ulong count, tx;
 
 	*tp->dmafls = 1;
 
@@ -521,11 +520,10 @@ saveptr(Target *tp)
 	count += (*dev->data & 0xFF)<<8;
 	count += (*dev->data & 0xFF);
 
-	tp->dmaaddr += tp->dmalen - count;
+	tx = tp->dmalen - count;
+	tp->dmaaddr += tx;
 	tp->dmalen = count;
-
-	*dev->addr = Rcmd;
-	*dev->data = tp->transfer;
+	tp->dmatx += tx;
 }
 
 int
@@ -543,19 +541,25 @@ scsistatus(Target *ctlr)
 void
 scsiintr(int ctlrno)
 {
-	uchar status, x;
+	uchar status, x, phase;
 	Target *ctlr, *tp;
 
 	ctlr = &target[ctlrno][CtlrID];
 	tp = ctlr->active;
 
+	if(*ctlr->addr & 0x20)
+		print("busy\n");
+
+	*ctlr->addr = Rcmdphase;
+	phase = *ctlr->data;
+
 	*ctlr->addr = Rstatus;
 	status = *ctlr->data;
-print("scsiintr: #%2.2lux\n", status);
-	if(tp == 0)
-		return;
 
 	switch(status){
+	case 0x00:				/* reset interrupt */
+		return;
+
 	case 0x42:				/* timeout */
 		tp->flags &= ~Fretry;
 		scsistatus(ctlr);		/* Must read lun register */
@@ -569,17 +573,24 @@ print("scsiintr: #%2.2lux\n", status);
 		 * with the final command phase, which
 		 * should be 0x60.
 		 */
+		saveptr(tp);
 		tp->status = scsistatus(ctlr);	/* target status */
 		complete(ctlr);
 		return;
 
-	case 0x21:					/* save data pointers */
+	case 0x21:				/* save data pointers */
 		saveptr(tp);
+		*ctlr->addr = Rcmd;
+		*ctlr->data = tp->transfer;
 		return;
 
-	case 0x4B:					/* unexpected status phase */
+	case 0x4B:				/* unexpected status phase */
+		saveptr(tp);
 		*ctlr->addr = Rcmdphase;
-		*ctlr->data = 0x46;			/*  */
+		if(phase <= 0x3c)
+			*ctlr->data = 0x41;	/* resume no data */
+		else
+			*ctlr->data = 0x46;	/* collect status */
 		*ctlr->addr = Rtchi;
 		*ctlr->data = 0;
 		*ctlr->data = 0;
@@ -590,8 +601,7 @@ print("scsiintr: #%2.2lux\n", status);
 
 	case 0x85:					/* disconnect */
 		if(tp->flags & Fidentifying){
-			*ctlr->addr = Rcmdphase;
-			*ctlr->data = 0x00;		/* complete retry */
+			tp->cmdphase = 0x00;		/* complete retry */
 			complete(ctlr);
 			return;
 		}
@@ -603,8 +613,7 @@ print("scsiintr: #%2.2lux\n", status);
 		x = *ctlr->data;
 		if(x & Siv){				/* source ID valid */
 			reselect(ctlr, x & 0x07);
-			*ctlr->addr = Rcmdphase;
-			*ctlr->data = 0x44;		/* reselected by target */
+			ctlr->active->cmdphase = 0x44;	/* reselected by target */
 			start(ctlr->active);
 			return;
 		}
@@ -666,14 +675,14 @@ scsiicltr(int ctlrnr, uchar *data, uchar *addr, ulong *cnt, uchar *fls, ulong ma
 	 * Freselect means enable the chip to
 	 * respond to reselects.
 	 */
-	ctlr->flags = /*Freselect|*/Fidentified;
+	ctlr->flags = Freselect|Fidentified;
 
 	*ctlr->addr = Rcontrol;
 	*ctlr->data = BurstDma|Edi|Idi|Hsp;
 	*ctlr->addr = Rtimeout;
 	*ctlr->data = 40;				/* 200ms */
-	*ctlr->addr = Rsrcid;
 
+	*ctlr->addr = Rsrcid;
 	if(ctlr->flags & Freselect)
 		*ctlr->data = Er;
 	else
@@ -712,7 +721,7 @@ void
 resetscsi(void)
 {
 	uchar m3;
-print("scsi init\n");
+
 	/*
 	 * Reset both scsi busses
 	 */

@@ -182,7 +182,7 @@ intr(Ureg *ur)
 		cause &= ~INTR1;
 	}
 
-	if(cause & INTR5){
+	while(cause & INTR5) {
 		any = 0;
 		if(!(*MPBERR1 & (1<<8))){
 			print("MP bus error %lux %lux\n", *MPBERR0, *MPBERR1);
@@ -281,18 +281,11 @@ intr(Ureg *ur)
 			}
 		}
 		/*
-		 *  if nothing else, what the hell?
-		 */
-		if(!any && bogies++<10){
-			print("bogus intr lvl 5 pend %lux on %d\n", npend, m->machno);
-			USED(npend);
-			delay(100);
-		}
-		/*
 		 *  6. re-enable interrupts
 		 */
 		*IO2SETMASK = 0xff000000;
-		cause &= ~INTR5;
+		if(any == 0)
+			cause &= ~INTR5;
 	}
 
 	if(cause & (INTR2|INTR4)) {
