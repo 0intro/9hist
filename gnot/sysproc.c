@@ -193,7 +193,6 @@ sysexec(ulong *arg)
 	/*
 	 * Process #! /bin/sh args ...
 	 */
-print("do #! magic=%lux size=%d\n", exec.magic, n);
 	memcpy(line, &exec, sizeof(Exec));
 	if(indir || line[0]!='#' || line[1]!='!')
 		goto Err;
