@@ -29,7 +29,7 @@
 
 #define DEBUG	if(1)print
 
-#define SEEKEYS 1
+#define SEEKEYS 0
 
 typedef struct Ctlr	Ctlr;
 typedef struct Wltv	Wltv;

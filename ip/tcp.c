@@ -1255,7 +1255,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 
 	h->Unused = 0;
 	hnputs(h->tcplen, length-TCP_PKT);
-	if((h->tcpcksum[0] || h->tcpcksum[0]) && 
+	if((h->tcpcksum[0] || h->tcpcksum[1]) && 
 	    ptclcsum(bp, TCP_IPLEN, length-TCP_IPLEN)) {
 		tpriv->stats[CsumErrs]++;
 		tpriv->stats[InErrs]++;

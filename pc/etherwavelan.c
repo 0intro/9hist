@@ -434,7 +434,10 @@ ltv_outstr(Ctlr* ctlr, int type, char* val)
 	memset(&ltv, 0, sizeof(ltv));
 	ltv.len = (sizeof(ltv.type)+sizeof(ltv.slen)+sizeof(ltv.s))/2;
 	ltv.type = type;
+
+//	This should be ltv.slen = len; according to Axel Belinfante
 	ltv.slen = (len+1) & ~1;
+
 	strncpy(ltv.s, val, len);
 	w_outltv(ctlr, &ltv);
 }

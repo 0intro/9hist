@@ -860,9 +860,12 @@ tlsrecread(TlsRec *tr)
 			b = nil;
 			poperror();
 			dechandq(tr);
-		}else if(tr->verset && tr->version != SSL3Version && !waserror()){
-			sendAlert(tr, ENoRenegotiation);
-			poperror();
+		}else{
+			unlock(&tr->hqlock);
+			if(tr->verset && tr->version != SSL3Version && !waserror()){
+				sendAlert(tr, ENoRenegotiation);
+				poperror();
+			}
 		}
 		break;
 	case RApplication:
