@@ -1,5 +1,5 @@
 #include "u.h"
-#include "../port/lib.h"
+#include "lib.h"
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
@@ -10,27 +10,25 @@ typedef struct HuffDec		HuffDec;
 
 struct HuffDec
 {
-	ulong	maxcode[MaxLen];
-	ulong	last[MaxLen];
-	ulong	decode[MaxLen];
+	ulong	maxcode[MaxFastLen];
+	ulong	last[MaxFastLen];
+	ulong	decode[MaxFastLen];
 };
 
 static HuffDec lentab = 
 {
-/*	0	1	2	3	4	5	6	*/
-	{0,	0,	0x2,	0,	0xe,	0x1e,	0x3f},
-	{-1,	0+0,	0x2+1,	-1,	0xe+2,	0x1e+5,	0x3f+6},
+/*	0	1	2	3	4	5	6	7	*/
+	{0,	0,	0x2,	0,	0xd,	0x1c,	0x3b,	0x79},
+	{-1,	0+0,	0x2+1,	-1,	0xd+2,	0x1c+4,	0x3b+5,	0x79+7},
 	{
 		0,
 		1,
-		7, 3, 2,
+		3, 2,
 		4,
-		6, 5
+		6, 5,
+		8, 7,
 	},
 };
-
-static ulong	bitget(Unthwack *ut, int nb);
-static ulong	iomegaget(Unthwack *ut);
 
 void
 unthwackinit(Unthwack *ut)
@@ -42,22 +40,16 @@ unthwackinit(Unthwack *ut)
 		ut->blocks[i].data = ut->data[i];
 }
 
-/*
- * to speed up, inline bitget
- */
 int
 unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 {
 	UnthwBlock blocks[CompBlocks], *b, *eblocks;
-	uchar *s, *es, *d, *dmax;
-	ulong cmask, cseq, bseq, utbits, utnbits;
-	int off, len, bits, slot, tslot;
+	uchar *s, *es, *d, *dmax, *smax;
+	ulong cmask, cseq, bseq, utbits;
+	int off, len, bits, slot, tslot, use, code, utnbits, overbits;
 
-	if(nsrc < 4 || nsrc > ThwMaxBlock || waserror())
+	if(nsrc < 4 || nsrc > ThwMaxBlock)
 		return -1;
-
-	ut->src = src + 2;
-	ut->smax = src + nsrc;
 
 	/*
 	 * find the correct slot for this block,
@@ -112,23 +104,30 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 	}
 	eblocks = b;
 	if(cseq != seq){
-		print("blocks not in decompression window: cseq=%d seq=%d cmask=%ux nb=%d\n", cseq, seq, cmask, eblocks - blocks);
-		error("unthwack bad window");
+		print("blocks not in decompression window: cseq=%ld seq=%ld cmask=%lux nb=%ld\n", cseq, seq, cmask, eblocks - blocks);
+		return -1;
 	}
 
+	smax = src + nsrc;
+	src += 2;
 	utnbits = 0;
 	utbits = 0;
-	while(ut->src < ut->smax || ut->nbits >= MinDecode){
-		while(utnbits < 9){
-			if(ut->src >= ut->smax)
-				error("unthwack eof");
+	overbits = 0;
+	while(src < smax || utnbits - overbits >= MinDecode){
+		while(utnbits < MaxOffDecode + BigLenBits){
 			utbits <<= 8;
-			utbits |= *ut->src++;
+			if(src < smax)
+				utbits |= *src++;
+			else
+				overbits += 8;
 			utnbits += 8;
 		}
 		utnbits -= 9;
 		off = (utbits >> utnbits) & ((1 << 9) - 1);
 
+		/*
+		 * literal
+		 */
 		bits = off >> 5;
 		if(bits >= MaxOff){
 			*d++ = off;
@@ -143,41 +142,46 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 		bits += OffBase - 5;
 		off <<= bits;
 
-		while(utnbits < bits){
-			if(ut->src >= ut->smax)
-				error("unthwack eof");
-			utbits <<= 8;
-			utbits |= *ut->src++;
-			utnbits += 8;
-		}
 		utnbits -= bits;
 		off |= (utbits >> utnbits) & ((1 << bits) - 1);
 		off++;
 
-		len = 0;
 		bits = 0;
+		utbits &= (1 << utnbits) - 1;
 		do{
-			len <<= 1;
-			if(utnbits < 1){
-				if(ut->src >= ut->smax)
-					error("unthwack eof");
+			bits++;
+			len = utbits >> (utnbits - bits);
+		}while(bits < BigLenBits && len > lentab.maxcode[bits]);
+		utnbits -= bits;
+
+		if(bits < BigLenBits)
+			len = lentab.decode[lentab.last[bits] - len];
+		else{
+			while(utnbits < MaxLenDecode){
 				utbits <<= 8;
-				utbits |= *ut->src++;
+				if(src < smax)
+					utbits |= *src++;
+				else
+					overbits += 8;
 				utnbits += 8;
 			}
-			utnbits--;
-			len |= (utbits >> utnbits) & 1;
-			bits++;
-		}while(len > lentab.maxcode[bits]);
-		len = lentab.decode[lentab.last[bits] - len];
 
-		if(len == MaxLen - 1){
-			ut->nbits = utnbits;
-			ut->bits = utbits;
-			len += iomegaget(ut) - 1;
-			utnbits = ut->nbits;
-			utbits = ut->bits;
+			code = len - BigLenCode;
+			len = MaxFastLen;
+			bits = 8;
+			use = BigLenBase;
+			while(code >= use){
+				len += use;
+				code -= use;
+				code <<= 1;
+				utnbits--;
+				code |= (utbits >> utnbits) & 1;
+				use <<= bits & 1;
+				bits++;
+			}
+			len += code;
 		}
+
 		len += MinMatch;
 
 		b = blocks;
@@ -185,17 +189,19 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 			off -= b->maxoff;
 			b++;
 			if(b >= eblocks)
-				error("unthwack offset");
+				return -1;
 		}
 		if(d + len > dmax
 		|| b != blocks && len > off)
-			error("unthwack len");
+			return -1;
 		s = b->data + b->maxoff - off;
 		es = s + len;
 		while(s < es)
 			*d++ = *s++;
 		blocks->maxoff += len;
 	}
+	if(utnbits < overbits)
+		return -1;
 
 	len = d - blocks->data;
 	memmove(dst, blocks->data, len);
@@ -205,49 +211,5 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 	if(ut->slot >= DWinBlocks)
 		ut->slot = 0;
 
-	poperror();
 	return len;
-}
-
-/*
- * elias's omega code, modified
- * for at least 3 bit transmission
- */
-static ulong
-iomegaget(Unthwack *ut)
-{
-	ulong v;
-	int b;
-
-	v = bitget(ut, 3);
-	if((v & 0x4) == 0)
-		return v + 1;
-	for(;;){
-		b = bitget(ut, 1);
-		if(b == 0)
-			return v + 1;
-		if(v > 16)
-			break;
-		v--;
-		v = (b << v) | bitget(ut, v);
-	}
-	error("unthwack iomegaget");
-	return ~0;
-}
-
-static ulong
-bitget(Unthwack *ut, int nb)
-{
-	int c;
-
-	while(ut->nbits < nb){
-		if(ut->src >= ut->smax)
-			error("unthwack eof");
-		c = *ut->src++;
-		ut->bits <<= 8;
-		ut->bits |= c;
-		ut->nbits += 8;
-	}
-	ut->nbits -= nb;
-	return (ut->bits >> ut->nbits) & ((1 << nb) - 1);
 }

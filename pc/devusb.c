@@ -369,9 +369,9 @@ dumptd(TD *t, int follow)
 		if(t->status & LowSpeed)
 			*s++ = 'L';
 		*s = 0;
-		print("td %8.8lux: l=%8.8lux s=%8.8lux d=%8.8lux b=%8.8lux %8.8lux f=%8.8lux\n",
+		XPRINT("td %8.8lux: l=%8.8lux s=%8.8lux d=%8.8lux b=%8.8lux %8.8lux f=%8.8lux\n",
 			t, t->link, t->status, t->dev, t->buffer, t->bp?(ulong)t->bp->rp:0, t->flags);
-		print("\ts=%s,ep=%ld,d=%ld,D=%ld\n", buf, (t->dev>>15)&0xF, (t->dev>>8)&0xFF, (t->dev>>19)&1);
+		XPRINT("\ts=%s,ep=%ld,d=%ld,D=%ld\n", buf, (t->dev>>15)&0xF, (t->dev>>8)&0xFF, (t->dev>>19)&1);
 		if(t->bp)
 			dumpdata(t->bp, n);
 		if(!follow || t->link & Terminate || t->link & IsQH)
@@ -399,44 +399,6 @@ alloctde(Endpt *e, int pid, int n)
 		t->status |= LowSpeed;
 	t->dev = ((n-1)<<21) | ((id&0x7FF)<<8) | pid | tog;
 	return t;
-}
-
-static TD *
-alloctdring(int nbuf, Endpt *e, int pid, int maxn)
-{
-	TD *t, *lt, *ft;
-	int id, i;
-	ulong status, dev;
-
-	if(!e->iso)
-		nbuf = (nbuf+1)&~1;
-	id = (e->x<<7)|(e->dev->x&0x7F);
-	dev = ((maxn-1)<<21) | ((id&0x7FF)<<8) | pid;
-	status = 0;
-	if(e->dev->ls)
-		status |= LowSpeed;
-	ft = lt = nil;
-	for(i=0; i<nbuf; i++){
-		t = alloctd(&ubus);
-		t->ep = e;
-		t->status = status;
-		t->dev =  dev;
-		if(!e->iso)
-			dev ^= IsDATA1;
-		if(pid == TokIN){
-			t->bp = allocb(maxn);
-			t->buffer = PADDR(t->bp->wp);
-		}
-		if(ft != nil){
-			lt->next = t;
-			lt->link = PADDR(t);
-		}else
-			ft = t;
-		lt = t;
-	}
-	if(lt != nil)
-		lt->link = PADDR(ft);	/* loop to form ring */
-	return ft;
 }
 
 static QH *
@@ -475,13 +437,13 @@ dumpqh(QH *q)
 
 	q0 = q;
 	for(i = 0; q != nil && i < 10; i++){
-		pprint("qh %8.8lux: %8.8lux %8.8lux\n", q, q->head, q->entries);
+		XPRINT("qh %8.8lux: %8.8lux %8.8lux\n", q, q->head, q->entries);
 		if((q->entries & Terminate) == 0)
 			dumptd(TFOL(q->entries), 1);
 		if(q->head & Terminate)
 			break;
 		if((q->head & IsQH) == 0){
-			pprint("head:");
+			XPRINT("head:");
 			dumptd(TFOL(q->head), 1);
 			break;
 		}
@@ -525,7 +487,7 @@ cleantd(TD *t, int discard)
 	err = t->status & (AnyError&~NAKed);
 	/* TO DO: on t->status&AnyError, q->entries will not have advanced */
 	if (err)
-		print("cleanTD: Error %8.8lux %8.8lux %8.8lux %8.8lux\n", t->link, t->status, t->dev, t->buffer);
+		XPRINT("cleanTD: Error %8.8lux %8.8lux %8.8lux %8.8lux\n", t->link, t->status, t->dev, t->buffer);
 	switch(t->dev&0xFF){
 	case TokIN:
 		if(discard || (t->flags & CancelTD) || t->ep == nil || t->ep->x!=0&&err){
@@ -624,7 +586,7 @@ canceltds(Ctlr *ub, QH *q, Endpt *e)
 			if(t->ep == e)
 				t->flags |= CancelTD;
 		iunlock(ub);
-		pprint("cancel:\n");
+		XPRINT("cancel:\n");
 		dumpqh(q);
 	}
 }
@@ -805,7 +767,7 @@ mkqhtree(ulong *frame, int framesize, int maxms)
 				o |= 1;
 		}
 		if(leaf0+o >= n){
-			pprint("leaf0=%d o=%d i=%d n=%d\n", leaf0, o, i, n);
+			XPRINT("leaf0=%d o=%d i=%d n=%d\n", leaf0, o, i, n);
 			break;
 		}
 		frame[i] = PADDR(&tree[leaf0+o]) | IsQH;
@@ -828,14 +790,14 @@ dumpframe(int f, int t)
 	if(t < 0)
 		t = 32;
 	for(i=f; i<t; i++){
-		pprint("F%.2d %8.8lux %8.8lux\n", i, frame[i], QFOL(frame[i])->head);
+		XPRINT("F%.2d %8.8lux %8.8lux\n", i, frame[i], QFOL(frame[i])->head);
 		for(p=frame[i]; (p & IsQH) && (p &Terminate) == 0; p = q->head){
 			q = QFOL(p);
 			if(!(q >= tree && q < &tree[n])){
-				pprint("Q: p=%8.8lux out of range\n", p);
+				XPRINT("Q: p=%8.8lux out of range\n", p);
 				break;
 			}
-			pprint("  -> %8.8lux h=%8.8lux e=%8.8lux\n", p, q->head, q->entries);
+			XPRINT("  -> %8.8lux h=%8.8lux e=%8.8lux\n", p, q->head, q->entries);
 		}
 	}
 }
@@ -1104,9 +1066,9 @@ interrupt(Ureg*, void *a)
 	ub = a;
 	s = IN(Status);
 	if (s & 0x1a) {
-		print("usbint: #%x f%d\n", s, IN(Frnum));
-		print("cmd #%x sofmod #%x\n", IN(Cmd), inb(ub->io+SOFMod));
-		print("sc0 #%x sc1 #%x\n", IN(Portsc0), IN(Portsc1));
+		XPRINT("usbint: #%x f%d\n", s, IN(Frnum));
+		XPRINT("cmd #%x sofmod #%x\n", IN(Cmd), inb(ub->io+SOFMod));
+		XPRINT("sc0 #%x sc1 #%x\n", IN(Portsc0), IN(Portsc1));
 	}
 	OUT(Status, s);
 
@@ -1570,7 +1532,7 @@ readusb(Endpt *e, void *a, long n)
 	p = a;
 	do {
 		if(e->eof) {
-			pprint("e->eof\n");
+			XPRINT("e->eof\n");
 			break;
 		}
 		if(e->err)
@@ -1583,7 +1545,7 @@ readusb(Endpt *e, void *a, long n)
 			error(e->err);
 		b = qget(e->rq);	/* TO DO */
 		if(b == nil) {
-			pprint("b == nil\n");
+			XPRINT("b == nil\n");
 			break;
 		}
 		if(waserror()){
@@ -1846,7 +1808,7 @@ usbwrite(Chan *c, void *a, long n, vlong)
 			/* ep n maxpkt mode poll nbuf */
 			i = strtoul(fields[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep)) {
-				pprint("field 1: 0 <= %d < %d\n", i, nelem(d->ep));
+				XPRINT("field 1: 0 <= %d < %d\n", i, nelem(d->ep));
 				error(Ebadarg);
 			}
 			if(d->ep[i] != nil)
@@ -1869,7 +1831,7 @@ usbwrite(Chan *c, void *a, long n, vlong)
 				if(i > 0 && i <= 1000)
 					e->pollms = i;
 				else {
-					pprint("field 4: 0 <= %d <= 1000\n", i);
+					XPRINT("field 4: 0 <= %d <= 1000\n", i);
 					error(Ebadarg);
 				}
 			}
@@ -1878,7 +1840,7 @@ usbwrite(Chan *c, void *a, long n, vlong)
 				e->nbuf = i;
 			poperror();
 		}else {
-			pprint("command %s, fields %d\n", fields[0], nf);
+			XPRINT("command %s, fields %d\n", fields[0], nf);
 			error(Ebadarg);
 		}
 		return n;

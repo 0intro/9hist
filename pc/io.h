@@ -5,6 +5,7 @@
 enum {
 	VectorNMI	= 2,		/* non-maskable interrupt */
 	VectorBPT	= 3,		/* breakpoint */
+	VectorUD	= 6,		/* invalid opcode exception */
 	VectorCNA	= 7,		/* coprocessor not available */
 	VectorCSO	= 9,		/* coprocessor segment overrun */
 	VectorPF	= 14,		/* page fault */

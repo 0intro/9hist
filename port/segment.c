@@ -612,6 +612,8 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 		error(Enovmem);
 
 	len = PGROUND(len);
+	if(len == 0)
+		error(Ebadarg);
 
 	/*
 	 * Find a hole in the address space.

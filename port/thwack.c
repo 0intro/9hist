@@ -1,5 +1,5 @@
 #include "u.h"
-#include "../port/lib.h"
+#include "lib.h"
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
@@ -13,16 +13,17 @@ struct Huff
 	ulong	encode;				/* the code */
 };
 
-static	Huff	lentab[MaxLen] =
+static	Huff	lentab[MaxFastLen] =
 {
 	{1,	0x0},		/* 0 */
 	{2,	0x2},		/* 10 */
 	{4,	0xc},		/* 1100 */
 	{4,	0xd},		/* 1101 */
-	{5,	0x1e},		/* 11110 */
-	{6,	0x3e},		/* 111110 */
-	{6,	0x3f},		/* 111111 */
-	{4,	0xe},		/* 1110 */
+	{5,	0x1c},		/* 11100 */
+	{6,	0x3a},		/* 111010 */
+	{6,	0x3b},		/* 111011 */
+	{7,	0x78},		/* 1111000 */
+	{7,	0x79},		/* 1111001 */
 };
 
 static	void	bitput(Thwack *tw, int c, int n);
@@ -139,9 +140,9 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq)
 {
 	ThwBlock *eblocks, *b, blocks[CompBlocks];
 	uchar *s, *ss, *sss, *esrc, *half;
-	ulong cont, cseq, bseq, cmask;
+	ulong cont, cseq, bseq, cmask, code;
 	int now, toff;
-	int h, m, slot, bits, totmatched;
+	int h, m, slot, bits, use, totmatched;
 
 	if(n > ThwMaxBlock || n < MinMatch || waserror())
 		return -1;
@@ -227,11 +228,20 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq)
 			bitput(tw, toff & ((1 << bits) - 1), bits);
 
 			m -= MinMatch;
-			if(m < MaxLen-1){
+			if(m < MaxFastLen){
 				bitput(tw, lentab[m].encode, lentab[m].bits);
 			}else{
-				bitput(tw, lentab[MaxLen-1].encode, lentab[MaxLen-1].bits);
-				iomegaput(tw, m - (MaxLen - 2));
+				code = BigLenCode;
+				bits = BigLenBits;
+				use = BigLenBase;
+				m -= MaxFastLen;
+				while(m >= use){
+					m -= use;
+					code = (code + use) << 1;
+					use <<= bits & 1;
+					bits++;
+				}
+				bitput(tw, (code + m), bits);
 			}
 		}
 		blocks->maxoff += ss - s;
@@ -273,53 +283,4 @@ bitput(Thwack *tw, int c, int n)
 			error("thwack expanding");
 		*tw->dst++ = tw->bits >> (tw->nbits - 8);
 	}
-}
-
-/*
- * elias's omega code, modified
- * for at least 3 bit transmission
- */
-static Huff omegatab[16] = 
-{
-	{0,	0},		/* 1 */
-	{0,	0},
-	{0,	0},
-	{0,	0},
-	{3,	0x4},		/* 5 */
-	{3,	0x5},
-	{3,	0x6},
-	{3,	0x7},
-	{7,	0x48},
-	{7,	0x49},		/* 10 */
-	{7,	0x4a},
-	{7,	0x4b},
-	{7,	0x4c},
-	{7,	0x4d},
-	{7,	0x4e},		/* 15 */
-	{7,	0x4f},
-};
-
-static int
-iomegaput(Thwack *tw, ulong v)
-{
-	int b, bb;
-
-	v--;
-	if(v < 4){
-		bitput(tw, v, 3);
-		return 3;
-	}
-	if(v < 16){
-		b = omegatab[v].bits + 1;
-		bitput(tw, omegatab[v].encode << 1, b);
-		return b;
-	}
-
-	for(bb = 5; v >= (1 << bb); bb++)
-		;
-	if(bb >= 16)
-		error("thwack omegaput");
-	b = bb + omegatab[bb].bits + 1;
-	bitput(tw, (omegatab[bb].encode << (bb + 1)) | (v << 1), b);
-	return b;
 }

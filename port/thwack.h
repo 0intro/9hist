@@ -12,11 +12,16 @@ enum
 	HashSize	= 1<<HashLog,
 	HashMask	= HashSize - 1,
 
-	MaxLen		= 8,
+	MaxFastLen	= 9,
+	BigLenCode	= 0xf4,		/* minimum code for large lenth encoding */
+	BigLenBase	= 4,		/* starting items to encode for big lens */
+	BigLenBits	= 8,
 	MaxOff		= 8,
 	OffBase		= 6,
 
 	MinDecode	= 9,		/* minimum bits to decode a match or lit */
+	MaxOffDecode	= 4 + MaxOff + OffBase - 1,
+	MaxLenDecode	= 16,
 
 	EWinBlocks	= 32,		/* blocks held in encoder window */
 	DWinBlocks	= 32,		/* blocks held in decoder window */
@@ -44,7 +49,7 @@ struct Thwack
 	uchar		*dst;		/* output buffer */
 	uchar		*dmax;
 
-	ulong		slot;		/* next block to use */
+	int		slot;		/* next block to use */
 	ThwBlock	blocks[EWinBlocks];
 	ushort		hash[EWinBlocks][HashSize];
 	uchar		data[EWinBlocks][ThwMaxBlock];
@@ -59,11 +64,6 @@ struct UnthwBlock
 
 struct Unthwack
 {
-	ulong		nbits;		/* input bit buffer */
-	ulong		bits;
-	uchar		*src;		/* input buffer */
-	uchar		*smax;
-
 	int		slot;		/* next block to use */
 	UnthwBlock	blocks[DWinBlocks];
 	uchar		data[DWinBlocks][ThwMaxBlock];
