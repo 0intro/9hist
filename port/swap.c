@@ -129,6 +129,7 @@ loop:
 					case SG_BSS:
 					case SG_STACK:
 					case SG_SHARED:
+					case SG_SHDATA:
 					case SG_MAP:
 						up->psstate = "Pageout";
 						pageout(p, s);
@@ -136,6 +137,7 @@ loop:
 							up->psstate = "I/O";
 							executeio();
 						}
+						break;
 					}
 				}
 			}
@@ -261,6 +263,7 @@ pagepte(int type, Page **pg)
 	case SG_STACK:
 	case SG_SHARED:
 	case SG_SHDATA:
+	case SG_MAP:
 		daddr = newswap();
 		cachedel(&swapimage, daddr);
 		lock(outp);
@@ -278,6 +281,7 @@ pagepte(int type, Page **pg)
 
 		/* Add me to IO transaction list */
 		iolist[ioptr++] = outp;
+		break;
 	}
 }
 
