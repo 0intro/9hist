@@ -655,7 +655,7 @@ uartopen(Chan *c, int omode)
 	}
 
 	if(up && up->nostream)
-		errors("in use");
+		error(Einuse);
 
 	if((c->qid.path & CHDIR) == 0)
 		streamopen(c, &uartinfo);

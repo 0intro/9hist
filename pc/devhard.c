@@ -239,7 +239,7 @@ hardattach(char *spec)
 				break;
 			default:
 				print("unknown hard disk type\n");
-				errors("unknown hard disk type");
+				error(Egreg);
 			}
 			dp->bytes = 512;
 			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
@@ -349,7 +349,7 @@ hardwrite(Chan *c, void *a, long n)
 	Controller *cp;
 
 	if(c->qid.path == CHDIR)
-		errors("can't write directory");
+		error(Eisdir);
 
 	dp = &hard[DRIVE(c->qid.path)];
 	pp = &dp->p[PART(c->qid.path)];
@@ -432,7 +432,7 @@ cmdreadywait(Controller *cp)
 	while((inb(cp->pbase+Pstatus) & (Sready|Sbusy)) != Sready)
 		if(TK2MS(m->ticks - start) > 1){
 print("cmdreadywait failed\n");
-			errors("disk not responding");
+			error(Eio);
 		}
 }
 
@@ -450,7 +450,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 	int loop;
 
 	if(dp->online == 0)
-		errors("disk offline");
+		error(Eio);
 
 	/*
 	 *  cut transfer size down to disk buffer size
@@ -510,7 +510,7 @@ print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);/**/
 print("hd%d err: status %lux, err %lux\n", dp-hard, cp->status, cp->error);
 print("\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
 print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
-		errors("disk I/O error");
+		error(Eio);
 	}
 
 	return cp->nsecs*dp->bytes;
@@ -569,7 +569,7 @@ hardident(Drive *dp)
 	sleep(&cp->r, cmddone, cp);
 	if(cp->status & Serr){
 		print("bad disk ident status\n");
-		errors("disk I/O error");
+		error(Eio);
 	}
 	memmove(&dp->id, cp->buf, dp->bytes);
 

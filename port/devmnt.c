@@ -143,7 +143,7 @@ mntattach(char *muxattach)
 	lock(&mntalloc);
 	if(mntalloc.mntfree == 0) {
 		unlock(&mntalloc);
-		error(Enomntdev);
+		exhausted("mount devices");
 	}
 	m = mntalloc.mntfree;
 	mntalloc.mntfree = m->list;	

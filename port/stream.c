@@ -296,7 +296,7 @@ allocq(Qinfo *qi)
 
 	if(q == &qlist[conf.nqueue]){
 		print("no more queues\n");
-		error(Enoqueue);
+		exhausted("queues");
 	}
 
 	q->flag = QINUSE;
@@ -820,7 +820,7 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	}
 	if(s == &slist[conf.nstream]){
 		print("no more streams\n");
-		error(Enostream);
+		exhausted("streams");
 	}
 	if(waserror()){
 		qunlock(s);
@@ -1159,7 +1159,7 @@ streamread(Chan *c, void *vbuf, long n)
 		if(bp == 0){
 			if(q->flag & QHUNGUP){
 				if(s->err)
-					errors((char*)s->err->rptr);
+					error((char*)s->err->rptr);
 				else if(s->hread++<3)
 					break;
 				else
@@ -1217,7 +1217,7 @@ qlook(Stream *s, char *name)
 		if(q == s->devq->other)
 			break;
 	}
-	errors("not found");
+	error(Ebadarg);
 }
 
 /*
@@ -1322,7 +1322,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	q = s->procq;
 	if(q->other->flag & QHUNGUP){
 		if(s->err)
-			errors((char*)(s->err->rptr));
+			error((char*)(s->err->rptr));
 		else
 			error(Ehungup);
 	}

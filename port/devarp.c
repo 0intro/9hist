@@ -244,7 +244,7 @@ arpwrite(Chan *c, char *a, long n, ulong offset)
 				error(Ebadarg);
 
 			if(arpdelete(field[1]) < 0)
-				error(Ebadaddr);
+				error(Enetaddr);
 		}
 	case arpdataqid:
 		if(n != sizeof(Arpentry))

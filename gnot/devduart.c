@@ -700,7 +700,7 @@ duartopen(Chan *c, int omode)
 	}
 
 	if(dp && dp->nostream)
-		errors("in use");
+		error(Einuse);
 
 	if((c->qid.path & CHDIR) == 0)
 		streamopen(c, &duartinfo);

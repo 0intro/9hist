@@ -275,7 +275,7 @@ muxcreate(Chan *c, char *name, int omode, ulong perm)
 	}
 
 	if(m == e)
-		error(Enomux);
+		exhausted("multiplexers");
 
 	strncpy(m->name, name, NAMELEN);
 	strncpy(m->user, u->p->user, NAMELEN);
@@ -610,7 +610,7 @@ muxreadq(Mux *m, Dtq *q, char *va, ulong n)
 	while(!havedata(q)) {
 		sleep(&q->r, havedata, q);
 		if(m->headopen == 0)
-			errors(Emuxshutdown);
+			error(Emuxshutdown);
 	}
 
 	nread = 0;

@@ -167,7 +167,7 @@ urpopen(Queue *q, Stream *s)
 	if(up == &urp[conf.nurp]){
 		q->ptr = 0;
 		WR(q)->ptr = 0;
-		errors("out of urp structures");
+		exhausted("urp structures");
 	}
 
 	q->ptr = q->other->ptr = up;

@@ -149,7 +149,7 @@ sccsetbaud(SCC *sp, int rate)
 	int brconst;
 
 	if(rate == 0)
-		errors("bad baud rate");
+		error(Ebadctl);
 
 	brconst = (sp->freq+16*rate-1)/(2*16*rate) - 2;
 
@@ -631,7 +631,7 @@ sccopen(Chan *c, int omode)
 	if(c->qid.path != CHDIR){
 		sp = scc[STREAMID(c->qid.path)];
 		if(sp->nostream)
-			errors("in use");
+			error(Einuse);
 		streamopen(c, &sccinfo);
 	}
 	return devopen(c, omode, sccdir, 2*nscc, devgen);
@@ -667,7 +667,7 @@ sccread(Chan *c, void *buf, long n, ulong offset)
 		sprint(b, "%d", STREAMID(c->qid.path));
 		return stringread(buf, n, b, offset);
 	}
-	errors("bad qid");
+	error(Egreg);
 }
 
 long

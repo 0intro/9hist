@@ -330,7 +330,7 @@ setswapchan(Chan *c)
 {
 	if(swapimage.c) {
 		if(swapalloc.free != conf.nswap)
-			errors("swap channel busy");
+			error(Einuse);
 		close(swapimage.c);
 	}
 	incref(c);

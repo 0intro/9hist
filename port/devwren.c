@@ -55,12 +55,12 @@ wrendev(char *p)
 	if(p == 0 || p[0] == '\0')
 		return 0;
 	if(p[0] < '0' || p[0] > '7')
-		errors("bad scsi drive specifier");
+		error(Ebadarg);
 	drive = p[0] - '0';
 	unit = 0;
 	if(p[1]){
 		if(p[1] != '.' || p[2] < '0' || p[2] > '7' || p[3] != '\0')
-			errors("bad scsi unit specifier");
+			error(Ebadarg);
 		unit = p[2] - '0';
 	}
 	return (drive << 3) | unit;
@@ -197,8 +197,8 @@ wrenio(Chan *c, int write, char *a, ulong len, ulong offset)
 	ulong block, n, max, x;
 
 	d = &wren[DRIVE(c->qid.path)];
-	if(d->npart == 0)
-		errors("drive repartitioned");
+	if(d->npart == 0)			/* drive repartitioned */
+		error(Eio);
 	p = &d->p[PART(c->qid.path)];
 
 	block = offset / d->bytes + p->start;

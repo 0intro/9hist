@@ -8,7 +8,7 @@
 
 #define DPRINT
 
-void	faultexit(char*);
+void	faulterror(char*);
 
 int
 fault(ulong addr, int read)
@@ -190,7 +190,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			qunlock(&c->rdl);
 			kunmap(k);
 			putpage(new);
-			faultexit("sys: demand load I/O error");
+			faulterror("sys: demand load I/O error");
 		}
 
 		ask = s->flen-soff;
@@ -224,7 +224,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			putpage(new);
 			qlock(&s->lk);
 			qunlock(&s->lk);
-			faultexit("sys: page in I/O error");
+			faulterror("sys: page in I/O error");
 		}
 
 		n = (*devtab[c->type].read)(c, kaddr, BY2PG, daddr);
@@ -248,11 +248,11 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 }
 
 void
-faultexit(char *s)
+faulterror(char *s)
 {
 	if(u->nerrlab) {
 		postnote(u->p, 1, s, NDebug);
-		errors(s);
+		error(s);
 	}
 	pexit(s, 0);
 }

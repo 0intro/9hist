@@ -259,7 +259,7 @@ sysexec(ulong *arg)
 	 * Build the stack segment, putting it in kernel virtual for the moment
 	 */
 	if(spage > TSTKSIZ)
-		errors("too many arguments");
+		error(Enovmem);
 
 	 
 	p->seg[ESEG] = newseg(SG_STACK, TSTKTOP-USTKSIZE, USTKSIZE/BY2PG);
@@ -528,14 +528,14 @@ syssegbrk(ulong *arg)
 				switch(s->type&SG_TYPE) {
 				case SG_TEXT:
 				case SG_DATA:
-					errors("bad segment type");
+					error(Ebadarg);
 				default:
 					return ibrk(arg[1], i);
 				}
 			}
 		}
 
-	errors("not in address space");
+	error(Ebadarg);
 }
 
 long
@@ -560,12 +560,12 @@ syssegdetach(ulong *arg)
 			qunlock(&s->lk);
 		}
 
-	errors("not in address space");
+	error(Ebadarg);
 
 found:
 	if((ulong)arg >= s->base && (ulong)arg < s->top) {
 		qunlock(&s->lk);
-		errors("illegal address");
+		error(Ebadarg);
 	}
 	u->p->seg[i] = 0;
 	qunlock(&s->lk);
@@ -585,13 +585,13 @@ syssegfree(ulong *arg)
 	from = PGROUND(arg[0]);
 	s = seg(u->p, from, 1);
 	if(s == 0)
-		errors("not in address space");
+		error(Ebadarg);
 
 	pages = (arg[1]+BY2PG-1)/BY2PG;
 
 	if(from+pages*BY2PG > s->top) {
 		qunlock(&s->lk);
-		errors("segment too short");
+		error(Ebadarg);
 	}
 
 	mfreeseg(s, from, pages);

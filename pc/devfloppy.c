@@ -314,9 +314,9 @@ static void
 islegal(Chan *c, long n, Drive *dp)
 {
 	if(c->offset % dp->t->bytes)
-		errors("bad offset");
+		error(Ebadarg);
 	if(n % dp->t->bytes)
-		errors("bad len");
+		error(Ebadarg);
 }
 
 /*
@@ -341,7 +341,7 @@ changed(Chan *c, Drive *dp)
 	old = c->qid.vers;
 	c->qid.vers = dp->vers;
 	if(old && old!=dp->vers)
-		errors("disk changed");
+		error(Eio);
 }
 
 long
@@ -393,7 +393,7 @@ floppyread(Chan *c, void *a, long n)
 				if(i != nn){
 					if(i == 0)
 						break;
-					errors("floppy read err");
+					error(Eio);
 				}
 				dp->ccyl = cyl;
 				dp->chead = head;
@@ -796,7 +796,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	 */
 	dp->len = n;
 	if(floppyseek(dp, off) < 0)
-		errors("seeking floppy");
+		error(Eio);
 
 /*print("tcyl %d, thead %d, tsec %d, addr %lux, n %d\n",
 	dp->tcyl, dp->thead, dp->tsec, a, dp->len);/**/
@@ -823,7 +823,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	if(floppycmd() < 0){
 		spllo();
 		print("xfer cmd failed\n");
-		errors("floppy command failed");
+		error(Eio);
 	}
 
 	/*
@@ -838,14 +838,14 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	if(fl.nstat < 7){
 		print("xfer result failed %lux\n", inb(Pmsr));
 		fl.confused = 1;
-		errors("floppy result failed");
+		error(Eio);
 	}
 	if((fl.stat[0] & Codemask)!=0 || fl.stat[1] || fl.stat[2]){
 		print("xfer failed %lux %lux %lux\n", fl.stat[0],
 			fl.stat[1], fl.stat[2]);
 		print("offset %lud len %d\n", off, dp->len);
 		dp->confused = 1;
-		errors("floppy drive lost");
+		error(Eio);
 	}
 
 	/*
@@ -856,7 +856,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	offset = offset * c2b[fl.stat[6]];
 	if(offset != off+dp->len){
 		dp->confused = 1;
-		errors("floppy drive lost");
+		error(Eio);
 	}
 
 	dp->lasttouched = m->ticks;

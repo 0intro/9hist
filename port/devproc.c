@@ -174,7 +174,7 @@ procopen(Chan *c, int omode)
 		c->pgrpid.vers = pg->pgrpid;
 		break;
 	default:
-		pprint("unknown qid in devopen\n");
+		pprint("procopen %lux\n", c->qid);
 		error(Egreg);
 	}
 
@@ -349,7 +349,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 		if(offset+n > j)
 			n = j-offset;
 		if(n == 0 && offset == 0)
-			errors("no segments");
+			exhausted("segments");
 		memmove(a, &statbuf[offset], n);
 		return n;
 	}
@@ -392,7 +392,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 	switch(QID(c->qid)){
 	case Qmem:
 		if(p->state != Stopped)
-			errors("not stopped");
+			error(Ebadctl);
 
 		if(offset >= USERADDR && offset <= USERADDR+BY2PG-1) {
 			pg = p->upage;
@@ -411,7 +411,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 			ur = pxu->dbgreg;
 			if(offset < (ulong)ur || hi > (ulong)ur+sizeof(Ureg)) {
 				kunmap(k);
-				errors("bad u-area address");
+				error(Ebadarg);
 			}
 			ur = (Ureg*)(b+((ulong)ur-USERADDR));
 			setregisters(ur, b+(offset-USERADDR), a, n);
@@ -427,7 +427,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 
 	case Qnote:
 		if(p->kp)
-			errors("can't note kproc");
+			error(Eperm);
 		k = kmap(p->upage);
 		up = (User*)VA(k);
 		if(up->p != p){
@@ -441,7 +441,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		memmove(buf, va, n);
 		buf[n] = 0;
 		if(!postnote(p, 0, buf, NUser))
-			error(Enonote);
+			exhausted("notes");
 		break;
 
 	default:
@@ -462,7 +462,7 @@ proctext(Chan *c, Proc *p)
 
 	s = p->seg[TSEG];
 	if(s == 0)
-		errors("no text segment");
+		error(Enonexist);
 	if(p->state==Dead)
 		error(Eprocdied);
 
@@ -524,7 +524,7 @@ procstopwait(Proc *p, int ctl)
 	int pid;
 
 	if(p->pdbg)
-		errors("debugged already");
+		error(Einuse);
 	if(procstopped(p))
 		return;
 
@@ -573,14 +573,14 @@ procctlreq(Proc *p, char *va, int n)
 		procstopwait(p, 0);
 	else if(strncmp(buf, "startstop", 9) == 0) {
 		if(p->state != Stopped)
-			errors("not stopped");
+			error(Ebadctl);
 		p->procctl = Proc_traceme;
 		ready(p);
 		procstopwait(p, Proc_traceme);
 	}
 	else if(strncmp(buf, "start", 5) == 0) {
 		if(p->state != Stopped)
-			errors("not stopped");
+			error(Ebadctl);
 		ready(p);
 	}
 	else
@@ -607,7 +607,7 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 	for(;;) {
 		s = seg(p, offset, 1);
 		if(s == 0)
-			errors("not in address space");
+			error(Ebadarg);
 
 		if(offset+n >= s->top)
 			n = s->top-offset;

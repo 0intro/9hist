@@ -113,7 +113,7 @@ asyncopen(Queue *q, Stream *s)
 		qunlock(ap);
 	}
 	if(ap == &async[conf.nasync])
-		error(Enoasync);
+		exhausted("async stream modules");
 	q->ptr = q->other->ptr = ap;
 
 	ap->inuse = 1;

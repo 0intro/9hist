@@ -390,7 +390,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(p->upage == 0){
 		if(dolock)
 			qunlock(&p->debug);
-		errors("noted process disappeared");
+		error(Eprocdied);
 	}
 
 	SET(k);
@@ -771,16 +771,18 @@ error(char err[])
 }
 
 void
-errors(char *err)
-{
-	strncpy(u->error, err, ERRLEN);
-	nexterror();
-}
-
-void
 nexterror(void)
 {
 	gotolabel(&u->errlab[--u->nerrlab]);
+}
+
+void
+exhausted(char *resource)
+{
+	char buf[ERRLEN];
+
+	sprint(buf, "no free %s", resource);
+	error(buf);
 }
 
 Waitq *

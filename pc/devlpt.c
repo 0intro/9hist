@@ -88,7 +88,7 @@ lptattach(char *spec)
 	int i  = (spec && *spec) ? strtol(spec, 0, 0) : 1;
 
 	if(i < 1 || i > NDEV)
-		errors("spec out of range");
+		error(Ebadarg);
 	c = devattach('L', spec);
 	c->dev = i-1;
 	return c;

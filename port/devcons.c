@@ -818,7 +818,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			error(Ebadarg);
 		decrypt(evekey, a, n);
 		if(memcmp(u->p->pgrp->crypt->chal, a, 8) != 0)
-			error(Eauth);
+			error(Eperm);
 		strncpy(u->p->user, a+8, NAMELEN);
 		u->p->user[NAMELEN-1] = '\0';
 		memmove(u->p->pgrp->crypt->key, a+NAMELEN+DESKEYLEN, DESKEYLEN);

@@ -79,7 +79,7 @@ pipeattach(char *spec)
 	if(pipealloc.free == 0){
 		unlock(&pipealloc);
 		close(c);
-		error(Enopipe);
+		exhausted("pipes");
 	}
 	p = pipealloc.free;
 	pipealloc.free = p->next;

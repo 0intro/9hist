@@ -232,7 +232,7 @@ duartbaud(Duartport *dp, int b)
 		x = BD300;
 		break;
 	default:
-		errors("bad baud rate");
+		error(Ebadarg);
 	}
 	if(x & 0x0100)
 		dp->duart->ipc_acr = duartacr |= 0x80;
@@ -770,7 +770,7 @@ duartopen(Chan *c, int omode)
 	}
 
 	if(dp && dp->nostream)
-		errors("in use");
+		error(Einuse);
 
 	if((c->qid.path & CHDIR) == 0)
 		streamopen(c, &duartinfo);
@@ -814,7 +814,7 @@ duartread(Chan *c, void *buf, long n, ulong offset)
 		return 1;
 	}
 
-	errors("no such duart type");
+	error(Egreg);
 }
 
 long
@@ -827,14 +827,14 @@ void
 duartremove(Chan *c)
 {
 	USED(c);
-	errors("can't remove a duart");
+	error(Eperm);
 }
 
 void
 duartwstat(Chan *c, char *dp)
 {
 	USED(c);
-	errors("can't write a duart");
+	error(Eperm);
 }
 
 int

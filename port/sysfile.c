@@ -26,7 +26,7 @@ newfd(Chan *c)
 			return i;
 		}
 	unlock(f);
-	error(Enofd);
+	exhausted("file descriptors");
 }
 
 Chan*
@@ -38,7 +38,7 @@ fdtochan(int fd, int mode, int chkmnt)
 	if(fd<0 || NFD<=fd || (c = u->p->fgrp->fd[fd])==0)
 		error(Ebadfd);
 	if(chkmnt && (c->flag&CMSG))
-		errors("channel is mounted");
+		error(Ebadusefd);
 	if(mode<0 || c->mode==ORDWR)
 		return c;
 	if((mode&OTRUNC) && c->mode==OREAD)
@@ -262,7 +262,7 @@ sysread(ulong *arg)
 	if(c->qid.path & CHDIR){
 		n -= n%DIRLEN;
 		if(c->offset%DIRLEN || n==0)
-			error(Ebaddirread);
+			error(Etoosmall);
 	}
 	if((c->qid.path&CHDIR) && c->mnt)
 		n = unionread(c, (void*)arg[1], n);
@@ -426,9 +426,9 @@ bindmount(ulong *arg, int ismount)
 		nexterror();
 	}
 	if((c0->qid.path^c1->qid.path) & CHDIR)
-		error(Ebadmount);
+		error(Emount);
 	if(flag && !(c0->qid.path&CHDIR))
-		error(Ebadmount);
+		error(Emount);
 	ret = mount(c0, c1, flag);
 	poperror();
 	close(c1);

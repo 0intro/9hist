@@ -265,7 +265,7 @@ etherparse(uchar *to, char *from)
 	if(strchr(from, '.')) {
 		ip = ipparse(from);
 		if(ip == 0)
-			error(Ebadnet);
+			error(Enetaddr);
 
 		hnputl(nip, ip);			
 		if(arp_lookup(nip, to))
@@ -274,7 +274,7 @@ etherparse(uchar *to, char *from)
 #endif
 
 	if(strlen(from) != 12)
-		error(Ebadnet);
+		error(Enetaddr);
 
 	for(i = 0; i < 6; i++){
 		fdig = (*from++)&0x7f;

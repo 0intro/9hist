@@ -124,7 +124,7 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 			error(Einuse);
 	}
 	if(j == -1)
-		error(Enosrv);
+		exhausted("server slots");
 	sp = &srv[j];
 	sp->chan = c;
 	unlock(&srvlk);

@@ -57,7 +57,7 @@ newseg(int type, ulong base, ulong size)
 	Segment *s;
 
 	if(size > (SEGMAPSIZE*PTEPERTAB))
-		errors("segment too large");
+		error(Enovmem);
 
 	for(;;) {
 		lock(&segalloc);
@@ -335,7 +335,7 @@ ibrk(ulong addr, int seg)
 
 	s = u->p->seg[seg];
 	if(s == 0)
-		errors("no segment");
+		error(Ebadarg);
 
 	if(addr == 0)
 		return s->base;
@@ -346,7 +346,7 @@ ibrk(ulong addr, int seg)
 		/* We may start with the bss overlapping the data */
 		if(seg != BSEG || u->p->seg[DSEG] == 0 || addr < u->p->seg[DSEG]->base) {
 			qunlock(&s->lk);
-			errors("addr below segment");
+			error(Enovmem);
 		}
 		addr = s->base;
 	}
@@ -371,7 +371,7 @@ ibrk(ulong addr, int seg)
 		if(newtop >= ns->base && newtop < ns->top) {
 			qunlock(&s->lk);
 			pprint("segments overlap\n");
-			error(Esegaddr);
+			error(Enovmem);
 		}
 	}
 
@@ -424,7 +424,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 
 	USED(p);
 	if(va&KZERO)					/* BUG: Only ok for now */
-		errors("bad virtual address");
+		error(Ebadarg);
 
 	validaddr((ulong)name, 1, 0);
 	vmemchr(name, 0, ~0);
@@ -434,7 +434,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 			break;
 
 	if(sno == NSEG)
-		errors("no per process segments");
+		error(Enovmem);
 
 	va = va&~(BY2PG-1);
 	len = PGROUND(len);
@@ -445,17 +445,17 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 			continue;	
 		if((newtop > ns->base && newtop <= ns->top) ||
 		   (va >= ns->base && va < ns->top))
-			errors("segments overlap");
+			error(Enovmem);
 	}
 
 	for(ps = physseg; ps->name; ps++)
 		if(strcmp(name, ps->name) == 0)
 			goto found;
 
-	errors("bad segment name");
+	error(Ebadarg);
 found:
 	if(len > ps->size)
-		errors("segment too long");
+		error(Enovmem);
 
 	attr &= ~SG_TYPE;			/* Turn off what we are not allowed */
 	attr |= ps->attr;			/* Copy in defaults */
@@ -480,7 +480,7 @@ syssegflush(ulong *arg)
 
 	s = seg(u->p, arg[0], 1);
 	if(s == 0)
-		errors("bad segment address");
+		error(Ebadarg);
 
 	s->flushme = 1;
 
