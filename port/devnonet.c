@@ -443,12 +443,7 @@ noopen(Queue *q, Stream *s)
 	RD(q)->ptr = WR(q)->ptr = (void *)cp;
 }
 
-/*
- *  wait until a hangup is received.
- *  then send a hangup message (until one is received).
- *
- *	State Transitions:	* -> Cclosed
- */
+
 static int
 ishungup(void *a)
 {
@@ -463,6 +458,12 @@ ishungup(void *a)
 	}
 	return 0;
 }
+/*
+ *  wait until a hangup is received.
+ *  then send a hangup message (until one is received).
+ *
+ *	State Transitions:	* -> Cclosed
+ */
 static void
 noclose(Queue *q)
 {
@@ -1147,7 +1148,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	 *  if a new call request comes in on a connected channel, hang up the call
 	 */
 	if((f&NO_NEWCALL) && cp->state==Cconnected){
-		DPRINT("new call on connected channel\n"); 
+		print("new call on connected channel\n"); 
 		freeb(bp);
 		noreset(cp);
 		return;

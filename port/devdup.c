@@ -75,6 +75,8 @@ dupopen(Chan *c, int omode)
 	f = u->fd[c->qid.path];
 	close(c);
 	incref(f);
+	if(omode & OCEXEC)
+		f->flag |= CCEXEC;
 	return f;
 }
 

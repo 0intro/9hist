@@ -1378,8 +1378,9 @@ dumpqueues(void)
 		qcount++;
 		print("%s %ux  R n %d l %d f %ux r %ux", q->info->name, q, q->nb,
 			q->len, q->flag, &(q->r));
-		print("  W n %d l %d f %ux r %ux\n", WR(q)->nb, WR(q)->len, WR(q)->flag,
-			&(WR(q)->r));
+		print("  W n %d l %d f %ux r %ux next %lux put %lux Rz %lux\n", 
+			WR(q)->nb, WR(q)->len,
+			WR(q)->flag, &(WR(q)->r), q->next, q->put, q->rp);
 		dumpblocks(q, 'R');
 		dumpblocks(WR(q), 'W');
 	}
