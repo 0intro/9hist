@@ -482,22 +482,8 @@ activate(void)
 static ulong
 tcm509(Ether *ether)
 {
-	static int untag;
 	ulong port;
 	Adapter *ap;
-
-	/*
-	 * One time only:
-	 *	write ID sequence to get the attention of all adapters;
-	 *	untag all adapters.
-	 * If we do a global reset here on all adapters we'll confuse any
-	 * ISA cards configured for EISA mode.
-	 */
-	if(untag == 0){
-		idseq();
-		outb(IDport, 0xD0);
-		untag = 1;
-	}
 
 	/*
 	 * Attempt to activate adapters until one matches the
@@ -520,7 +506,7 @@ tcm509(Ether *ether)
 		delay(20);
 
 		/*
-		 * 8. Now we can talk to the adapter's I/O base addresses.
+		 * 8. Can now talk to the adapter's I/O base addresses.
 		 *    Use the I/O base address from the acr just read.
 		 *
 		 *    Enable the adapter.
