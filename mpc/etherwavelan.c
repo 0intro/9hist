@@ -687,7 +687,16 @@ int wavelan_hw_config(int base, Ether *ether)
 	outb(PIORH(base), (((TX_BASE >> 8) & PIORH_MASK) | PIORH_SEL_TX));
 	outb(PIOP(base), (sizeof(struct i82593_conf_block) & 0xff));    /* lsb */
 	outb(PIOP(base), (sizeof(struct i82593_conf_block) >> 8));	/* msb */
-	outsb(PIOP(base), ((char *) &cfblk), sizeof(struct i82593_conf_block));
+
+// super sleazy - but it will do for now
+//	outsb(PIOP(base), ((char *) &cfblk), sizeof(struct i82593_conf_block));
+	{
+		uchar buf[16];
+		int i;
+		for(i=0; i<16; i++)
+			buf[i] = ((char *) &cfblk)[(i&~3)+(3-(i&3))];
+		outsb(PIOP(base), buf, sizeof(struct i82593_conf_block));
+	}
 
 	/* reset transmit DMA pointer */
 	hacr_write_slow(base, HACR_PWR_STAT | HACR_TX_DMA_RESET);
