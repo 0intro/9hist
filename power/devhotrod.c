@@ -10,11 +10,22 @@
 
 typedef struct Hotrod	Hotrod;
 typedef struct Device	Device;
+typedef struct Printbuf	Printbuf;
 
 enum {
 	Vmevec=		0xd2,		/* vme vector for interrupts */
 	Intlevel=	5,		/* level to interrupt on */
 	Nhotrod=	2,
+};
+
+/*
+ *  circular 2 pointer queue for hotrod prnt's
+ */
+struct Printbuf {
+	char	*rptr;
+	char	*wptr;
+	char	*lim;
+	char	buf[4*1024];
 };
 
 /*
@@ -31,14 +42,18 @@ struct Device {
 struct Hotrod {
 	QLock;
 
-	Device	*addr;
-	int	vec;
-	char	name[NAMELEN];
+	Device		*addr;		/* address of the device */
+	int		vec;		/* vme interrupt vector */
+	char		name[NAMELEN];	/* hot rod name */
+	Printbuf	pbuf;		/* circular queue for hotrod print's */
+	int		kprocstarted;
+	Rendez		r;
 };
 
 Hotrod hotrod[Nhotrod];
 
-static void hotrodintr(int);
+void	hotrodintr(int);
+void	hotrodkproc(void *a);
 
 int
 hotrodgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
@@ -79,12 +94,17 @@ hotrodinit(void)
 Chan*
 hotrodattach(char *spec)
 {
+	Hotrod *hp;
 	int i;
 	Chan *c;
 
 	i = strtoul(spec, 0, 0);
 	if(i >= Nhotrod)
 		error(0, Ebadarg);
+
+	hp = &hotrod[i];
+	if(hp->kprocstarted == 0)
+		kproc(hp->name, hotrodkproc, hp);
 
 	c = devattach('H', spec);
 	c->dev = i;
@@ -113,6 +133,17 @@ hotrodstat(Chan *c, char *dp)
 Chan*
 hotrodopen(Chan *c, int omode)
 {
+	Device *dp;
+	Hotrod *hp;
+
+	/*
+	 *  Remind hotrod where the print buffer is.  The address we store
+	 *  is the address of the printbuf in VME A32 space.
+	 */
+	hp = &hotrod[c->dev];
+	dp = hp->addr;
+	dp->mem[256*1024/sizeof(ulong)] = (((ulong)&hp->pbuf) - KZERO) | (SLAVE<<28);
+
 	if(c->qid == CHDIR){
 		if(omode != OREAD)
 			error(0, Eperm);
@@ -238,7 +269,7 @@ hotroderrstr(Error *e, char *buf)
 	rooterrstr(e, buf);
 }
 
-static void
+void
 hotrodintr(int vec)
 {
 	Hotrod *hp;
@@ -248,5 +279,33 @@ hotrodintr(int vec)
 	if(hp < hotrod || hp > &hotrod[Nhotrod]){
 		print("bad hotrod vec\n");
 		return;
+	}
+}
+
+/*
+ *  print hotrod processor messages on the console
+ */
+void
+hotrodkproc(void *a)
+{
+	Hotrod	*hp = a;
+	char	*p;
+
+	hp->kprocstarted = 1;
+	hp->pbuf.rptr = hp->pbuf.wptr = hp->pbuf.buf;
+	hp->pbuf.lim = &hp->pbuf.buf[sizeof(hp->pbuf.buf)];
+
+	for(;;){
+		p = hp->pbuf.wptr;
+		if(p != hp->pbuf.rptr){
+			if(p > hp->pbuf.rptr){
+				putstrn(hp->pbuf.rptr, p - hp->pbuf.rptr);
+			} else {
+				putstrn(hp->pbuf.rptr, hp->pbuf.lim - hp->pbuf.rptr);
+				putstrn(hp->pbuf.buf, hp->pbuf.wptr - hp->pbuf.buf);
+			}
+			hp->pbuf.rptr = p;
+		}
+		tsleep(&(hp->r), return0, 0, 1000);
 	}
 }

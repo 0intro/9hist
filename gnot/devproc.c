@@ -12,6 +12,7 @@ enum{
 	Qctl,
 	Qmem,
 	Qnote,
+	Qnotepg,
 	Qproc,
 	Qstatus,
 	Qtext,
@@ -21,6 +22,7 @@ Dirtab procdir[]={
 	"ctl",		Qctl,		0,			0600,
 	"mem",		Qmem,		0,			0600,
 	"note",		Qnote,		0,			0600,
+	"notepg",	Qnotepg,	0,			0200,
 	"proc",		Qproc,		sizeof(Proc),		0600,
 	"status",	Qstatus,	NAMELEN+12+6*12,	0600,
 	"text",		Qtext,		0,			0600,
@@ -108,6 +110,7 @@ Chan *
 procopen(Chan *c, int omode)
 {
 	Proc *p;
+	Pgrp *pg;
 	Orig *o;
 	Chan *tc;
 
@@ -117,6 +120,7 @@ procopen(Chan *c, int omode)
 		goto done;
 	}
 	p = proctab(SLOT(c->qid));
+	pg = p->pgrp;
 	if((p->pid&PIDMASK) != PID(c->qid))
     Died:
 		error(0, Eprocdied);
@@ -146,11 +150,18 @@ procopen(Chan *c, int omode)
 	case Qctl:
 	case Qnote:
 		break;
+
+	case Qnotepg:
+		if(omode != OWRITE)
+			error(0, Eperm);
+		c->pgrpid = (pg->pgrpid<<PIDSHIFT)|((pg->index+1)<<QSHIFT);
+		break;
+
 	case Qdir:
 	case Qmem:
 	case Qproc:
 	case Qstatus:
-		if(omode!=OREAD)
+		if(omode != OREAD)
 			error(0, Eperm);
 		break;
 	default:
@@ -347,12 +358,33 @@ long
 procwrite(Chan *c, void *va, long n)
 {
 	Proc *p;
+	Pgrp *pg;
 	User *up;
 	KMap *k;
 	char buf[ERRLEN];
 
 	if(c->qid & CHDIR)
 		error(0, Eisdir);
+
+	/*
+	 * Special case: don't worry about process, just use remembered group
+	 */
+	if(QID(c->qid) == Qnotepg){
+		pg = pgrptab(SLOT(c->pgrpid));
+		lock(&pg->debug);
+		if(waserror()){
+			unlock(&pg->debug);
+			nexterror();
+		}
+		if((pg->pgrpid&PIDMASK) != PID(c->pgrpid)){
+			unlock(&pg->debug);
+  	  		goto Died;
+		}
+		pgrpnote(pg, va, n, NUser);
+		unlock(&pg->debug);
+		return n;
+	}
+
 	p = proctab(SLOT(c->qid));
 	lock(&p->debug);
 	if(waserror()){

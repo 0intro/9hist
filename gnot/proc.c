@@ -58,13 +58,13 @@ schedinit(void)		/* never returns */
 	/*
 	 * At init time:  wait for a process on the run queue.
 	 */
-	for (;;) {
+	for(;;){
 		spllo();
 		while (runq.head == 0)
 			/* idle loop */;
 		splhi();
 		lock(&runq);
-		if (runq.head != 0)
+		if(runq.head != 0)
 			break;
 		unlock(&runq);
 	}
@@ -84,7 +84,7 @@ schedinit(void)		/* never returns */
 	 * to have a process on it.
 	 */
 	p = runq.head;
-	if ((runq.head = p->rnext) == 0)
+	if((runq.head = p->rnext) == 0)
 		runq.tail = 0;
 	unlock(&runq);
 
@@ -108,7 +108,7 @@ restore(void)
 	u->p->mach = m;
 	m->proc = u->p;
 	u->p->state = Running;
-	if (p->state == Moribund) {
+	if(p->state == Moribund){
 		p->pid = 0;
 		unlock(&p->debug);		/* set in pexit */
 		p->upage->ref--;
@@ -127,16 +127,16 @@ void
 save(Balu *balu)
 {
 	fpsave(&u->fpsave);
-	if (u->fpsave.type) {
+	if(u->fpsave.type){
 		if(u->fpsave.size > sizeof u->fpsave.junk)
 			panic("fpsize %d max %d\n", u->fpsave.size, sizeof u->fpsave.junk);
 		fpregsave(u->fpsave.reg);
 		u->p->fpstate = FPactive;
 		m->fpstate = FPdirty;
 	}
-	if (BALU->cr0 != 0xFFFFFFFF)	/* balu busy */
+	if(BALU->cr0 != 0xFFFFFFFF)	/* balu busy */
 		memcpy(balu, BALU, sizeof *balu);
-	else {
+	else{
 		balu->cr0 = 0xFFFFFFFF;
 		BALU->cr0 = 0xFFFFFFFF;
 	}
@@ -166,7 +166,7 @@ sched(void)
 	/*
 	 * Look for a new process to be run.
 	 */
-	for (;;) {
+	for (;;){
 		spllo();
 
 		/*
@@ -174,9 +174,9 @@ sched(void)
 		 * to do, start saving some of the process state.
 		 */
 		while (runq.head == 0)
-			if (p->state == Running)
+			if(p->state == Running)
 				return;
-			else if (!saved) {
+			else if(!saved){
 				save(&balu);
 				saved = 1;
 			}
@@ -188,7 +188,7 @@ sched(void)
 		 */
 		splhi();
 		lock(&runq);
-		if (runq.head != 0)
+		if(runq.head != 0)
 			break;
 		unlock(&runq);
 	}
@@ -199,7 +199,7 @@ sched(void)
 	 * save our state before we jump to schedinit.  If this process was running, put
 	 * it on the run queue.
 	 */
-	if (p->state == Running) {
+	if(p->state == Running){
 		p->state = Ready;
 		p->rnext = 0;
 		runq.tail->rnext = p;
@@ -211,9 +211,9 @@ sched(void)
 	 * pc and sp.  We have to jump to schedinit() because we are going to remap the
 	 * stack.
 	 */
-	if (!saved)
+	if(!saved)
 		save(&balu);
-	if (setlabel(&p->sched) == 0)
+	if(setlabel(&p->sched) == 0)
 		gotolabel(&m->sched);
 
 	/*
@@ -225,18 +225,18 @@ sched(void)
 	/*
 	 * Jumped to by schedinit.  Restore the process state.
 	 */
-	if (p->fpstate != m->fpstate)
-		if (p->fpstate == FPinit) {
+	if(p->fpstate != m->fpstate)
+		if(p->fpstate == FPinit){
 			initfp = 0;
 			fprestore((FPsave *) &initfp);
 			m->fpstate = FPinit;
 		}
-		else {
+		else{
 			fpregrestore(u->fpsave.reg);
 			fprestore(&u->fpsave);
 			m->fpstate = FPdirty;
 		}
-	if (balu.cr0 != 0xFFFFFFFF)	/* balu busy */
+	if(balu.cr0 != 0xFFFFFFFF)	/* balu busy */
 		memcpy(BALU, &balu, sizeof balu);
 
 	/*
@@ -250,11 +250,12 @@ ready(Proc *p)
 {
 	int s;
 
-	if (p->spin) {
+	s = splhi();
+	if(p->spin){
 		p->state = Running;
+		splx(s);
 		return;
 	}
-	s = splhi();
 	lock(&runq);
 	p->rnext = 0;
 	if(runq.tail)

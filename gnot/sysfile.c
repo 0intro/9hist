@@ -512,12 +512,13 @@ sysfwstat(ulong *arg)
 long
 sysfilsys(ulong *arg)
 {
-	Chan *c;
+	Chan *cin, *cout;
 
-	c = fdtochan(arg[0], -1);
-	validaddr(arg[1], 1, 0);
-	if((c->qid&CHDIR) || (c->mode&ORDWR)!=ORDWR)
+	cin = fdtochan(arg[0], OREAD);
+	cout = fdtochan(arg[1], OWRITE);
+	validaddr(arg[2], 1, 0);
+	if((cin->qid&CHDIR) || (cout->qid&CHDIR))
 		error(0, Ebadarg);
-	service((char *)arg[1], c, filsys);
+	service((char *)arg[2], cin, cout, filsys);
 	return 0;
 }

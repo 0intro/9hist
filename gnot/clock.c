@@ -106,14 +106,15 @@ clock(Ureg *ur)
 			p->time[p->insyscall]++;
 	}
 	if(canlock(&m->alarmlock)){
-		if(m->alarm){
-			a = m->alarm;
-			a->dt--;
-			for(n = 0; a && a->dt<=0 && n<NA; n++){
+		a = m->alarm;
+		if(a){
+			for(n=0; a && a->dt<=0 && n<NA; n++){
 				alist[n] = a;
 				delete(&m->alarm, 0, a);
 				a = m->alarm;
 			}
+			if(a)
+				a->dt--;
 			unlock(&m->alarmlock);
 
 			/*  execute alarm functions outside the lock */

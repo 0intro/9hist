@@ -7,6 +7,7 @@
 
 struct{
 	Lock;
+	Pgrp	*arena;
 	Pgrp	*free;
 	ulong	pgrpid;
 }pgrpalloc;
@@ -24,10 +25,12 @@ pgrpinit(void)
 	Pgrp *p;
 	Mount *m;
 
-	pgrpalloc.free = ialloc(conf.npgrp*sizeof(Pgrp), 0);
+	pgrpalloc.arena = ialloc(conf.npgrp*sizeof(Pgrp), 0);
+	pgrpalloc.free = pgrpalloc.arena;
 
 	p = pgrpalloc.free;
 	for(i=0; i<conf.npgrp; i++,p++){
+		p->index = i;
 		p->next = p+1;
 		p->mtab = ialloc(conf.nmtab*sizeof(Mtab), 0);
 		p->etab = ialloc(conf.npgenv*sizeof(Envp*), 0);
@@ -40,6 +43,43 @@ pgrpinit(void)
 	for(i=0; i<conf.nmount-1; i++,m++)
 		m->next = m+1;
 	m->next = 0;
+}
+
+Pgrp*
+pgrptab(int i)
+{
+	return &pgrpalloc.arena[i];
+}
+
+void
+pgrpnote(Pgrp *pg, char *a, long n, int flag)
+{
+	int i;
+	Proc *p;
+	char buf[ERRLEN];
+
+	if(n >= ERRLEN-1)
+		error(0, Etoobig);
+	if(n>=4 && strncmp(a, "sys:", 4)==0)
+		error(0, Ebadarg);
+	memcpy(buf, a, n);
+	buf[n] = 0;
+	p = proctab(0);
+	for(i=0; i<conf.nproc; i++, p++){
+		if(p->pgrp == pg){
+			lock(&p->debug);
+			if(p->pid==0 || p->pgrp!=pg){
+				unlock(&p->debug);
+				continue;
+			}
+			if(waserror()){
+				unlock(&p->debug);
+				continue;
+			}
+			postnote(p, 0, buf, flag);
+			unlock(&p->debug);
+		}
+	}
 }
 
 Pgrp*
@@ -76,6 +116,7 @@ closepgrp(Pgrp *p)
 	Envp *ep;
 
 	if(decref(p) == 0){
+		p->pgrpid = -1;
 		m = p->mtab;
 		for(i=0; i<p->nmtab; i++,m++)
 			if(m->c){

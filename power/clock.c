@@ -181,18 +181,19 @@ clock(ulong n, ulong pc)
 			exit();
 		}
 		if(canlock(&m->alarmlock)){
-			if(m->alarm){
-				a = m->alarm;
-				a->dt--;
-				for(na = 0; a && a->dt<=0 && na<NA; na++){
-					alist[na] = a;
+			a = m->alarm;
+			if(a){
+				for(n=0; a && a->dt<=0 && n<NA; n++){
+					alist[n] = a;
 					delete(&m->alarm, 0, a);
 					a = m->alarm;
 				}
+				if(a)
+					a->dt--;
 				unlock(&m->alarmlock);
 	
 				/*  execute alarm functions outside the lock */
-				for(i = 0; i < na; i++){
+				for(i = 0; i < n; i++){
 					f = alist[i]->f;	/* avoid race with cancel */
 					if(f)
 						(*f)(alist[i]);
