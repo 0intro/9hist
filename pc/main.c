@@ -138,7 +138,6 @@ main(void)
 	confinit();
 	archinit();
 	xinit();
-	dmainit();
 	trapinit();
 	printinit();
 	if(isoldbcom)

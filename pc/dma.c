@@ -79,26 +79,33 @@ DMA dma[2] = {
 };
 
 /*
- *  DMA must be in the first 16 meg.  This gets called early by main() to
- *  ensure that.
+ *  DMA must be in the first 16MB.  This gets called early by the
+ *  initialisation routines of any devices which require DMA to ensure
+ *  the allocated bounce buffers are below the 16MB limit.
  */
 void
-dmainit(void)
+dmainit(int chan)
 {
-	int i, chan;
 	DMA *dp;
 	DMAxfer *xp;
+	ulong v;
 
-	for(i = 0; i < 2; i++){
-		dp = &dma[i];
-		for(chan = 0; chan < 4; chan++){
-			xp = &dp->x[chan];
-			xp->bva = xspanalloc(BY2PG, BY2PG, 0);
-			xp->bpa = PADDR(xp->bva);
-			xp->len = 0;
-			xp->isread = 0;
-		}
+	dp = &dma[(chan>>2)&1];
+	chan = chan & 3;
+	xp = &dp->x[chan];
+	if(xp->bva != nil)
+		return;
+
+	v = (ulong)xalloc(BY2PG+BY2PG);
+	if(v == 0 || PADDR(v) >= 16*MB){
+		print("dmainit: chan %d: 0x%luX out of range\n", chan, v);
+		xfree((void*)v);
+		v = 0;
 	}
+	xp->bva = (void*)ROUND(v, BY2PG);
+	xp->bpa = PADDR(xp->bva);
+	xp->len = 0;
+	xp->isread = 0;
 }
 
 /*
@@ -131,6 +138,8 @@ dmasetup(int chan, void *va, long len, int isread)
 	if((((ulong)va)&0xF0000000) != KZERO
 	|| (pa&0xFFFF0000) != ((pa+len)&0xFFFF0000)
 	|| pa > 16*MB) {
+		if(xp->bva == nil)
+			return -1;
 		if(len > BY2PG)
 			len = BY2PG;
 		if(!isread)
@@ -205,7 +214,8 @@ dmaend(int chan)
 	memmove(xp->va, xp->bva, xp->len);
 	xp->len = 0;
 }
- 
+
+/*
 int
 dmacount(int chan)
 {
@@ -218,3 +228,4 @@ dmacount(int chan)
 	retval |= inb(dp->count[chan]) << 8;
 	return((retval<<dp->shift)+1);
 }
+ */

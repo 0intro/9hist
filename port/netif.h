@@ -6,6 +6,7 @@ typedef struct Netif	Netif;
 enum
 {
 	Nmaxaddr=	64,
+	Nmhash=		31,
 
 	Ncloneqid=	1,
 	N2ndqid,
@@ -48,8 +49,9 @@ struct Netfile
  */
 struct Netaddr
 {
-	Netaddr	*next;
-	char	*addr;
+	Netaddr	*next;		/* allocation chain */
+	Netaddr	*hnext;
+	uchar	addr[Nmaxaddr];
 	int	ref;
 };
 
@@ -70,8 +72,9 @@ struct Netif
 	int	alen;			/* address length */
 	uchar	addr[Nmaxaddr];
 	uchar	bcast[Nmaxaddr];
-	Netaddr	*maddr;			/* multicast addresses */
-	int	nmaddr;			/* number of multicast addresses */
+	Netaddr	*maddr;			/* known multicast addresses */
+	int	nmaddr;			/* number of known multicast addresses */
+	Netaddr *mhash[Nmhash];		/* hash table of multicast addresses */
 	int	prom;			/* number of promiscuous opens */
 	int	all;			/* number of -1 multiplexors */
 
@@ -89,7 +92,7 @@ struct Netif
 	/* routines for touching the hardware */
 	void	*arg;
 	void	(*promiscuous)(void*, int);
-	void	(*multicast)(void*, char*, int);
+	void	(*multicast)(void*, uchar*, int);
 };
 
 void	netifinit(Netif*, char*, int, ulong);
@@ -101,6 +104,7 @@ Block*	netifbread(Netif*, Chan*, long, ulong);
 long	netifwrite(Netif*, Chan*, void*, long);
 void	netifwstat(Netif*, Chan*, char*);
 void	netifstat(Netif*, Chan*, char*);
+int	activemulti(Netif*, uchar*, int);
 
 /*
  *  Ethernet specific

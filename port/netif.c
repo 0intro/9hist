@@ -9,7 +9,8 @@
 static int netown(Netfile*, char*, int);
 static int openfile(Netif*, int);
 static char* matchtoken(char*, char*);
-static void netmulti(Netif*, Netfile*, char*, int);
+static char* netmulti(Netif*, Netfile*, uchar*, int);
+static int parseaddr(uchar*, char*, int);
 
 /*
  *  set up a new network interface
@@ -215,6 +216,7 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 	Netfile *f;
 	char *p;
 	char buf[256];
+	uchar binaddr[Nmaxaddr];
 
 	if(NETTYPE(c->qid.path) != Nctlqid)
 		error(Eperm);
@@ -223,6 +225,11 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 		n = sizeof(buf)-1;
 	memmove(buf, a, n);
 	buf[n] = 0;
+
+	if(waserror()){
+		qunlock(nif);
+		nexterror();
+	}
 
 	qlock(nif);
 	f = nif->f[NETID(c->qid.path)];
@@ -236,11 +243,20 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 		if(nif->prom == 1 && nif->promiscuous != nil)
 			nif->promiscuous(nif->arg, 1);
 	} else if((p = matchtoken(buf, "addmulti")) != 0){
-		netmulti(nif, f, p, 1);
+		if(parseaddr(binaddr, p, nif->alen) < 0)
+			error("bad address");
+		p = netmulti(nif, f, binaddr, 1);
+		if(p)
+			error(p);
 	} else if((p = matchtoken(buf, "remmulti")) != 0){
-		netmulti(nif, f, p, 0);
+		if(parseaddr(binaddr, p, nif->alen) < 0)
+			error("bad address");
+		p = netmulti(nif, f, binaddr, 0);
+		if(p)
+			error(p);
 	}
 	qunlock(nif);
+	poperror();
 	return n;
 }
 
@@ -461,26 +477,71 @@ nhgets(void *p)
 	return (a[0]<<8)|(a[1]<<0);
 }
 
+static ulong
+hash(uchar *a, int len)
+{
+	ulong sum = 0;
+
+	while(len-- > 0)
+		sum = (sum << 1) + *a++;
+	return sum%Nmhash;
+}
+
+int
+activemulti(Netif *nif, uchar *addr, int alen)
+{
+	Netaddr *hp;
+
+	for(hp = nif->mhash[hash(addr, alen)]; hp; hp = hp->hnext)
+		if(memcmp(addr, hp->addr, alen) == 0){
+			if(hp->ref)
+				return 1;
+			else
+				break;
+		}
+	return 0;
+}
+
+static int
+parseaddr(uchar *to, char *from, int alen)
+{
+	char nip[4];
+	char *p;
+	int i;
+
+	p = from;
+	for(i = 0; i < alen; i++){
+		if(*p == 0)
+			return -1;
+		nip[0] = *p++;
+		if(*p == 0)
+			return -1;
+		nip[1] = *p++;
+		nip[2] = 0;
+		to[i] = strtoul(nip, 0, 16);
+		if(*p == ':')
+			p++;
+	}
+	return 0;
+}
+
 /*
  *  keep track of multicast addresses
  */
-static void
-netmulti(Netif *nif, Netfile *f, char *addr, int add)
+static char*
+netmulti(Netif *nif, Netfile *f, uchar *addr, int add)
 {
 	Netaddr **l, *ap;
 	int i;
-	uchar hexaddr[Nmaxaddr];
+	ulong h;
 
 	if(nif->multicast == nil)
-		return;
-
-	if(strlen(addr) != 2*nif->alen)
-		return;
+		return "interface does not support multicast";
 
 	l = &nif->maddr;
 	i = 0;
 	for(ap = *l; ap; ap = *l){
-		if(strcmp(addr, ap->addr) == 0)
+		if(memcmp(addr, ap->addr, nif->alen) == 0)
 			break;
 		i++;
 		l = &ap->next;
@@ -489,10 +550,12 @@ netmulti(Netif *nif, Netfile *f, char *addr, int add)
 	if(add){
 		if(ap == 0){
 			*l = ap = smalloc(sizeof(*ap));
-			ap->addr = smalloc(strlen(addr)+1);
-			strcpy(ap->addr, addr);
+			memmove(ap->addr, addr, nif->alen);
 			ap->next = 0;
 			ap->ref = 1;
+			h = hash(addr, nif->alen);
+			ap->hnext = nif->mhash[h];
+			nif->mhash[h] = ap;
 		} else {
 			ap->ref++;
 		}
@@ -507,7 +570,7 @@ netmulti(Netif *nif, Netfile *f, char *addr, int add)
 		}
 	} else {
 		if(ap == 0 || ap->ref == 0)
-			return;
+			return 0;
 		ap->ref--;
 		if(ap->ref == 0){
 			nif->nmaddr--;
@@ -519,4 +582,5 @@ netmulti(Netif *nif, Netfile *f, char *addr, int add)
 			f->maddr[i/8] &= ~(1<<(i%8));
 		}
 	}
+	return 0;
 }

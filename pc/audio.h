@@ -6,7 +6,7 @@ enum
 	SBswab		= 0,
 };
 
-#define seteisadma(a, b)	;
+#define seteisadma(a, b)	dmainit(a);
 #define CACHELINESZ		8
 #define UNCACHED(type, v)	(type*)((ulong)(v))
 

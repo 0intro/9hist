@@ -145,6 +145,17 @@ etheriq(Ether* ether, Block* bp, int freebp)
 	fx = 0;
 	ep = &ether->f[Ntypes];
 
+	/* check for valid multcast addresses */
+	if((pkt->d[0] & 1) && memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) != 0 && ether->prom == 0){
+		if(!activemulti(ether, pkt->d, sizeof(pkt->d))){
+			if(freebp){
+				freeb(bp);
+				bp = 0;
+			}
+			return bp;
+		}
+	}
+
 	/*
 	 * Multiplex the packet to all the connections which want it.
 	 * If the packet is not to be used subsequently (freebp != 0),

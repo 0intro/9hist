@@ -586,6 +586,11 @@ qpass(Queue *q, Block *b)
 	/* sync with qread */
 	dowakeup = 0;
 	ilock(q);
+	if(q->len >= q->limit){
+		freeb(b);
+		iunlock(q);
+		return -1;
+	}
 
 	/* add buffer to queue */
 	if(q->bfirst)

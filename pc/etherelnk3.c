@@ -457,14 +457,17 @@ promiscuous(void* arg, int on)
 }
 
 static void
-multicast(void* arg, char *addr, int on)
+multicast(void* arg, uchar *addr, int on)
 {
 	int filter, port;
 	Ether *ether;
 
+	USED(addr, on);
+
 	ether = (Ether*)arg;
 	port = ether->port;
 
+print("mutlicast nmaddr == %d\n", ether->nmaddr);
 	filter = receiveBroadcast|receiveIndividual;
 	if(ether->nmaddr)
 		filter |= receiveMulticast;
@@ -1314,6 +1317,7 @@ etherelnk3reset(Ether* ether)
 		rxstatus9 = 1;
 		break;
 	}
+	USED(did);
 
 	/*
 	 * Check if the adapter's station address is to be overridden.
@@ -1436,6 +1440,7 @@ etherelnk3reset(Ether* ether)
 	ether->ifstat = ifstat;
 
 	ether->promiscuous = promiscuous;
+	ether->multicast = multicast;
 	ether->arg = ether;
 
 	return 0;

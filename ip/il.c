@@ -184,7 +184,7 @@ ilannounce(Conv *c, char **argv, int argc)
 	char *e;
 
 	e = Fsstdannounce(c, argv, argc);
-	if(e != nil);
+	if(e != nil)
 		return e;
 	e = ilstart(c, IL_LISTEN, 20);
 	if(e != nil)

@@ -19,6 +19,7 @@
  * floppyeject() 
  * floppysetup0()
  * floppysetup1()
+ * dmainit()
  * dmasetup()
  * dmaend()
  * 
@@ -143,6 +144,8 @@ floppyreset(void)
 	FDrive *dp;
 	FType *t;
 	ulong maxtsize;
+
+	dmainit(DMAchan);
 	
 	floppysetup0(&fl);
 
@@ -793,6 +796,8 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
 		nexterror();
 	}
 	dp->len = dmasetup(DMAchan, a, dp->len, cmd==Fread);
+	if(dp->len < 0)
+		error(Eio);
 
 	/*
 	 *  start operation
@@ -930,7 +935,8 @@ floppyformat(FDrive *dp, char *params)
 			dmaend(DMAchan);
 			nexterror();
 		}
-		dmasetup(DMAchan, buf, bp-buf, 0);
+		if(dmasetup(DMAchan, buf, bp-buf, 0) < 0)
+			error(Eio);
 
 		/*
 		 *  start operation
