@@ -1,9 +1,20 @@
 #include "mem.h"
 
+/*
+ *  pointer to initial gdt (must be in first 64K of program)
+ */
 GLOBL	gdtptr(SB),$6
 
-	DATA	gdtptr+0(SB)/2, $(6*8)
+	DATA	gdtptr+0(SB)/2, $(5*8)
 	DATA	gdtptr+2(SB)/4, $gdt(SB)
+
+/*
+ *  pointer to idt (must be in first 64K of program)
+ */
+GLOBL	idtptr(SB),$6
+
+	DATA	idtptr+0(SB)/2, $(6*8)
+	DATA	idtptr+2(SB)/4, $idt(SB)
 
 /*
  *  boot processor
@@ -11,15 +22,18 @@ GLOBL	gdtptr(SB),$6
 TEXT	start(SB),$0
 
 	CLI			/* disable interrupts */
-	MOVW	$NULLSEL,IDTR	/* force shutdown on error */
+
+	/* point CPU at the interrupt/trap table */
+	LEAL	idtptr(SB),AX
+/*	MOVL	(AX),IDTR /**/
 
 	/* point data segment at low memory */
 	XORL	AX,AX
-	MOVW	AX,DS
+/*	MOVW	AX,DS /**/
 
-	/* load gdt address (valid after paging) */
+	/* point CPU at the interrupt/trap table */
 	LEAL	gdtptr(SB),AX
-	MOVL	-KZERO(AX),GDTR
+/*	MOVL	(AX),GDTR /**/
 
 	CALL	main(SB)
 	/* never returns */
@@ -132,12 +146,12 @@ TEXT	invtrap(SB),$0
  */
 alltrap:
 
-	PUSHL	DS
+/*	PUSHL	DS	/**/
 	PUSHAL
 	MOVL	$KDSEL, AX
-	MOVW	AX, DS
+/*	MOVW	AX, DS /**/
 	CALL	trap(SB)
 	POPAL
-	POPL	DS
+/*	POPL	DS	/**/
 	ADDL	$8,SP		/* pop the trap and error codes */
 	IRETL
