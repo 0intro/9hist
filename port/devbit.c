@@ -524,21 +524,16 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		 */
 		if(n < 14)
 			error(Ebadblt);
-	    Again:
-		while(mouse.changed == 0)
+		while(mousechanged(0) == 0)
 			sleep(&mouse.r, mousechanged, 0);
 		lock(&cursor);
-		if(mouse.changed == 0){
-			unlock(&cursor);
-			goto Again;
-		}
 		p = va;
 		p[0] = 'm';
 		p[1] = mouse.buttons;
 		BPLONG(p+2, mouse.xy.x);
 		BPLONG(p+6, mouse.xy.y);
 		BPLONG(p+10, TK2MS(MACHP(0)->ticks));
-		mouse.changed = 0;
+		mouse.lastcounter = mouse.counter;
 		unlock(&cursor);
 		return 14;
 	}
@@ -2081,7 +2076,7 @@ mouseupdate(int dolock)
 	mouse.clock = 0;
 	mouse.track = 0;
 	mouse.buttons = mouse.newbuttons;
-	mouse.changed = 1;
+	mouse.counter++;
 
 	if(dolock){
 		unlock(&cursor);
@@ -2167,7 +2162,7 @@ int
 mousechanged(void *m)
 {
 	USED(m);
-	return mouse.changed;
+	return mouse.lastcounter != mouse.counter;
 }
 
 /*

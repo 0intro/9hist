@@ -454,6 +454,7 @@ notify(Ureg *ur)
 		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* (compat) */
 		u->svr7 = ur->r7;			/* save away r7 */
 		ur->r7 = (ulong)u->ureg;		/* arg 1 is ureg* */
+		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 0(FP) is ureg* */
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 		ur->usp = sp;
 		ur->pc = (ulong)u->notify;

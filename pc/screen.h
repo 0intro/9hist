@@ -9,7 +9,8 @@ struct Mouseinfo{
 	int	dy;
 	int	track;		/* update cursor on screen */
 	Mouse;
-	int	changed;	/* mouse structure changed since last read */
+	ulong	counter;	/* increments every update */
+	ulong	lastcounter;	/* value when /dev/mouse read */
 	Rendez	r;
 	int	newbuttons;	/* interrupt time access only */
 	int	clock;		/* check mouse.track on RTE */

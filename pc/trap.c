@@ -242,9 +242,9 @@ trap(Ureg *ur)
 	 */
 	c = v&~0x7;
 	if(c==Int0vec || c==Int1vec){
+		outb(Int0ctl, EOI);
 		if(c == Int1vec)
 			outb(Int1ctl, EOI);
-		outb(Int0ctl, EOI);
 	}
 
 	if(v>=256 || (h = halloc.ivec[v]) == 0){
