@@ -22,8 +22,14 @@
 #define malign(n)	xspanalloc((n), 32, 0)
 
 #include "etherif.h"
-
 #include "etherga620fw.h"
+
+enum {					/* Compile-time options */
+	DoMhcCheck	= 1,
+	DoCoalUpdateOnly= 1,
+	DoHardwareCksum	= 0,
+	DoCountTicks	= 1,
+};
 
 enum {
 	Mhc		= 0x0040,	/* Miscellaneous Host Control */
@@ -198,8 +204,15 @@ typedef struct Rcb {			/* Ring Control Block */
 } Rcb;
 
 enum {
+	TcpUdpCksum	= 0x0001,	/* Perform TCP or UDP checksum */
+	IpCksum		= 0x0002,	/* Perform IP checksum */
+	NoPseudoHdrCksum= 0x0008,	/* Don't include the pseudo header */
+	VlanAssist	= 0x0010,	/* Enable VLAN tagging */
+	CoalUpdateOnly	= 0x0020,	/* Coalesce transmit interrupts */
 	HostRing	= 0x0040,	/* Sr in host memory */
-	RingDisabled	= 0x0200,
+	SnapCksum	= 0x0080,	/* Parse + offload 802.3 SNAP frames */
+	UseExtRxBd	= 0x0100,	/* Extended Rbd for Jumbo frames */
+	RingDisabled	= 0x0200,	/* Jumbo or Mini RCB only */
 };
 
 typedef struct Gib {			/* General Information Block */
@@ -228,8 +241,8 @@ enum {					/* Host/NIC Interface ring sizes */
 };
 
 enum {
-	NrsrHI		= 128,		/* Fill-level of Rsr (m.b. < Nrsr) */
-	NrsrLO		= 64,		/* Level at which to top-up ring */
+	NrsrHI		= 72,		/* Fill-level of Rsr (m.b. < Nrsr) */
+	NrsrLO		= 54,		/* Level at which to top-up ring */
 	NrjrHI		= 0,		/* Fill-level of Rjr (m.b. < Nrjr) */
 	NrjrLO		= 0,		/* Level at which to top-up ring */
 	NrmrHI		= 0,		/* Fill-level of Rmr (m.b. < Nrmr) */
@@ -476,14 +489,18 @@ ga620interrupt(Ureg*, void* arg)
 	int csr;
 	Ctlr *ctlr;
 	Ether *edev;
-	vlong tsc0, tsc1;
+	uvlong tsc0, tsc1;
 
 	edev = arg;
 	ctlr = edev->ctlr;
 
-	if(!(csr32r(ctlr, Mhc) & Is))
-		return;
-	rdmsr(0x10, &tsc0);
+	if(DoMhcCheck){
+		if(!(csr32r(ctlr, Mhc) & Is))
+			return;
+	}
+	if(DoCountTicks)
+		rdtsc(&tsc0);
+
 	ctlr->interrupts++;
 	csr32w(ctlr, Hi, 1);
 
@@ -500,8 +517,11 @@ ga620interrupt(Ureg*, void* arg)
 		ga620replenish(ctlr);
 
 	csr32w(ctlr, Hi, 0);
-	rdmsr(0x10, &tsc1);
-	ctlr->ticks += tsc1-tsc0;
+
+	if(DoCountTicks){
+		rdtsc(&tsc1);
+		ctlr->ticks += tsc1-tsc0;
+	}
 }
 
 static void
@@ -548,7 +568,7 @@ ga620init(Ether* edev)
 {
 	Ctlr *ctlr;
 	Host64 host64;
-	int csr, ea, i;
+	int csr, ea, i, flags;
 
 	ctlr = edev->ctlr;
 
@@ -607,7 +627,13 @@ ga620init(Ether* edev)
 	 */
 	ctlr->sr = malign(sizeof(Sbd)*Nsr);
 	sethost64(&ctlr->gib->srcb.addr, ctlr->sr);
-	ctlr->gib->srcb.control = (Nsr<<16)|HostRing;
+	if(DoHardwareCksum)
+		flags = TcpUdpCksum|NoPseudoHdrCksum|HostRing;
+	else 
+		flags = HostRing;
+	if(DoCoalUpdateOnly) 
+		flags |= CoalUpdateOnly;
+	ctlr->gib->srcb.control = (Nsr<<16)|flags;
 	sethost64(&ctlr->gib->scp, ctlr->sci);
 	csr32w(ctlr, Spi, 0);
 	ctlr->srb = malloc(sizeof(Block*)*Nsr);
@@ -617,7 +643,11 @@ ga620init(Ether* edev)
 	 */
 	ctlr->rsr = malign(sizeof(Rbd)*Nrsr);
 	sethost64(&ctlr->gib->rsrcb.addr, ctlr->rsr);
-	ctlr->gib->rsrcb.control = ((ETHERMAXTU+4)<<16)|0;
+	if(DoHardwareCksum)
+		flags = TcpUdpCksum|NoPseudoHdrCksum;
+	else
+		flags = 0;
+	ctlr->gib->rsrcb.control = ((ETHERMAXTU+4)<<16)|flags;
 	csr32w(ctlr, Rspi, 0);
 
 	/*
@@ -665,11 +695,11 @@ ga620init(Ether* edev)
 	 * These defaults are based on the tuning hints in the Alteon
 	 * Host/NIC Software Interface Definition and example software.
 	 */
-	csr32w(ctlr, Rct, 100);
-	csr32w(ctlr, Sct, 0);
-	csr32w(ctlr, St, 100000);
-	csr32w(ctlr, SmcBD, Nsr/4);
-	csr32w(ctlr, RmcBD, 6);
+	csr32w(ctlr, Rct, 120);
+	csr32w(ctlr, Sct, 400);
+	csr32w(ctlr, St, 1000000);
+	csr32w(ctlr, SmcBD, 60);
+	csr32w(ctlr, RmcBD, 25);
 
 	/*
 	 * Enable DMA Assist Logic.
@@ -689,7 +719,7 @@ ga620init(Ether* edev)
 	 * A unique index for this controller and the maximum packet
 	 * length expected.
 	 * For now only standard packets are expected.
-	 */ 
+	 */
 	csr32w(ctlr, Ifx, 1);
 	csr32w(ctlr, IfMTU, ETHERMAXTU+4);
 
@@ -831,7 +861,7 @@ stop:
 	/*
 	 * Stop condition - a low to high transition of data
 	 * with the clock high is a stop condition. After a read
-	 * sequence, the stop  command will place the EEPROM in
+	 * sequence, the stop command will place the EEPROM in
 	 * a standby power mode.
 	 */
 	at24c32io(ctlr, "oECOc", 0);
@@ -840,9 +870,9 @@ stop:
 }
 
 static int
-ga620reset(Ctlr* ctlr)
+ga620detach(Ctlr* ctlr)
 {
-	int cls, csr, i, timeo;
+	int timeo;
 
 	/*
 	 * Hard reset (don't know which endian so catch both);
@@ -868,6 +898,24 @@ ga620reset(Ctlr* ctlr)
 	 * Worry about it later.
 	 */
 	csr32w(ctlr, CPUBstate, CPUhalt);
+
+	return 0;
+}
+
+static void
+ga620shutdown(Ether* ether)
+{
+print("ga620shutdown\n");
+	ga620detach(ether->ctlr);
+}
+
+static int
+ga620reset(Ctlr* ctlr)
+{
+	int cls, csr, i;
+
+	if(ga620detach(ctlr) < 0)
+		return -1;
 
 	/*
 	 * Tigon 2 PCI NICs have 512KB SRAM per bank.
@@ -1016,6 +1064,7 @@ ga620pnp(Ether* edev)
 	edev->transmit = ga620transmit;
 	edev->interrupt = ga620interrupt;
 	edev->ifstat = ga620ifstat;
+	edev->shutdown = ga620shutdown;
 
 	edev->arg = edev;
 	edev->promiscuous = nil;
