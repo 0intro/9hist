@@ -230,7 +230,9 @@ sysopen(ulong *arg)
 		nexterror();
 	}
 	validaddr(arg[0], 1, 0);
+okchan("before open namec", 0);
 	c = namec((char*)arg[0], Aopen, arg[1], 0);
+okchan("after open namec", 0);
 	fd = newfd(c);
 	poperror();
 	return fd;
@@ -515,7 +517,9 @@ sysfstat(ulong *arg)
 		cclose(c);
 		nexterror();
 	}
+okchan("before stat routine", c->type);
 	devtab[c->type]->stat(c, (char*)arg[1]);
+okchan("after stat routine", c->type);
 	poperror();
 	cclose(c);
 	return 0;

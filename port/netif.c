@@ -171,6 +171,10 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 	switch(NETTYPE(c->qid.path)){
 	case Ndataqid:
 		f = nif->f[NETID(c->qid.path)];
+okchan("before qread", 0);
+j = qread(f->in, a, n);
+okchan("after qread", j);
+return j;
 		return qread(f->in, a, n);
 	case Nctlqid:
 		return readnum(offset, a, n, NETID(c->qid.path), NUMSIZE);

@@ -213,7 +213,7 @@
 #define	TSTKSIZ 100
 #define	KZERO	KSEG0			/* base of kernel address space */
 #define	KTZERO	(KZERO+0x12000)		/* first address in kernel text */
-#define	USTKSIZE	(4*1024*1024)	/* size of user stack */
+#define	USTKSIZE	(8*1024*1024)	/* size of user stack */
 #define globalmem(x)	(((ulong)x)&KZERO)	/* addresses valid in all contexts */
 /*
  * Exception codes

@@ -882,13 +882,19 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 		n = l;
 
 	k = kmap(pg);
+	if(waserror()) {
+		s->steal--;
+		kunmap(k);
+		nexterror();
+	}
 	b = (char*)VA(k);
 	b += offset&(BY2PG-1);
 	if(read == 1)
-		memmove(a, b, n);
+		memmove(a, b, n);	/* This can fault */
 	else
 		memmove(b, a, n);
 	kunmap(k);
+	poperror();
 
 	/* Ensure the process sees text page changes */
 	if(s->flushme)

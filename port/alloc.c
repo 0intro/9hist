@@ -617,7 +617,9 @@ recur(Bhdr *t)
 }
 
 int
-poolok(void)
+poolok(int x)
 {
-	return recur(mainmem->root);
+	if(x & 1)
+		return recur(mainmem->root);
+	return recur(imagmem->root);
 }

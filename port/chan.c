@@ -104,6 +104,47 @@ newchan(void)
 	return c;
 }
 
+int
+okchan1(Chan *c)
+{
+	if(c->type > 64)
+		return 0;
+	if((ulong)(c->next) & 3)
+		return 0;
+	if((ulong)(c->link) & 3)
+		return 0;
+	if((ulong)(c->path) & 3)
+		return 0;
+	if((ulong)(c->mnt) & 3)
+		return 0;
+	if((ulong)(c->xmnt) & 3)
+		return 0;
+	if((ulong)(c->mcp) & 3)
+		return 0;
+	if((ulong)(c->mchan) & 3)
+		return 0;
+	if((ulong)(c->session) & 3)
+		return 0;
+	return 1;
+}
+
+void
+okchan(char *msg, int n)
+{
+	int s;
+	Chan *c;
+
+	return;
+	s = splhi();
+	for(c = chanalloc.list; c; c = c->link)
+		if(!okchan1(c)){
+			spllo();
+			print("okchan: %s (%d=#%.8lux)\n", msg, n, n);
+			panic("okchan");
+		}
+	splx(s);
+}
+
 void
 chanfree(Chan *c)
 {
