@@ -28,6 +28,9 @@ enum{
 
 	Notapin=		0xffff,
 	Notabno=		0xffff,
+
+	Fcreating=	1,
+	Frmonclose=	2,
 };
 
 /* representation of a Tdir on medium */
@@ -57,7 +60,7 @@ struct Tfile {
 	ushort	bno;
 	ushort	dbno;
 	ushort	pin;
-	char	creating;
+	uchar	flag;
 	ulong	length;
 };
 
@@ -271,7 +274,7 @@ newfile(Tfs *fs, char *name)
 		expand(fs);
 	}
 
-	f->creating = 1;
+	f->flag = Fcreating;
 	f->dbno = Notabno;
 	f->bno = mapalloc(fs);
 
@@ -553,20 +556,31 @@ tinyfsclose(Chan *c)
 	if(c->qid.path != CHDIR){
 		f = &fs->f[c->qid.path];
 		f->r--;
-		if(f->r == 0 && f->creating){
-			/* remove all other files with this name */
-			for(i = 0; i < fs->fsize; i++){
-				nf = &fs->f[i];
-				if(f == nf)
-					continue;
-				if(strcmp(nf->name, f->name) == 0)
-					freefile(fs, nf, Notabno);
+		if(f->r == 0){
+			if(f->creating){
+				/* remove all other files with this name */
+				for(i = 0; i < fs->fsize; i++){
+					nf = &fs->f[i];
+					if(f == nf)
+						continue;
+					if(strcmp(nf->name, f->name) == 0){
+						if(nf->r)
+							nf->flag |= Frmonclose;
+						else
+							freefile(fs, nf, Notabno);
+					}
+				}
+				f->flag &= ~(Frmonclose|Fcreating);
 			}
+			if(f->flag & Frmonclose){
+				freefile(fs, f, Notabno);
 		}
 	}
 
 	/* dereference fs and remove on zero refs */
 	fs->r--;
+	unlock(fs);
+	qlock(&tinyfs);
 	if(fs->ref == 0){
 		for(l = &fs->l; *l;){
 			if(*l == fs){
@@ -575,30 +589,31 @@ tinyfsclose(Chan *c)
 			}
 			l = &(*l)->next;
 		}
-		for(f = fs->f; f; f = nf){
-			nf = f->next;
-			free(f);
-		}
+		free(fs-f);
 		free(fs->map);
 		close(fs->c);
-		free(fs);
+		memset(fs, 0, sizeof(*fs));
 	}
-	unlock(fs);
 	qunlock(&tinyfs);
 }
 
 long
 tinyfsread(Chan *c, void *a, long n, ulong offset)
 {
-	switch(c->qid.path & ~CHDIR){
-	case Qdir:
+	Tfs *fs;
+	Tfile *f;
+	int sofar, i;
+
+	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, tinyfstab, Ntinyfstab, tinyfsgen);
-	case Qdata:
-		break;
-	default:
-		n=0;
-		break;
-	}
+
+	fs = tinyfs.fs[c->dev];
+	f = &fs->f[c->qid.path];
+	if(offset >= f->length)
+		return 0;
+	if(n + offset >= f->length)
+		n = f->length - offset;
+
 	return n;
 }
 

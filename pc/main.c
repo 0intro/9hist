@@ -354,29 +354,60 @@ romscan(void)
 	}
 }
 
+static int
+getcfields(char *lp, char **fields, int n, char sep)
+{
+	int i;
+
+	for(i=0; lp && *lp && i<n; i++){
+		while(*lp == sep)
+			*lp++=0;
+		if(*lp == 0)
+			break;
+		fields[i]=lp;
+		while(*lp && *lp != sep){
+			if(*lp == '\\' && *(lp+1) == '\n')
+				*lp++ = ' ';
+			lp++;
+		}
+	}
+	return i;
+}
+
 void
 confinit(void)
 {
 	long x, i, j, n;
 	int pcnt;
 	ulong ktop;
-	char *cp;
-	char *line[MAXCONF];
+	char *cp, *line[MAXCONF], *p, *q;
 	extern int defmaxmsg;
 
 	pcnt = 0;
-
 
 	/*
 	 *  parse configuration args from dos file plan9.ini
 	 */
 	cp = BOOTARGS;	/* where b.com leaves its config */
 	cp[BOOTARGSLEN-1] = 0;
-	n = getfields(cp, line, MAXCONF, "\n");
+
+	/*
+	 * Strip out '\r', change '\t' -> ' '.
+	 */
+	p = cp;
+	for(q = cp; *q; q++){
+		if(*q == '\r')
+			continue;
+		if(*q == '\t')
+			*q = ' ';
+		*p++ = *q;
+	}
+	*p = 0;
+
+	n = getcfields(cp, line, MAXCONF, '\n');
 	for(j = 0; j < n; j++){
-		cp = strchr(line[j], '\r');
-		if(cp)
-			*cp = 0;
+		if(*line[j] == '#')
+			continue;
 		cp = strchr(line[j], '=');
 		if(cp == 0)
 			continue;
