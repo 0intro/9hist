@@ -243,7 +243,7 @@ serialmouse(int port, char *type, int setspeed)
 	if(mousetype == Mouseserial)
 		error(Emouseset);
 
-	if(port >= 2 || port < 0)
+	if(port >= 3 || port < 0)
 		error(Ebadarg);
 
 	/* set up /dev/eia0 as the mouse */
