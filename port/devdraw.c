@@ -906,8 +906,10 @@ drawopen(Chan *c, int omode)
 {
 	Client *cl;
 
-	if(c->qid.type & QTDIR)
-		return devopen(c, omode, 0, 0, drawgen);
+	if(c->qid.type & QTDIR){
+		c = devopen(c, omode, 0, 0, drawgen);
+		c->iounit = 32*1024;
+	}
 
 	qlock(&sdraw);
 	if(waserror()){
