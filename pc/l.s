@@ -696,9 +696,7 @@ l10:
 	MOVB	$0xA,AL
 	OUTB
 	MOVW	BX,-2(DI)(CX*1)
-	LOOP	l11
-	RET
-l11:	LOOP	l10
+	LOOP	l10
 	RET
 
 /*

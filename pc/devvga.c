@@ -647,20 +647,21 @@ vgaupdate(void)
 
 	switch(gscreen.ldepth){
 	case 0:
-		r.min.x &= ~15;		/* 16 bit allignment for l0update() */
+		r.min.x &= ~15;		/* 16 pixel allignment for l0update() */
 		f = l0update;
 		len = (r.max.x + 7)/8 - r.min.x/8;
 		if(len & 1)
 			len++;		/* 16 bit allignment for l0update() */
 		break;
 	case 1:
-		r.min.x &= ~15;		/* 16 bit allignment for l1update() */
+		r.min.x &= ~15;		/* 8 pixel allignment for l1update() */
 		f = l1update;
 		len = (r.max.x + 7)/8 - r.min.x/8;
 		if(len & 1)
-			len++;		/* 16 bit allignment for l1update() */
+			len++;		/* 8 pixel allignment for l1update() */
 		break;
 	case 2:
+		r.min.x &= ~7;		/* 8 pixel allignment for l2update() */
 		f = l2update;
 		len = (r.max.x + 7)/8 - r.min.x/8;
 		break;
@@ -678,7 +679,8 @@ vgaupdate(void)
 	page = off>>16;
 	off &= (1<<16)-1;
 	hp = ((uchar*)vgascreen.base) + off;
-	off = r.min.y * gscreen.width * BY2WD + (r.min.x>>(3 - gscreen.ldepth));
+	off = r.min.y * gscreen.width * BY2WD
+		+ (r.min.x>>(3 - gscreen.ldepth));
 	sp = ((uchar*)gscreen.base) + off;
 
 	edisp = ((uchar*)vgascreen.base) + 64*1024;
