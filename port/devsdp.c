@@ -330,7 +330,7 @@ static Algorithm authalg[] =
 static Algorithm compalg[] =
 {
 	"null",			0,	nullcompinit,
-//	"thwack",		0,	thwackcompinit,
+	"thwack",		0,	thwackcompinit,
 	nil,			0,	nil,
 };
 
@@ -558,7 +558,6 @@ sdpread(Chan *ch, void *a, long n, vlong off)
 		return readstr(off, a, n, buf);
 	case Qcontrol:
 		b = readcontrol(sdp->conv[CONV(ch->qid)], n);
-print("readcontrol asked %ld\n", n);
 		if(b == nil)
 			return 0;
 print("readcontrol asked %ld got %ld\n", n, BLEN(b));
