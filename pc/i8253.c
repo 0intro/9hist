@@ -55,6 +55,7 @@ enum
 static struct
 {
 	Lock;
+	int	havecyc;
 	int	enabled;
 	int	mode;
 	vlong	when;		/* next fastticks a clock interrupt should occur */
@@ -72,6 +73,7 @@ i8253init(int aalcycles, int havecycleclock)
 
 	if(initialised == 0){
 		initialised = 1;
+		i8253.havecyc = havecycleclock;
 		ioalloc(T0cntr, 4, 0, "i8253");
 		ioalloc(T2ctl, 1, 0, "i8253.cntr2ctl");
 
@@ -204,7 +206,7 @@ clockintrsched0(vlong next)
 int
 havecycintr(void)
 {
-	return i8253.enabled;
+	return i8253.havecyc && i8253.enabled;
 }
 
 void
@@ -213,7 +215,7 @@ clockintrsched(void)
 	vlong next;
 
 	ilock(&i8253);
-	if(i8253.enabled){
+	if(i8253.enabled && i8253.havecyc){
 		next = cycintrnext();
 		if(next != i8253.cycwhen)
 			clockintrsched0(next);
@@ -225,6 +227,11 @@ static void
 clockintr0(Ureg* ureg, void *v)
 {
 	vlong now, when;
+
+	if(!i8253.havecyc){
+		clockintr(ureg, v);
+		return;
+	}
 
 	now = fastticks(nil);
 	when = i8253.when;
