@@ -395,7 +395,7 @@ authread(Chan *c, char *a, int n)
 		/*
 		 *  subsequent read returns an authenticator
 		 */
-		if(n != AUTHENTLEN)
+		if(n < AUTHENTLEN)
 			error(Ebadarg);
 		cp = c->aux;
 
@@ -404,6 +404,9 @@ authread(Chan *c, char *a, int n)
 		cp->a.id = 0;
 		convA2M(&cp->a, cp->tbuf, cp->t.key);
 		memmove(a, cp->tbuf, AUTHENTLEN);
+
+		if(n >= AUTHENTLEN + TICKETLEN)
+			convT2M(&cp->t, a+AUTHENTLEN, nil);
 
 		freecrypt(cp);
 		c->aux = 0;
@@ -547,9 +550,6 @@ authentread(Chan *c, char *a, int n)
 
 	if(n >= AUTHENTLEN)
 		memmove(a, cp->tbuf, AUTHENTLEN);
-	if(n >= AUTHENTLEN + TICKETLEN)
-		convT2M(&cp->t, a+AUTHENTLEN, nil);
-
 	return n;
 }
 

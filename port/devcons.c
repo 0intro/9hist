@@ -608,6 +608,9 @@ consread(Chan *c, void *buf, long n, vlong off)
 	case Qauth:
 		return authread(c, cbuf, n);
 
+	case Qauthcheck:
+		return authcheckread(c, cbuf, n);
+
 	case Qauthent:
 		return authentread(c, cbuf, n);
 
