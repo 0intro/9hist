@@ -266,7 +266,7 @@ floppyreset(void)
 		dp->dt = T1440kb;
 		setdef(dp);
 		dp->cyl = -1;			/* because we don't know */
-		dp->cache = (uchar*)xspanalloc(dp->t->tsize, BY2PG, 0);
+		dp->cache = (uchar*)xspanalloc(dp->t->tsize, BY2PG, 64*1024);
 		dp->ccyl = -1;
 		dp->vers = 1;
 	}

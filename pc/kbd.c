@@ -352,7 +352,6 @@ ps2mouseputc(IOQ *q, int c)
 		mouse.dx = msg[1];
 		mouse.dy = -msg[2];
 		mouse.track = 1;
-		spllo();		/* mouse tracking kills uart0 */
 		mouseclock();
 	}
 	return 0;

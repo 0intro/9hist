@@ -1602,9 +1602,9 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 		}
 
 	poperror();
-	screenupdate();
 	if(isoff)
 		cursoron(1);
+	screenupdate();
 	qunlock(&bit);
 	return n;
 }
@@ -1959,7 +1959,6 @@ cursoron(int dolock)
 		gbitblt(&gscreen, cursor.r.min,
 			&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
 		mbbrect(cursor.r);
-		screenupdate();
 	}
 	if(dolock)
 		unlock(&cursor);
@@ -1975,7 +1974,7 @@ cursoroff(int dolock)
 	if(--cursor.visible == 0) {
 		gbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
 		mbbrect(cursor.r);
-		screenupdate();
+		mousescreenupdate();
 	}
 	if(dolock)
 		unlock(&cursor);

@@ -232,7 +232,7 @@ confinit(void)
 
 	/*
 	 *  the first 640k is the standard useful memory
-	 *  the next 128K is the display
+	 *  the next 128K is the display, I/O mem, and BIOS
 	 *  the last 256k belongs to the roms and other devices
 	 */
 	conf.npage0 = 640/4;
@@ -271,8 +271,8 @@ confinit(void)
 	conf.npage1 = (i*MB - conf.base1)/BY2PG;
 	conf.npage = conf.npage0 + conf.npage1;
 
-	conf.ldepth = 1;
-	pcnt = screenbits()-1;		/* Calculate % of memory for page pool */
+	conf.ldepth = 0;
+	pcnt = (1<<conf.ldepth)-1;		/* Calculate % of memory for page pool */
 	pcnt = 70 - (pcnt*10);
 	conf.upages = (conf.npage*pcnt)/100;
 	if(conf.npage - conf.upages < 1572864/BY2PG)

@@ -17,13 +17,20 @@ struct{
 	int	bwid;
 }out;
 
-int islittle = 1;		/* little endian bit ordering in bytes */
-
+/* imported */
 extern	GSubfont defont0;
-GSubfont *defont;
 extern	Cursor arrow;
 extern	GBitmap cursorback;
-static	Lock colorlock;		/* color map lock */
+
+/* exported */
+GSubfont *defont;
+int islittle = 1;		/* little endian bit ordering in bytes */
+GBitmap	gscreen;
+
+/* local */
+static	Lock vgalock;
+static	GBitmap	vgascreen;
+static	ulong colormap[256][3];
 
 /*
  *  screen dimensions
@@ -34,8 +41,6 @@ static	Lock colorlock;		/* color map lock */
 /*
  *  'soft' screen bitmap
  */
-GBitmap	gscreen;
-GBitmap	vgascreen;
 
 typedef struct VGAmode	VGAmode;
 struct VGAmode
@@ -48,7 +53,7 @@ struct VGAmode
 };
 
 /*
- *  640x480 display, 16 bit color.
+ *  640x480 display, 1, 2, or 4 bit color.
  */
 VGAmode mode12 = 
 {
@@ -68,6 +73,29 @@ VGAmode mode12 =
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
 	0x01, 0x10, 0x0f, 0x00, 0x00,
+};
+
+/*
+ *  640x480 display, 8 bit color.
+ */
+VGAmode mode13 = 
+{
+	/* general */
+	0xe7, 0x00,
+	/* sequence */
+	0x03, 0x01, 0x0f, 0x00, 0x0e,
+	/* crt */
+	0x65, 0x4f, 0x50, 0x88, 0x55, 0x9a, 0x09, 0x3e,
+	0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xe8, 0x8b, 0xdf, 0x28, 0x00, 0xe7, 0x04, 0xA3,
+	0xff,
+	/* graphics */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0f,
+	0xff,
+	/* attribute */
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x41, 0x10, 0x0f, 0x00, 0x00,
 };
 
 static Rectangle mbb;
@@ -189,6 +217,7 @@ printmode(VGAmode *v) {
 	print("\n");
 }
 
+#ifdef asdf
 void
 dumpmodes(void) {
 	VGAmode *v;
@@ -222,16 +251,48 @@ dumpmodes(void) {
 		print(" %02x", inb(ARR));
 	}
 }
-#endif
+#endif asdf
 
-uchar *pad1, *pad2;
+/*
+ *  expand 3 and 6 bits of color to 32
+ */
+static ulong
+x3to32(uchar x)
+{
+	ulong y;
+
+	x = x&7;
+	x= (x<<3)|x;
+	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
+	return y;
+}
+static ulong
+x6to32(uchar x)
+{
+	ulong y;
+
+	x = x&0x3f;
+	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
+	return y;
+}
 
 void
 setscreen(int maxx, int maxy, int ldepth)
 {
-	int len;
+	int len, vgamaxy, width, i, x;
 	uchar *p;
 
+	if(ldepth == 3)
+		setmode(&mode13);
+	else
+		setmode(&mode12);
+
+	/* allocate a new soft bitmap area */
+	width = (maxx*(1<<ldepth))/32;
+	len = width * BY2WD * maxy;
+	p = xalloc(len);
+	if(p == 0)
+		panic("can't alloc screen bitmap");
 	mbb = NULLMBB;
 
 	/*
@@ -241,33 +302,26 @@ setscreen(int maxx, int maxy, int ldepth)
 		vgascreen.ldepth = 3;
 	else
 		vgascreen.ldepth = 0;
-	vgascreen.base = (void*)SCREENMEM;
 	vgascreen.width = (maxx*(1<<vgascreen.ldepth))/32;
+	vgamaxy = maxy % ((64*1024)/vgascreen.width);
+	vgascreen.base = (void*)SCREENMEM;
 	vgascreen.r.min = Pt(0, 0);
-	vgascreen.r.max = Pt(maxx, maxy);
+	vgascreen.r.max = Pt(maxx, vgamaxy);
 	vgascreen.clipr = vgascreen.r;
+	memset(vgascreen.base, 0xff, vgascreen.width * BY2WD * vgamaxy);
 
 	/*
 	 *  setup new soft screen, free memory for old screen
 	 */
+	if(gscreen.base)
+		xfree(gscreen.base);
 	gscreen.ldepth = ldepth;
-	gscreen.width = (maxx*(1<<ldepth))/32;
+	gscreen.width = width;
 	gscreen.r.min = Pt(0, 0);
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr = gscreen.r;
-	len = gscreen.width * BY2WD * maxy;
-	if(gscreen.base){
-		free(gscreen.base);
-		p = smalloc(len + 2*1024);
-	} else
-		p = malloc(len + 2*1024);
-	pad1 = p;
-	pad2 = p + 1024 + len;
-	memset(pad1, 0, 1024);
-	memset(pad2, 0, 1024);
-	gscreen.base = (ulong*)(p+1024);
-	memset((char*)gscreen.base, 0xff, len);
-	memset((void*)SCREENMEM, 0xff, vgascreen.width * BY2WD * maxy);
+	gscreen.base = (ulong*)p;
+	memset(gscreen.base, 0xff, len);
 
 	/*
 	 *  set depth of cursor backup area
@@ -280,15 +334,33 @@ setscreen(int maxx, int maxy, int ldepth)
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
+
+	/*
+	 *  default color map
+	 */
+	switch(ldepth){
+	case 3:
+		for(i = 0; i < 256; i++)
+			setcolor(i, x3to32(i>>5), x3to32(i>>2), x3to32(i<<1));
+		break;
+	case 2:
+	case 1:
+	case 0:
+		gscreen.ldepth = 3;
+		for(i = 0; i < 16; i++){
+			x = x6to32((i*63)/15);
+			setcolor(i, x, x, x);
+		}
+		gscreen.ldepth = ldepth;
+		break;
+	}
 }
 
 void
 screeninit(void)
 {
-	int i, x;
+	int i;
 	ulong *l;
-
-	setmode(&mode12);
 
 	/*
 	 *  arrow is defined as a big endian
@@ -315,19 +387,6 @@ screeninit(void)
 	if(conf.maxy == 0)
 		conf.maxy = MAXY;
 	setscreen(conf.maxx, conf.maxy, conf.ldepth);
-
-	/*
-	 *  set up color map
-	 */
-	lock(&colorlock);
-	outb(CMWX, 0);
-	for(i = 0; i < 16; i++){
-		x = (i*63)/15;
-		outb(CM, x);
-		outb(CM, x);
-		outb(CM, x);
-	}
-	unlock(&colorlock);
 }
 
 /*
@@ -344,7 +403,8 @@ mbbrect(Rectangle r)
 		mbb.max.x = r.max.x;
 	if (r.max.y > mbb.max.y)
 		mbb.max.y = r.max.y;
-	screenupdate();
+	if (Dy(mbb) > 32 || Dx(mbb) > 32)
+		mousescreenupdate();
 }
 
 void
@@ -369,8 +429,8 @@ unlocktseng(void) {
 /*
  *  copy litte endian soft screen to big endian hard screen
  */
-void
-screenupdate(void)
+static void
+vgaupdate(void)
 {
 	uchar *sp, *hp;
 	int y, len, incs, inch, off, page, y2pg, ey;
@@ -379,14 +439,6 @@ screenupdate(void)
 
 	r = mbb;
 	mbb = NULLMBB;
-
-	if(nocheck==0 && memcmp(pad1, pad2, 1024)){
-		nocheck = 1;
-		print("b: %d %d %d %d\n", r.min.x, r.min.y, r.max.x, r.max.y);
-		nocheck = 0;
-		memset(pad1, 0, 1024);
-		memset(pad2, 0, 1024);
-	}
 
 	if(Dy(r) < 0)
 		return;
@@ -454,6 +506,7 @@ screenupdate(void)
 		y2pg = (64*1024/BY2WD)/gscreen.width;
 		off = (r.min.y % y2pg) * gscreen.width * BY2WD + r.min.x;
 		hp = (uchar*)(vgascreen.base) + off;
+		off = r.min.y * gscreen.width * BY2WD + r.min.x;
 		sp = (uchar*)(gscreen.base) + off;
 		len = r.max.x - r.min.x;
 		if(len < 1)
@@ -475,13 +528,22 @@ screenupdate(void)
 		}
 		break;
 	}
+}
 
-	if(nocheck==0 && memcmp(pad1, pad2, 1024)){
-		nocheck = 1;
-		print("a: %d %d %d %d\n", r.min.x, r.min.y, r.max.x, r.max.y);
-		nocheck = 0;
-		memset(pad1, 0, 1024);
-		memset(pad2, 0, 1024);
+void
+screenupdate(void)
+{
+	lock(&vgalock);
+	vgaupdate();
+	unlock(&vgalock);
+}
+
+void
+mousescreenupdate(void)
+{
+	if(canlock(&vgalock)){
+		vgaupdate();
+		unlock(&vgalock);
 	}
 }
 
@@ -497,10 +559,8 @@ screenputnl(void)
 	r = Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height);
 	gbitblt(&gscreen, r.min, &gscreen, r, flipD[0]);
 	mbbrect(r);
-	screenupdate();
+	vgaupdate();
 }
-
-Lock screenlock;
 
 void
 screenputs(char *s, int n)
@@ -541,7 +601,7 @@ screenputs(char *s, int n)
 	}
 	rs.max = Pt(gscreen.r.max.x, out.pos.y+defont0.height);
 	mbbrect(rs);
-	screenupdate();
+	vgaupdate();
 }
 
 int
@@ -552,39 +612,29 @@ screenbits(void)
 
 
 void
-mousescreenupdate(void)
-{
-	screenupdate();
-}
-
-static ulong
-expand(uchar x)
-{
-	return (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24));
-}
-
-void
 getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 {
 	p &= (1<<(1<<gscreen.ldepth))-1;
-	lock(&colorlock);
-	outb(CMRX, p);
-	*pr = expand(inb(CM));
-	*pg = expand(inb(CM));
-	*pb = expand(inb(CM));
-	unlock(&colorlock);
+	lock(&vgalock);
+	*pr = colormap[p][0];
+	*pg = colormap[p][1];
+	*pb = colormap[p][2];
+	unlock(&vgalock);
 }
 
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
 	p &= (1<<(1<<gscreen.ldepth))-1;
-	lock(&colorlock);
+	lock(&vgalock);
+	colormap[p][0] = r;
+	colormap[p][1] = g;
+	colormap[p][2] = b;
 	outb(CMWX, p);
 	outb(CM, r>>(32-6));
 	outb(CM, g>>(32-6));
 	outb(CM, b>>(32-6));
-	unlock(&colorlock);
+	unlock(&vgalock);
 	return ~0;
 }
 
@@ -605,6 +655,7 @@ hwcursmove(int x, int y)
 void
 mouseclock(void)
 {
+	spllo();	/* so we don't cause lost chars on the uart */
 	mouseupdate(1);
 }
 
