@@ -301,7 +301,7 @@ espkick(Conv *c)
 }
 
 void
-espiput(Proto *esp, uchar*, Block *bp)
+espiput(Proto *esp, Ipifc*, Block *bp)
 {
 	Esphdr *eh;
 	Esptail *et;

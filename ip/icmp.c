@@ -178,7 +178,7 @@ icmpkick(Conv *c)
 }
 
 extern void
-icmpttlexceeded(Fs *f, uchar *ia, Block *bp)
+icmpttlexceeded(Fs *f, Ipifc *ifc, Block *bp)
 {
 	Block	*nbp;
 	Icmp	*p, *np;
@@ -190,7 +190,7 @@ icmpttlexceeded(Fs *f, uchar *ia, Block *bp)
 	nbp->wp += ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8;
 	np = (Icmp *)nbp->rp;
 	memmove(np->dst, p->src, sizeof(np->dst));
-	v6tov4(np->src, ia);
+	v6tov4(np->src, ifc->lifc->local);
 	memmove(np->data, bp->rp, ICMP_IPSIZE + 8);
 	np->type = TimeExceed;
 	np->code = 0;
@@ -293,7 +293,7 @@ static char *unreachcode[] =
 };
 
 static void
-icmpiput(Proto *icmp, uchar*, Block *bp)
+icmpiput(Proto *icmp, Ipifc*, Block *bp)
 {
 	int	n, iplen;
 	Icmp	*p;

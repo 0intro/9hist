@@ -441,6 +441,9 @@ typedef struct {
 	ulong	dninterrupts;
 	ulong	dnqueued;
 
+	int	did;				/* Controller's device ID */
+	ulong	cbfns;		/* CardBus functions */
+
 	int	xcvr;				/* transceiver type */
 	int	rxstatus9;			/* old-style RxStatus register */
 	int	rxearly;			/* RxEarlyThreshold */
@@ -615,9 +618,9 @@ attach(Ether* ether)
 	COMMAND(port, RxEnable, 0);
 	COMMAND(port, TxEnable, 0);
 
-	if (ether->mem)
+	if (ctlr->cbfns)
 		/* This must be a cardbus card.  Acknowledge the interrupt */
-		intrack3c575(KADDR(ether->mem));
+		intrack3c575(KADDR(ctlr->cbfns));
 		
 	/*
 	 * Prime the busmaster channel for receiving directly into a
@@ -960,6 +963,18 @@ receive(Ether* ether)
 	}
 }
 
+static int
+ejectable(int did)
+{
+	switch (did) {
+	case 0x5157:
+		return 1;
+
+	default:
+		return 0;
+	}
+}
+
 static void
 interrupt(Ureg*, void* arg)
 {
@@ -996,6 +1011,13 @@ interrupt(Ureg*, void* arg)
 			COMMAND(port, SelectRegisterWindow, Wdiagnostic);
 			x = ins(port+FifoDiagnostic);
 			COMMAND(port, SelectRegisterWindow, Wop);
+	
+			if (status == 0xFFFF && x == 0xFFFF && ejectable(ctlr->did)) {
+				print("#l%d: Card ejected?\n", ether->ctlrno);
+				iunlock(&ctlr->wlock);
+				return;
+			}
+
 			print("#l%d: status 0x%uX, diag 0x%uX\n",
 			    ether->ctlrno, status, x);
 
@@ -1138,7 +1160,7 @@ interrupt(Ureg*, void* arg)
 			panic("#l%d: interrupt mask 0x%uX\n", ether->ctlrno, status);
 
 		COMMAND(port, AcknowledgeInterrupt, interruptLatch);
-		if (ether->mem) intrack3c575((ulong *)KADDR(ether->mem));
+		if (ctlr->cbfns) intrack3c575((ulong *)KADDR(ctlr->cbfns));
 
 	}while((status = STATUS(port)) & (interruptMask|interruptLatch));
 
@@ -1482,7 +1504,7 @@ tcm59Xpci(void)
 		if (p->did == 0x5157) {
 			/* Map the CardBus functions */
 			bar = pcicfgr32(p, PciBAR2);
-			print("tcmp59Xpci: CardBus functions at %.8uX\n", bar & ~KZERO);
+			print("tcmp59Xpci: CardBus functions at %.8ulX\n", bar & ~KZERO);
 		}
 
 		tcmadapter(port, irq, p->tbdf, p->did, bar);
@@ -1759,6 +1781,7 @@ etherelnk3reset(Ether* ether)
 	Ctlr *ctlr;
 	static int scandone;
 	char *p;
+	ulong cbfns;
 
 	/*
 	 * Scan for adapter on PCI, EISA and finally
@@ -1777,6 +1800,7 @@ etherelnk3reset(Ether* ether)
 	 */
 	port = 0;
 	did = 0;
+	cbfns = 0;
 	bpp = &adapter;
 	for(bp = *bpp; bp; bp = bp->next){
 		ap = (Adapter*)bp->rp;
@@ -1785,7 +1809,7 @@ etherelnk3reset(Ether* ether)
 			did = ap->did;
 			ether->irq = ap->irq;
 			ether->tbdf = ap->tbdf;
-			ether->mem = ap->cbfns;
+			cbfns = ap->cbfns;
 			*bpp = bp->next;
 			freeb(bp);
 			break;
@@ -2033,6 +2057,9 @@ etherelnk3reset(Ether* ether)
 	ctlr->rxearly = rxearly;
 	if(rxearly >= 2048)
 		ctlr->ts = 2;
+
+	ctlr->did = did;
+	ctlr->cbfns = cbfns;
 
 	COMMAND(port, StatisticsEnable, 0);
 

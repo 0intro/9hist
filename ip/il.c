@@ -218,7 +218,7 @@ void	ilsettimeout(Ilcb*);
 char*	ilstart(Conv*, int, int);
 void	ilackproc(void*);
 void	iloutoforder(Conv*, Ilhdr*, Block*);
-void	iliput(Proto*, uchar*, Block*);
+void	iliput(Proto*, Ipifc*, Block*);
 void	iladvise(Proto*, Block*, char*);
 int	ilnextqt(Ilcb*);
 void	ilcbinit(Ilcb*);
@@ -528,7 +528,7 @@ ilackto(Ilcb *ic, ulong ackto, Block *bp)
 }
 
 void
-iliput(Proto *il, uchar*, Block *bp)
+iliput(Proto *il, Ipifc*, Block *bp)
 {
 	char *st;
 	Ilcb *ic;

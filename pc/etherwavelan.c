@@ -1187,7 +1187,7 @@ reset(Ether* ether)
 	if (ioalloc(ether->port,WIOLen,0,"wavelan")<0){
 		print("#l%d: port 0x%lx in use\n",
 				ether->ctlrno, ether->port);
-		goto abort;
+		goto abort1;
 	}
 
 	if ((ctlr->slot = pcmspecial("WaveLAN/IEEE", ether))<0){
@@ -1267,6 +1267,8 @@ reset(Ether* ether)
 	return 0;
 
 abort:
+	iofree(ether->port);
+abort1:
 	iunlock(&ctlr->Lock);
 	free(ctlr);
 	ether->ctlr = nil;

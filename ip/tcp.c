@@ -259,7 +259,7 @@ int	addreseq(Tcpctl*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
 void	localclose(Conv*, char*);
 void	procsyn(Conv*, Tcp*);
-void	tcpiput(Proto*, uchar*, Block*);
+void	tcpiput(Proto*, Ipifc*, Block*);
 void	tcpoutput(Conv*);
 int	tcptrim(Tcpctl*, Tcp*, Block**, ushort*);
 void	tcpstart(Conv*, int, ushort);
@@ -1234,7 +1234,7 @@ done:
 }
 
 void
-tcpiput(Proto *tcp, uchar*, Block *bp)
+tcpiput(Proto *tcp, Ipifc*, Block *bp)
 {
 	Tcp seg;
 	Tcphdr *h;

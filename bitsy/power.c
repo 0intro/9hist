@@ -77,9 +77,9 @@ void	(*restart)(void) = nil;
 static void
 sa1100_power_off(void)
 {
-	cacheflush();
-	mmuinvalidate();
-	mmudisable();
+
+iprint("calling resume\n");
+sa1100_power_resume();
 
 	/* enable wakeup by µcontroller, on/off switch or real-time clock alarm */
 	powerregs->pwer =  1 << IRQrtc | 1 << IRQgpio0 | 1 << IRQgpio1;
@@ -87,18 +87,16 @@ sa1100_power_off(void)
 	/* clear previous reset status */
 	resetregs->rcsr =  RCSR_all;
 
-sa1100_power_resume();
-
 	/* disable internal oscillator, float CS lines */
 	powerregs->pcfr = PCFR_opde | PCFR_fp | PCFR_fs;
 	powerregs->pgsr = 0;
 	/* set resume address. The loader jumps to it */
 //	powerregs->pspr = (ulong)sa1100_power_resume;
-//	powerregs->pspr = (ulong)_start;
+	powerregs->pspr = (ulong)_start;
 	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
 
 	delay(90);
-//	powerregs->ppcr = 0;
+	powerregs->ppcr = 0;
 	delay(90);
 
 	/* set all GPIOs to input mode  */
@@ -179,9 +177,9 @@ deepsleep(void) {
 	clockpower(0);
 	irpower(0);
 	audiopower(0);
-	screenpower(0);
+//	screenpower(0);
 	µcpower(0);
-	rs232power(0);
+//	rs232power(0);
 	sa1100_power_off();
 	/* no return */
 }

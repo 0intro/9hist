@@ -344,7 +344,7 @@ initfrag(IP *ip, int size)
 #define DBG(x)	if((logmask & Logipmsg) && (iponly == 0 || x == iponly))netlog
 
 void
-ipiput(Fs *f, uchar *ia, Block *bp)
+ipiput(Fs *f, Ipifc *ifc, Block *bp)
 {
 	int hl;
 	Iphdr *h;
@@ -428,7 +428,7 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 		/* don't forward if packet has timed out */
 		if(h->ttl <= 1){
 			ip->stats[InHdrErrors]++;
-			icmpttlexceeded(f, ia, bp);
+			icmpttlexceeded(f, ifc, bp);
 			freeblist(bp);
 			return;
 		}
@@ -455,7 +455,7 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 	p = Fsrcvpcol(f, h->proto);
 	if(p != nil && p->rcv != nil) {
 		ip->stats[InDelivers]++;
-		(*p->rcv)(p, ia, bp);
+		(*p->rcv)(p, ifc, bp);
 		return;
 	}
 	ip->stats[InDiscards]++;

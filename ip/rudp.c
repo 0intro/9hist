@@ -475,7 +475,7 @@ rudpkick(Conv *c)
 }
 
 void
-rudpiput(Proto *rudp, uchar *ia, Block *bp)
+rudpiput(Proto *rudp, Ipifc *ifc, Block *bp)
 {
 	int len, olen, ottl;
 	Udphdr *uh;
@@ -569,7 +569,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 		if(ipforme(f, laddr) == Runi)
 			ipmove(bp->rp+IPaddrlen, laddr);
 		else
-			ipmove(bp->rp+IPaddrlen, ia);
+			ipmove(bp->rp+IPaddrlen, ifc->lifc->local);
 		hnputs(bp->rp+2*IPaddrlen, rport);
 		hnputs(bp->rp+2*IPaddrlen+2, lport);
 		break;
@@ -580,7 +580,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 		if(ipforme(f, laddr) == Runi)
 			v6tov4(bp->rp+IPv4addrlen, laddr);
 		else
-			v6tov4(bp->rp+IPv4addrlen, ia);
+			v6tov4(bp->rp+IPv4addrlen, ifc->lifc->local);
 		hnputs(bp->rp + 2*IPv4addrlen, rport);
 		hnputs(bp->rp + 2*IPv4addrlen + 2, lport);
 		break;
@@ -595,7 +595,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 			if(ipforme(f, laddr) == Runi)
 				ipmove(c->laddr, laddr);
 			else
-				v4tov6(c->laddr, ia);
+				v4tov6(c->laddr, ifc->lifc->local);
 		}
 		break;
 	}
