@@ -17,6 +17,7 @@ enum
 	ARR=		0x3C1,		/* attribute registers (reading) */
 };
 
-extern	void setscreen(int, int, int);
+#define SCREENMEM	(0xA0000 | KZERO)
 
+extern	void setscreen(int, int, int);
 extern	struct GBitmap	gscreen;

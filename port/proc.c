@@ -763,7 +763,7 @@ procctl(Proc *p)
 #include "errstr.h"
 
 void
-error(char err[])
+error(char *err)
 {
 	strncpy(u->error, err, ERRLEN);
 	nexterror();

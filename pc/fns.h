@@ -58,6 +58,7 @@ void	screenputs(char*, int);
 int	serial(int);
 void	setvec(int, void (*)(Ureg*));
 void	systrap(void);
+void	toscreen(void*);
 void	touser(void*);
 void	trapinit(void);
 int	tas(void*);

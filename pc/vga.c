@@ -27,15 +27,14 @@ struct{
 #define MAXX	640
 #define MAXY	480
 
-#define SCREENMEM	(0xA0000 | KZERO)
-
 GBitmap	gscreen =
 {
 	(ulong*)SCREENMEM,
 	0,
 	640/32,
 	0,
-	0, 0, MAXX, MAXY,
+	{ 0, 0, MAXX, MAXY, },
+	{ 0, 0, MAXX, MAXY, },
 	0
 };
 
@@ -229,6 +228,7 @@ setscreen(int maxx, int maxy, int bpp) {
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[S]);
 	gscreen.width = maxx/32;
 	gscreen.r.max = Pt(maxx, maxy);
+	gscreen.clipr.max = gscreen.r.max;
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
 	out.pos.x = MINX;
 	out.pos.y = 0;

@@ -310,16 +310,7 @@ lanceoput(Queue *q, Block *bp )
 	}
 	p = (Etherpkt *)bp->rptr;
 	memmove(p->s, l.ea, sizeof(l.ea));
-	if(memcmp(l.ea, p->d, sizeof(l.ea)) == 0){
-		len = blen(bp);
-		bp = expandb(bp, len >= ETHERMINTU ? len : ETHERMINTU);
-		if(bp){
-			putq(&l.self, bp);
-			wakeup(&l.rr);
-		}
-		return;
-	}
-	if(memcmp(l.bcast, p->d, sizeof(l.bcast)) == 0 || l.prom || l.all){
+	if(*p->d == 0xff || l.prom || l.all){
 		len = blen(bp);
 		nbp = copyb(bp, len);
 		nbp = expandb(nbp, len >= ETHERMINTU ? len : ETHERMINTU);
@@ -328,6 +319,14 @@ lanceoput(Queue *q, Block *bp )
 			putq(&l.self, nbp);
 			wakeup(&l.rr);
 		}
+	} else if(*p->d == *l.ea && memcmp(l.ea, p->d, sizeof(l.ea)) == 0){
+		len = blen(bp);
+		bp = expandb(bp, len >= ETHERMINTU ? len : ETHERMINTU);
+		if(bp){
+			putq(&l.self, bp);
+			wakeup(&l.rr);
+		}
+		return;
 	}
 
 	/*

@@ -29,7 +29,8 @@ enum {
 	Qvgasize=	2,
 	Qvgatype=	3,
 	Qvgaport=	4,
-	Nvga=		4,
+	Qvgamem=	5,
+	Nvga=		5,
 };
 
 Dirtab vgadir[]={
@@ -37,6 +38,7 @@ Dirtab vgadir[]={
 	"vgatype",	{Qvgatype},	0,		0666,
 	"vgasize",	{Qvgasize},	0,		0666,
 	"vgaport",	{Qvgaport},	0,		0666,
+	"vgamem",	{Qvgamem},	0,		0666,
 };
 
 /* a routine from ../port/devcons.c */
@@ -97,9 +99,9 @@ vgaopen(Chan *c, int omode)
 	case Qvgatype:
 	case Qvgasize:
 	case Qvgaport:
+	case Qvgamem:
 		break;
 	}
-
 	return devopen(c, omode, vgadir, Nvga, devgen);
 }
 
@@ -119,6 +121,7 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 {
 	char obuf[60];
 	int port, i;
+	uchar *mem;
 	uchar *cp = buf;
 	void *outfunc(int, int);
 
@@ -136,9 +139,15 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	case Qvgaport:
 		if (offset + n >= 0x8000)
 			error(Ebadarg);
-		for (port=offset; port<offset+n; port++) {
+		for (port=offset; port<offset+n; port++)
 			*cp++ = inb(port);
-		}
+		return n;
+	case Qvgamem:
+		if (offset > 0x10000)
+			return 0;
+		if (offset + n > 0x10000)
+			n = 0x10000 - offset;
+		memmove(cp, (void *)(SCREENMEM+offset), n);
 		return n;
 	}
 }
@@ -163,10 +172,10 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 	case Qvgasize:
 		if(offset != 0)
 			error(Ebadarg);
-		if(n >= sizeof cbuf)
-			n = sizeof cbuf - 1;
+		if(n >= sizeof(cbuf))
+			n = sizeof(cbuf) - 1;
 		memmove(cbuf, buf, n);
-		cbuf[n-1] = 0;
+		cbuf[n] = 0;
 		cp = cbuf;
 		maxx = strtoul(cp, &cp, 0);
 		maxy = strtoul(cp, &cp, 0);
@@ -182,6 +191,11 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		for (port=offset; port<offset+n; port++) {
 			outb(port, *cp++);
 		}
+		return n;
+	case Qvgamem:
+		if (offset + n > 0x10000)
+			error(Ebadarg);
+		memmove((void *)(SCREENMEM+offset), buf, n);
 		return n;
 	}
 }

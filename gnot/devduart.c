@@ -97,7 +97,6 @@ struct Duartport
 	/* stream interface */
 	Queue	*wq;		/* write queue */
 	Rendez	r;		/* kproc waiting for input */
-	Alarm	*a;		/* alarm for waking the kernel process */
  	int	kstarted;	/* kproc started */
 };
 Duartport	duartport[1];

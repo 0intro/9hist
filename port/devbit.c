@@ -97,6 +97,7 @@ GBitmap	set =
 	0,
 	1,
 	0,
+	{0, 0, 16, 16},
 	{0, 0, 16, 16}
 };
 
@@ -107,6 +108,7 @@ GBitmap	clr =
 	0,
 	1,
 	0,
+	{0, 0, 16, 16},
 	{0, 0, 16, 16}
 };
 
@@ -117,6 +119,7 @@ GBitmap cursorback =
 	0,
 	1,
 	0,
+	{0, 0, 16, 16},
 	{0, 0, 16, 16}
 };
 
@@ -193,6 +196,7 @@ bitinit(void)
 Chan*
 bitattach(char *spec)
 {
+	bit.map[0] = gscreen;	/* bitmap 0 is screen */
 	return devattach('b', spec);
 }
 
@@ -229,6 +233,7 @@ bitopen(Chan *c, int omode)
 			unlock(&bit);
 			error(Einuse);
 		}
+		bit.map[0].clipr = gscreen.clipr;
 		bit.lastid = -1;
 		bit.lastfid = -1;
 		bit.lastsubfid = -1;
@@ -913,6 +918,31 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			p += 14;
 			break;
 
+		case 'q':
+			/*
+			 * clip rectangle
+			 *	'q'		1
+			 *	id		2
+			 *	rect		16
+			 */
+			if(m < 19)
+				error(Ebadblt);
+			v = GSHORT(p+1);
+			dst = &bit.map[v];
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
+				error(Ebadbitmap);
+			rect.min.x = GLONG(p+3);
+			rect.min.y = GLONG(p+7);
+			rect.max.x = GLONG(p+11);
+			rect.max.y = GLONG(p+15);
+			if(rectclip(&rect, dst->r))
+				dst->clipr = rect;
+			else
+				dst->clipr = dst->r;
+			m -= 19;
+			p += 19;
+			break;
+
 		case 'r':
 			/*
 			 * read
@@ -987,7 +1017,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 * texture
 			 *	't'		1
 			 *	dst id		2
-			 *	Rectangle	16
+			 *	rect		16
 			 *	src id		2
 			 *	fcode		2
 			 */
@@ -1275,6 +1305,7 @@ bitalloc(Rectangle rect, int ld)
 	bp->width = l;
 	bp->ldepth = ld;
 	bp->r = rect;
+	bp->clipr = rect;
 	bp->cache = 0;
 	return bp;
 }
@@ -1352,10 +1383,6 @@ bitloadchar(GFont *f, int ci, GSubfont *subf, int si)
 	rect.max.x = (fi+1)->x;
 	rect.max.y = subf->height;
 	gbitblt(f->b, Pt(c->x, f->ascent-subf->ascent), subf->bits, rect, S);
-/*
-gbitblt(&gscreen, Pt(0,0), f->b, f->b->r, S);
-gbitblt(&gscreen, Pt(0,30), f->b, Rect(c->x, 0, c->x+f->width,f->height), S);
-*/
 }
 
 QLock	bitlock;
