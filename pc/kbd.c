@@ -62,6 +62,10 @@ uchar kbtab[] =
 [0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
 [0x50]	'2',	'3',	'0',	'.',	No,	No,	No,	KF|11,
 [0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
+[0x60]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x68]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x70]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x78]	No,	View,	No,	KF|14,	No,	No,	No,	No,
 };
 
 uchar kbtabshift[] =
@@ -78,6 +82,10 @@ uchar kbtabshift[] =
 [0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
 [0x50]	'2',	'3',	'0',	'.',	No,	No,	No,	KF|11,
 [0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
+[0x60]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x68]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x70]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x78]	No,	KF|14,	No,	KF|14,	No,	No,	No,	No,
 };
 
 uchar kbtabesc1[] =
@@ -94,6 +102,10 @@ uchar kbtabesc1[] =
 [0x48]	Up,	Pgup,	No,	Left,	No,	Right,	No,	End,
 [0x50]	Down,	Pgdown,	Ins,	Del,	No,	No,	No,	No,
 [0x58]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x60]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x68]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x70]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x78]	No,	KF|14,	No,	No,	No,	No,	No,	No,
 };
 
 enum

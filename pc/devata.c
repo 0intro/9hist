@@ -394,7 +394,6 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 	ctlr->tbdf = BUSUNKNOWN;
 	ctlr->lastcmd = 0xFF;
 
-
 	/*
 	 * Attempt to check the existence of drives on the controller
 	 * by issuing a 'check device diagnostics' command.
@@ -1612,7 +1611,7 @@ ataintr(Ureg*, void* arg)
 		if(++loop > Maxloop){
 			print("ata%d: cmd=%ux, lastcmd=%ux status=%ux\n",
 				cp->ctlrno, cp->cmd, cp->lastcmd, inb(cp->pbase+Pstatus));
-			panic("%s: wait busy\n", dp->vol);
+			panic("ata%d: wait busy\n", cp->ctlrno);
 		}
 	}
 
