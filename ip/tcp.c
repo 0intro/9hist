@@ -50,6 +50,7 @@ enum
 	DEF_KAT		= 30000,	/* Default time ms) between keep alives */
 	TCP_LISTEN	= 0,		/* Listen connection */
 	TCP_CONNECT	= 1,		/* Outgoing connection */
+	SYNACK_RXTIMER	= 250,		/* ms between SYNACK retransmits */
 
 	TCPREXMTTHRESH  = 3,            /* dupack threshhold for rxt */
 
@@ -248,7 +249,7 @@ struct Tcpctl
  *  New calls are put in limbo rather than having a conversation structure
  *  allocated.  Thus, a SYN attack results in lots of limbo'd calls but not
  *  any real Conv structures mucking things up.  Calls in limbo rexmit their
- *  SYN ACK every 250 ms up to 4 times, i.e., they disappear after 1 second.
+ *  SYN ACK every SYNACK_RXTIMER ms up to 4 times, i.e., they disappear after 1 second.
  *
  *  In particular they aren't on a listener's queue so that they don't figure
  *  in the input queue limit.
@@ -341,6 +342,17 @@ struct Tcppriv
 
 	ulong	stats[Nstats];
 };
+
+/* 
+ *  Setting tcpporthogdefense to non-zero enables Dong Lin's
+ *  solution to hijacked systems staking out port's as a form
+ *  of DoS attack.
+ *
+ *  To avoid stateless Conv hogs, we pick a sequence number at random.  If
+ *  it that number gets acked by the other end, we shut down the connection.
+ *  Look for tcpporthogedefense in the code.
+ */
+int tcpporthogdefense = 0;
 
 int	addreseq(Tcpctl*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
@@ -1374,7 +1386,7 @@ limbo(Conv *s, uchar *source, uchar *dest, Tcp *seg, int version)
 }
 
 /*
- *  resend SYN ACK's once every 250 ms.
+ *  resend SYN ACK's once every SYNACK_RXTIMER ms.
  */
 static void
 limborexmit(Proto *tcp)
@@ -1395,11 +1407,11 @@ limborexmit(Proto *tcp)
 		for(l = &tpriv->lht[h]; *l != nil && seen < tpriv->nlimbo; ){
 			lp = *l;
 			seen++;
-			if(now - lp->lastsend < 250)
+			if(now - lp->lastsend < (lp->rexmits+1)*SYNACK_RXTIMER)
 				continue;
 
 			/* time it out after 1 second */
-			if(++(lp->rexmits) > 4){
+			if(++(lp->rexmits) > 5){
 				tpriv->nlimbo--;
 				*l = lp->next;
 				free(lp);
@@ -1540,7 +1552,7 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 	tcb->cwind = tcb->mss;
 
 	/* set initial round trip time */
-	tcb->sndsyntime = lp->lastsend;
+	tcb->sndsyntime = lp->lastsend+lp->rexmits*SYNACK_RXTIMER;
 	tcpsynackrtt(new);
 
 	free(lp);
@@ -1998,7 +2010,8 @@ reset:
 	 *  corresponding code in tcpsendka().
 	 */
 	if(tcb->state != Syn_received && (seg.flags & RST) == 0){
-		if(seq_within(seg.ack, tcb->snd.una-(1<<31), tcb->snd.una-(1<<29))){
+		if(tcpporthogdefense
+		&& seq_within(seg.ack, tcb->snd.una-(1<<31), tcb->snd.una-(1<<29))){
 			print("stateless hog %I.%d->%I.%d f %ux %lux - %lux - %lux\n",
 				source, seg.source, dest, seg.dest, seg.flags,
 				tcb->snd.una-(1<<31), seg.ack, tcb->snd.una-(1<<29));
@@ -2462,10 +2475,6 @@ tcpoutput(Conv *s)
 
 /*
  *  the BSD convention (hack?) for keep alives.  resend last uchar acked.
- *
- *  To avoid stateless Conv hogs, we pick a sequence number at random.  If
- *  it that number gets acked by the other end, we shut down the connection.
- *  See the equivalent code in tcpiput().
  */
 void
 tcpsendka(Conv *s)
@@ -2482,7 +2491,10 @@ tcpsendka(Conv *s)
 	seg.dest = s->rport;
 	seg.flags = ACK|PSH;
 	seg.mss = 0;
-	seg.seq = tcb->snd.una-(1<<30)-nrand(1<<20);
+	if(tcpporthogdefense)
+		seg.seq = tcb->snd.una-(1<<30)-nrand(1<<20);
+	else
+		seg.seq = tcb->snd.una-1;
 	seg.ack = tcb->rcv.nxt;
 	tcb->rcv.lastacked = tcb->rcv.nxt;
 	seg.wnd = tcb->rcv.wnd;

@@ -769,6 +769,10 @@ walk(Chan **cp, char **names, int nnames, int nomount, int *nerror)
 			cnameclose(cname);
 			cclose(c);
 			strcpy(up->errstr, Enotdir);
+			if(mh != nil)
+{print("walk 1\n");
+				putmhead(mh);
+}
 			return -1;
 		}
 		ntry = nnames - nhave;
@@ -813,6 +817,8 @@ walk(Chan **cp, char **names, int nnames, int nomount, int *nerror)
 				cnameclose(cname);
 				if(nerror)
 					*nerror = nhave+1;
+				if(mh != nil)
+					putmhead(mh);
 				return -1;
 			}
 		}
@@ -845,6 +851,8 @@ walk(Chan **cp, char **names, int nnames, int nomount, int *nerror)
 						strcpy(up->errstr, Enotdir);
 					}
 					free(wq);
+					if(mh != nil)
+						putmhead(mh);
 					return -1;
 				}
 				n = wq->nqid;
