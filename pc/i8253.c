@@ -235,6 +235,15 @@ clockintr0(Ureg* ureg, void *v)
 
 	now = fastticks(nil);
 	when = i8253.when;
+
+	/*
+	 * If we suspend the machine and resume, the
+	 * processor cycle counter gets reset.  Detect this
+	 * and deal with it.
+	 */
+	if(now < i8253.when && i8253.when-now > 3*i8253.fastperiod)
+		i8253.when = now;
+
 	if(now >= i8253.when){
 		clockintr(ureg, v);
 		do
