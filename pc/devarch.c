@@ -482,10 +482,11 @@ cpuidprint(void)
 int
 cpuidentify(void)
 {
-	int family, model;
+	char *p;
+	int family, model, nomce;
 	X86type *t;
 	ulong cr4;
-	vlong mct;
+	vlong mca, mct;
 
 	cpuid(m->cpuidid, &m->cpuidax, &m->cpuiddx);
 	if(strncmp(m->cpuidid, "AuthenticAMD", 12) == 0)
@@ -515,8 +516,17 @@ cpuidentify(void)
 		cr4 = 0;
 		if(m->cpuiddx & 0x08)
 			cr4 |= 0x10;		/* page size extensions */
-		if(m->cpuiddx & 0x80)
+		if(p = getconf("*nomce"))
+			nomce = strtoul(p, 0, 0);
+		else
+			nomce = 0;
+		if((m->cpuiddx & 0x80) && !nomce){
 			cr4 |= 0x40;		/* machine check enable */
+			if(family == 5){
+				rdmsr(0x00, &mca);
+				rdmsr(0x01, &mct);
+			}
+		}
 		putcr4(cr4);
 		if(m->cpuiddx & 0x80)
 			rdmsr(0x01, &mct);

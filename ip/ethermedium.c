@@ -44,6 +44,22 @@ Medium ethermedium =
 .areg=		sendgarp,
 };
 
+Medium gbemedium =
+{
+.name=		"gbe",
+.hsize=		14,
+.minmtu=	60,
+.maxmtu=	9014,
+.maclen=	6,
+.bind=		etherbind,
+.unbind=	etherunbind,
+.bwrite=	etherbwrite,
+.addmulti=	etheraddmulti,
+.remmulti=	etherremmulti,
+.ares=		arpenter,
+.areg=		sendgarp,
+};
+
 typedef struct	Etherrock Etherrock;
 struct Etherrock
 {
@@ -561,4 +577,5 @@ void
 ethermediumlink(void)
 {
 	addipmedium(&ethermedium);
+	addipmedium(&gbemedium);
 }
