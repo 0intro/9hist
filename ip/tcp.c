@@ -361,6 +361,9 @@ tcpannounce(Conv *c, char **argv, int argc)
 	return nil;
 }
 
+/*
+ *  tcpclose is always called with the q locked
+ */
 static void
 tcpclose(Conv *c)
 {
@@ -700,6 +703,13 @@ tcpstart(Conv *s, int mode, ushort window)
 
 	tcb = (Tcpctl*)s->ptcl;
 
+	qlock(s);
+	/* Send SYN, go into SYN_SENT state */
+	if(waserror()){
+		qunlock(s);
+		nexterror();
+	}
+
 	inittcpctl(s);
 	tcb->window = window;
 	tcb->rcv.wnd = window;
@@ -713,20 +723,14 @@ tcpstart(Conv *s, int mode, ushort window)
 
 	case TCP_CONNECT:
 		tpriv->stats[ActiveOpens]++;
-		/* Send SYN, go into SYN_SENT state */
-		qlock(s);
-		if(waserror()){
-			qunlock(s);
-			nexterror();
-		}
 		tcb->flags |= ACTIVE;
 		tcpsndsyn(tcb);
 		tcpsetstate(s, Syn_sent);
 		tcpoutput(s);
-		qunlock(s);
-		poperror();
 		break;
 	}
+	qunlock(s);
+	poperror();
 }
 
 static char*
