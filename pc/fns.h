@@ -134,3 +134,9 @@ ulong	TK2MS(ulong);				/* ticks to milliseconds */
 #define PADDR(a)	((ulong)(a)&~KZERO)
 
 #define	dcflush(a, b)
+
+/*
+ * wrapper around memmove that causes kprof to credit caller for time
+ */
+// extern void	*kpmemmove(void*, void*, long);
+// #define memmove kpmemmove

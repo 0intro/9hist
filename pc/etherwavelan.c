@@ -152,6 +152,7 @@ enum
 		WCmdMsk		= 0x003f,
 		WCmdAccRd	= 0x0021,
 		WCmdAccWr	= 0x0121,
+		WCmdBusy	= 0x8000,
 		WCmdTxFree	= 0x000b|0x0100,
 	WR_Parm0	= 0x02,
 	WR_Parm1	= 0x04,
@@ -313,7 +314,11 @@ w_cmd(Ctlr *ctlr, ushort cmd, ushort arg)
 	int i;
 	int rc;
 
+if(csr_ins(ctlr, WR_Cmd) & WCmdBusy)
+    print("busy\n");
 	csr_outs(ctlr, WR_Parm0, arg);
+	csr_outs(ctlr, WR_Parm1, 0);
+	csr_outs(ctlr, WR_Parm2, 0);
 	csr_outs(ctlr, WR_Cmd, cmd);
 	for (i = 0; i<WTmOut; i++){
 		rc = csr_ins(ctlr, WR_EvSts);
@@ -384,6 +389,7 @@ w_outltv(Ctlr* ctlr, Wltv* l)
 {
 	int i,len;
 	ushort *p;
+delay(100);
 
 	if (w_seek(ctlr,l->type,0,1))
 		return;
@@ -400,6 +406,7 @@ static void
 ltv_outs(Ctlr* ctlr, int type, ushort val)
 {
 	Wltv l;
+delay(100);
 
 	l.type = type;
 	l.val = val;
@@ -424,6 +431,7 @@ ltv_outstr(Ctlr* ctlr, int type, char *val)
 {
 	Wltv l;
 	int len;
+delay(100);
 
 	len = strlen(val);
 	if(len > sizeof(l.s))
@@ -589,10 +597,11 @@ w_enable(Ether* ether)
 	w_intdis(ctlr);
 	w_cmd(ctlr, WCmdDis, 0);
 	w_intdis(ctlr);
+delay(100);
 	if(w_cmd(ctlr, WCmdIni, 0))
 		return -1;
-
 	w_intdis(ctlr);
+
 	ltv_outs(ctlr, WTyp_Tick, 8);
 	ltv_outs(ctlr, WTyp_MaxLen, ctlr->maxlen);
 	ltv_outs(ctlr, WTyp_Ptype, ctlr->ptype);
@@ -1159,7 +1168,7 @@ ctl(Ether* ether, void* buf, long n)
 			ctlr->keyid = key;
 			kp = &ctlr->key[key-1];
 			kp->len = strlen(cb->f[1]);
-			if (kp->len > WKeyLen)
+//			if (kp->len > WKeyLen)
 				kp->len = WKeyLen;
 			memset(kp->dat, 0, sizeof(kp->dat));
 			strncpy(kp->dat, cb->f[1], kp->len);
@@ -1361,6 +1370,7 @@ reset(Ether* ether)
 	}
 
 	w_intdis(ctlr);
+delay(500);
 	if (w_cmd(ctlr,WCmdIni,0)){
 		print("#l%d: init failed\n", ether->ctlrno);
 		goto abort;

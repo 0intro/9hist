@@ -94,7 +94,7 @@ grestate(Conv *c, char *state, int n)
 static void
 grecreate(Conv *c)
 {
-	c->rq = qopen(64*1024, 0, 0, c);
+	c->rq = qopen(64*1024, 1, 0, c);
 	c->wq = qopen(64*1024, 0, 0, 0);
 }
 

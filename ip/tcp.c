@@ -332,10 +332,10 @@ tcpstate(Conv *c, char *state, int n)
 	s = (Tcpctl*)(c->ptcl);
 
 	return snprint(state, n,
-		"%s srtt %d mdev %d cwin %d swin %d rwin %d timer.start %d timer.count %d\n",
+		"%s srtt %d mdev %d cwin %d swin %d rwin %d timer.start %d timer.count %d rerecv %d\n",
 		tcpstates[s->state], s->srtt, s->mdev,
 		s->cwind, s->snd.wnd, s->rcv.wnd,
-		s->timer.start, s->timer.count);
+		s->timer.start, s->timer.count, s->rerecv);
 }
 
 static int
@@ -484,7 +484,7 @@ tcpacktimer(void *v)
 static void
 tcpcreate(Conv *c)
 {
-	c->rq = qopen(QMAX, 0, tcpacktimer, c);
+	c->rq = qopen(QMAX, -1, tcpacktimer, c);
 	c->wq = qopen(2*QMAX, 0, 0, 0);
 }
 
@@ -770,7 +770,7 @@ htontcp(Tcp *tcph, Block *data, Tcphdr *ph, Tcpctl *tcb)
 	}
 	else {
 		dlen = 0;
-		data = allocb(hdrlen + TCP_PKT);
+		data = allocb(hdrlen + TCP_PKT + 64);	/* the 64 pad is to meet mintu's */
 		if(data == nil)
 			return nil;
 		data->wp += hdrlen + TCP_PKT;
@@ -2137,7 +2137,6 @@ int
 tcptrim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 {
 	ushort len;
-	Block *nbp;
 	uchar accept;
 	int dupcnt, excess;
 
@@ -2197,9 +2196,9 @@ tcptrim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 	if(excess > 0) {
 		tcb->rerecv += excess;
 		*length -= excess;
-		nbp = copyblock(*bp, *length);
-		freeblist(*bp);
-		*bp = nbp;
+		*bp = trimblock(*bp, 0, *length);
+		if(*bp == nil)
+			panic("presotto is a boofhead");
 		seg->flags &= ~FIN;
 	}
 	return 0;

@@ -586,7 +586,7 @@ ipmuxcreate(Conv *c)
 {
 	Ipmuxrock *r;
 
-	c->rq = qopen(64*1024, 0, 0, c);
+	c->rq = qopen(64*1024, 1, 0, c);
 	c->wq = qopen(64*1024, 0, 0, 0);
 	r = (Ipmuxrock*)(c->ptcl);
 	r->chain = nil;

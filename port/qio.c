@@ -55,6 +55,7 @@ enum
 	Qmsg		= (1<<1),	/* message stream */
 	Qclosed		= (1<<2),
 	Qflow		= (1<<3),
+	Qcoalesce	= (1<<4),	/* coallesce packets on read */
 
 	Maxatomic	= 32*1024,
 };
@@ -749,7 +750,12 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 	q->limit = q->inilim = limit;
 	q->kick = kick;
 	q->arg = arg;
-	q->state = msg ? Qmsg : 0;
+	q->state = 0;
+	if(msg > 0)
+		q->state |= Qmsg;
+	else if(msg < 0)
+		q->state |= Qcoalesce;
+	
 	q->state |= Qstarve;
 	q->eof = 0;
 	q->noblock = 0;
@@ -865,15 +871,34 @@ long
 qread(Queue *q, void *vp, int len)
 {
 	Block *b;
+	int m;
+	uchar *p;
+	uchar *e;
 
-	b = qbread(q, len);
-	if(b == 0)
-		return 0;
+	p = vp;
 
-	len = BLEN(b);
-	memmove(vp, b->rp, len);
-	freeb(b);
-	return len;
+	if((q->state & Qcoalesce) == 0){
+		b = qbread(q, len);
+		if(b == 0)
+			return 0;
+
+		m = BLEN(b);
+		memmove(p, b->rp, m);
+		freeb(b);
+		return m;
+	}
+
+	for(e = p + len; p < e; p += m){
+		b = qbread(q, e-p);
+		if(b == 0)
+			return 0;
+
+		m = BLEN(b);
+		memmove(p, b->rp, m);
+		freeb(b);
+	}
+
+	return p-(uchar*)vp;
 }
 
 static int

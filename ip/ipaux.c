@@ -252,8 +252,10 @@ isv4(uchar *ip)
 void
 v4tov6(uchar *v6, uchar *v4)
 {
-	memmove(v6, v4prefix, IPv4off);
-	memmove(v6 + IPv4off, v4, IPv4addrlen);
+	v6[0] = *(ulong)v4prefix;
+	v6[1] = *(ulong)(v4prefix+4);
+	v6[2] = *(ulong)(v4prefix+8);
+	v6[3] = *(ulong)v4;
 }
 
 int

@@ -621,6 +621,7 @@ struct Proc
 				 *  that last preempted it
 				 */
 	ulong	qpc;		/* pc calling last blocking qlock */
+	ulong	kppc;		/* kprof calling pc */
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */

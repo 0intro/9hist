@@ -228,7 +228,7 @@ enum {					/* Host/NIC Interface ring sizes */
 };
 
 enum {
-	NrsrHI		= 128,		/* Fill-level of Rsr (m.b. < Nrsr) */
+	NrsrHI		= 256,		/* (WAS 128) Fill-level of Rsr (m.b. < Nrsr) */
 	NrsrLO		= 64,		/* Level at which to top-up ring */
 	NrjrHI		= 0,		/* Fill-level of Rjr (m.b. < Nrjr) */
 	NrjrLO		= 0,		/* Level at which to top-up ring */
@@ -665,11 +665,11 @@ ga620init(Ether* edev)
 	 * These defaults are based on the tuning hints in the Alteon
 	 * Host/NIC Software Interface Definition and example software.
 	 */
-	csr32w(ctlr, Rct, 100);
+	csr32w(ctlr, Rct, 1000);	/* was 100 */
 	csr32w(ctlr, Sct, 0);
 	csr32w(ctlr, St, 100000);
 	csr32w(ctlr, SmcBD, Nsr/4);
-	csr32w(ctlr, RmcBD, 6);
+	csr32w(ctlr, RmcBD, 100);	/* was 6 */
 
 	/*
 	 * Enable DMA Assist Logic.
@@ -993,6 +993,7 @@ ga620pnp(Ether* edev)
 	edev->irq = ctlr->pcidev->intl;
 	edev->tbdf = ctlr->pcidev->tbdf;
 	edev->mbps = 1000;
+	edev->oq = qopen(512*1024, 1, 0, 0);
 
 	/*
 	 * Check if the adapter's station address is to be overridden.
