@@ -94,7 +94,12 @@ sysfd2path(ulong *arg)
 		error(Ebadarg);
 
 	c = fdtochan(arg[0], -1, 0, 0);
-
+	/* If we used open the chan will be at the first element
+	 * of a union rather than the mhead of the union. undomount
+	 * will make it look like we used Atodir rather than Aopen.
+	 */
+	if(c->qid.path & CHDIR)
+		c = undomount(c);
 	ptpath(c->path, (char*)arg[1], arg[2]);
 	return 0;
 }

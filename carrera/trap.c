@@ -283,6 +283,14 @@ trap(Ureg *ur)
 	}
 }
 
+struct
+{
+	ulong cause;
+	ulong devint3;
+	ulong devint4;
+	ulong state;
+}sisr;
+
 void
 intr(Ureg *ur)
 {
@@ -292,9 +300,11 @@ intr(Ureg *ur)
 
 	m->intr++;
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
-
+sisr.cause = cause;
 	if(cause & INTR3) {
 		devint = IO(uchar, Intcause);
+sisr.devint3 = devint;
+sisr.state = 0;
 		switch(devint) {
 		default:
 			panic("unknown devint=#%lux", devint);
@@ -318,9 +328,11 @@ intr(Ureg *ur)
 			break;
 		}
 		cause &= ~INTR3;
+sisr.state = 1;
 	}
 
 	if(cause & INTR2) {
+sisr.state = 2;
 		isr = IO(ulong, R4030Isr);
 		if(isr) {
 			iprint("R4030 Interrupt\n");
@@ -330,12 +342,14 @@ intr(Ureg *ur)
 			iprint(" MFA #%lux\n", IO(ulong, R4030Mfa));
 		}
 		cause &= ~INTR2;
+sisr.state = 3;
 	}
 
 	if(cause & INTR4) {
 		devint = IO(uchar, I386ack);
 		vec = devint&~0x7;
-
+sisr.devint4 = devint;
+sisr.state = 4;
 		/* reenable the 8259 interrupt */
 		if(vec == Int0vec || vec == Int1vec){
 			EISAOUTB(Int0ctl, EOI);
@@ -348,13 +362,18 @@ intr(Ureg *ur)
 			iprint("i386ACK #%lux\n", devint);
 			break;
 		case 7:
+sisr.state = 5;
 			audiosbintr();
+sisr.state = 6;
 			break;
 		case 13:
+sisr.state = 7;
 			audiodmaintr();
+sisr.state = 8;
 			break;
 		}
 		cause &= ~INTR4;
+sisr.state = 9;
 	}
 
 	if(cause & INTR7) {

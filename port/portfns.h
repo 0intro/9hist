@@ -244,6 +244,7 @@ void		uncachepage(Page*);
 long		unionread(Chan*, void*, long);
 void		unlock(Lock*);
 void		unmount(Chan*, Chan*);
+Chan*		undomount(Chan*);
 void		userinit(void);
 ulong		userpc(void);
 long		userwrite(char*, int);

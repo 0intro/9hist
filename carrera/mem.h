@@ -66,7 +66,6 @@
 #define ERL		0x00000004
 #define KSUPER		0x00000008
 #define KUSER		0x00000010
-#define UX		0x00000020
 #define INTMASK		0x0000ff00
 #define INTR0		0x00000100
 #define INTR1		0x00000200
