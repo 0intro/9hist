@@ -400,15 +400,20 @@ confinit(void)
 			else
 				pcnt = 60;
 		}
+		/*
+		 * Make sure terminals with low memory get at least
+		 * 4MB on the first Image chunk allocation.
+		 */
 		if(conf.npage*BY2PG < 16*MB)
 			poolsetparam("Image", 0, 0, 4*1024*1024);
 		/*
-		 * give terminals lots of image memory, too; the dynamic allocation
-		 * will balance the load properly, we hope.
+		 * give terminals lots of image memory, too; the dynamic
+		 * allocation will balance the load properly, we hope.
+		 * be careful with 32-bit overflow.
 		 */
-		poolsetparam("Image", BY2PG*conf.npage*(100-pcnt)/100, 0, 0);
+		poolsetparam("Image", (BY2PG*conf.npage/100)*(100-pcnt), 0, 0);
 	}
-	poolsetparam("Main", BY2PG*conf.npage*(100-pcnt)/100, 0, 0);
+	poolsetparam("Main", (BY2PG*conf.npage/100)*(100-pcnt), 0, 0);
 
 	conf.upages = (conf.npage*pcnt)/100;
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
