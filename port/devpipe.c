@@ -65,7 +65,7 @@ pipeattach(char *spec)
 		exhausted("memory");
 	p->ref = 1;
 
-	p->q[0] = qopen(64*1024, 0, 0, 0);
+	p->q[0] = qopen(32*1024, 0, 0, 0);
 	if(p->q[0] == 0){
 		free(p);
 		exhausted("memory");
@@ -98,6 +98,16 @@ pipeclone(Chan *c, Chan *nc)
 	nc = devclone(c, nc);
 	qlock(p);
 	p->ref++;
+	if(c->flag & COPEN){
+		switch(NETTYPE(c->qid.path)){
+		case Qdata0:
+			p->qref[0]++;
+			break;
+		case Qdata1:
+			p->qref[1]++;
+			break;
+		}
+	}
 	qunlock(p);
 	return nc;
 }
@@ -212,26 +222,29 @@ pipeclose(Chan *c)
 	p = c->aux;
 	qlock(p);
 
-	/*
-	 *  closing either side hangs up the stream
-	 */
-	switch(NETTYPE(c->qid.path)){
-	case Qdata0:
-		p->qref[0]--;
-		if(p->qref[0] == 0){
-			qclose(p->q[0]);
-			qhangup(p->q[1]);
+	if(c->flag & COPEN){
+		/*
+		 *  closing either side hangs up the stream
+		 */
+		switch(NETTYPE(c->qid.path)){
+		case Qdata0:
+			p->qref[0]--;
+			if(p->qref[0] == 0){
+				qclose(p->q[0]);
+				qhangup(p->q[1]);
+			}
+			break;
+		case Qdata1:
+			p->qref[1]--;
+			if(p->qref[1] == 0){
+				qclose(p->q[1]);
+				qhangup(p->q[0]);
+			}
+			break;
 		}
-		break;
-	case Qdata1:
-		p->qref[1]--;
-		if(p->qref[1] == 0){
-			qclose(p->q[1]);
-			qhangup(p->q[0]);
-		}
-		break;
 	}
 
+	
 	/*
 	 *  if both sides are closed, they are reusable
 	 */

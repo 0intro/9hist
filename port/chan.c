@@ -263,7 +263,7 @@ unmount(Chan *mnt, Chan *mounted)
 
 	p = &m->mount;
 	for(f = *p; f; f = f->next) {
-		if(eqchan(f->to, mounted, 1)) {
+		if(eqchan(f->to, mounted, 1) || eqchan(f->to->mchan, mounted, 1)) {
 			*p = f->next;
 			f->next = 0;
 			mountfree(f);

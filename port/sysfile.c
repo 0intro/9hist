@@ -537,7 +537,7 @@ sysunmount(ulong *arg)
 			nexterror();
 		}
 		validaddr(arg[0], 1, 0);
-		cmounted = namec((char*)arg[0], Aaccess, 0, 0);
+		cmounted = namec((char*)arg[0], Aopen, OREAD, 0);
 		poperror();
 	}
 
