@@ -51,6 +51,12 @@ struct Edf {
 	int		testtype;	/* Release or Deadline */
 	Ticks	testtime;
 	Task	*	testnext;
+	/* statistics gathering */
+	ulong	periods;	/* number of periods */
+	ulong	missed;	/* number of deadlines missed */
+	ulong	preemptions;
+	Ticks	total;		/* total time used */
+	Ticks	aged;	/* aged time used */
 	/* other */
 	Edfstate	state;
 };

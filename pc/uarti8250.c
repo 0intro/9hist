@@ -671,3 +671,15 @@ i8250console(void)
 	consuart = uart;
 	uart->console = 1;
 }
+
+void
+i8250mouse(char* which, int (*putc)(Queue*, int), int setb1200)
+{
+	char *p;
+	int port;
+
+	port = strtol(which, &p, 0);
+	if(p == which || port < 0 || port > 1)
+		error(Ebadarg);
+	uartmouse(&i8250uart[port], putc, setb1200);
+}

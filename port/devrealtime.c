@@ -495,6 +495,16 @@ devrtread(Chan *c, void *v, long n, vlong offs)
 				}
 			p = seprint(p, e, "'");
 		}
+		if (t->periods)
+			p = seprint(p, e, " n=%lud", t->periods);
+		if (t->missed)
+			p = seprint(p, e, " m=%lud", t->missed);
+		if (t->preemptions)
+			p = seprint(p, e, " p=%lud", t->preemptions);
+		if (t->total)
+			p = seprint(p, e, " t=%T", ticks2time(t->total));
+		if (t->aged)
+			p = seprint(p, e, " c=%T", ticks2time(t->aged));
 		seprint(p, e, "\n");
 		return readstr(offs, v, n, buf);
 	}

@@ -252,6 +252,7 @@ static void
 deadline(Proc *p, SEvent why)
 {
 	Task *t, *nt;
+	Ticks used;
 
 	/* Task has reached its deadline, lock must be held */
 	DPRINT("%d deadline, %s, %d\n", m->machno, edfstatename[p->task->state], p->task->runq.n);
@@ -272,6 +273,11 @@ deadline(Proc *p, SEvent why)
 		timerdel(&deadlinetimer[m->machno]);
 		deadlinetimer[m->machno].when = 0;
 	}
+	used = now - t->scheduled;
+	t->S -= used;
+	t->scheduled = now;
+	t->total += used;
+	t->aged = (t->aged*31 + t->C - t->S) >> 5;
 	t->d = now;
 	t->state = EdfDeadline;
 	if(devrt) devrt(t, now, why);
@@ -330,6 +336,7 @@ edfadmit(Task *t)
 		t->S = t->C;
 		t->scheduled = now;
 		t->state = EdfRunning;
+		t->periods++;
 		if(devrt) devrt(t, now, SRun);
 		setdelta();
 		assert(t->runq.n > 0 || (up && up->task == t));
@@ -457,6 +464,7 @@ edfdeadlineintr(Ureg*, Timer*)
 	
 		used = now - t->scheduled;
 		t->scheduled = now;
+		t->total += used;
 
 		if (t->r < now){
 			if (t->S <= used)
@@ -466,8 +474,10 @@ edfdeadlineintr(Ureg*, Timer*)
 	
 			if (t->d <= now || t->S == 0LL){
 				/* Task has reached its deadline/slice, remove from queue */
-				if (t->S > 0LL)
+				if (t->d <= now){
+					t->missed++;
 					misseddeadlines++;
+				}
 				deadline(up, SSlice);
 				while (t = edfstack[m->machno].head){
 					if (now < t->d)
@@ -728,9 +738,9 @@ edfrunproc(void)
 		edfdequeue(&qreleased);
 		assert(nt->runq.n >= 1);
 		edfpush(nt);
-		nt->state = EdfRunning;
 		t = nt;
 		t->scheduled = now;
+		t->periods++;
 	}else{
 		DPRINT("%d edfrunproc: current\n", m->machno);
 	}
@@ -741,6 +751,7 @@ runt:
 	 * No need to lock runq, edflock always held to access runq
 	 */
 	t->state = EdfRunning;
+	t->periods++;
 	p = t->runq.head;
 	if ((t->runq.head = p->rnext) == nil)
 		t->runq.tail = nil;
