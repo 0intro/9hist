@@ -46,4 +46,4 @@ typedef struct Hwgc {
 	void	(*disable)(void);
 } Hwgc;
 
-extern Lock pallettelock;
+extern Lock palettelock;

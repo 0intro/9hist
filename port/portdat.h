@@ -577,7 +577,8 @@ struct Proc
 	int	(*notify)(void*, char*);
 
 	Mach	*mp;		/* machine this process last ran on */
-	ulong	priority;
+	ulong	priority;	/* priority level 0 is highest */
+	ulong	movetime;	/* last time process switched processors */
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */

@@ -112,7 +112,7 @@ load(Cursor *c)
 	int x, y;
 
 
-	lock(&pallettelock);
+	lock(&palettelock);
 
 	/*
 	 * Turn cursor off;
@@ -161,7 +161,7 @@ load(Cursor *c)
 	r = (bt485i(Cmd2) & 0xFC)|0x01;
 	bt485o(Cmd2, r);
 
-	unlock(&pallettelock);
+	unlock(&palettelock);
 }
 
 static void
@@ -169,7 +169,7 @@ enable(void)
 {
 	uchar r;
 
-	lock(&pallettelock);
+	lock(&palettelock);
 
 	/*
 	 * Turn cursor off.
@@ -190,7 +190,7 @@ enable(void)
 	bt485o(Color, 0x00); bt485o(Color, 0x00); bt485o(Color, 0x00);
 	bt485o(Color, 0x00); bt485o(Color, 0x00); bt485o(Color, 0x00);
 
-	unlock(&pallettelock);
+	unlock(&palettelock);
 
 	/*
 	 * Finally, enable
@@ -212,7 +212,7 @@ move(Point p)
 {
 	int x, y;
 
-	if(canlock(&pallettelock) == 0)
+	if(canlock(&palettelock) == 0)
 		return 1;
 
 	x = p.x+hotpoint.x;
@@ -223,7 +223,7 @@ move(Point p)
 	bt485o(Cylr, y & 0xFF);
 	bt485o(Cyhr, (y>>8) & 0x0F);
 
-	unlock(&pallettelock);
+	unlock(&palettelock);
 	return 0;
 }
 
@@ -238,10 +238,10 @@ disable(void)
 	 *	cursor control enable for Bt485 DAC;
 	 *	the hardware cursor external operation mode.
 	 */
-	lock(&pallettelock);
+	lock(&palettelock);
 	r = bt485i(Cmd2) & ~0x03;
 	bt485o(Cmd2, r);
-	unlock(&pallettelock);
+	unlock(&palettelock);
 
 	r = vgaxi(Crtx, 0x45) & ~0x20;
 	vgaxo(Crtx, 0x45, r);

@@ -108,13 +108,7 @@ sched(void)
 int
 anyready(void)
 {
-	Schedq *rq;
-
-	for(rq = runq; rq < &runq[Nrq]; rq++)
-		if(rq->head)
-			return 1;
-
-	return 0;
+	return nrdy;
 }
 
 void
@@ -132,7 +126,6 @@ ready(Proc *p)
 		} else
 			p->priority = 1;
 	}
-if(p->priority < 0 || p->priority >= Nrq) panic("ready");
 	rq = &runq[p->priority];
 
 	lock(runq);
@@ -158,31 +151,33 @@ runproc(void)
 loop:
 
 	/*
-	 *  find highest priority queue with runnable process
+	 *  find a process at level 0 (programs from '/' file system),
+	 *  one that last ran on this processor (affinity),
+	 *  or one that hasn't moved in a while (load balancing).
 	 */
 	spllo();
-	for(rq = runq; rq < &runq[Nrq]; rq++)
-		if(rq->head)
-			break;
-	if(rq == &runq[Nrq])
-		goto loop;
-	splhi();
+	for(;;){
+		for(rq = runq; rq < &runq[Nrq]; rq++){
+			if(rq->head == 0)
+				continue;
+			for(p = rq->head; p; p = p->rnext){
+				if(rq == runq || p->mp == m || 
+				   m->ticks - p->movetime > HZ/2)
+					goto found;
+			}
+		}
+	}
 
+
+found:
+	splhi();
 	lock(runq);
 
-	/*
-	 *  affinity: look for a process last run on this processor,
-	 *	otherwise, take first in list.
-	 */
 	l = 0;
 	for(p = rq->head; p; p = p->rnext){
-		if(p->mp == m)
+		if(rq == runq || p->mp == m || m->ticks - p->movetime > HZ/2)
 			break;
 		l = p;
-	}
-	if(p == 0){
-		l = 0;
-		p = rq->head;
 	}
 
 	/*
@@ -205,6 +200,8 @@ loop:
 	unlock(runq);
 
 	p->state = Scheding;
+	if(p->mp != m)
+		p->movetime = m->ticks;
 	p->mp = m;
 	return p;
 }
@@ -261,6 +258,7 @@ newproc(void)
 	p->procctl = 0;
 	p->notepending = 0;
 	p->mp = 0;
+	p->movetime = 0;
 	memset(p->seg, 0, sizeof p->seg);
 	p->pid = incref(&pidalloc);
 	p->noteid = incref(&noteidalloc);

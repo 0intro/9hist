@@ -25,7 +25,7 @@ Bitmap	gscreen;
 /* vga screen */
 static	Lock	screenlock;
 static	ulong	colormap[256][3];
-Lock pallettelock;
+Lock palettelock;
 
 /* cga screen */
 static	int	cga = 1;		/* true if in cga mode */
@@ -757,7 +757,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	if(dolock && hwgc == 0)
 		cursorlock(r);
-	lock(&pallettelock);
+	lock(&palettelock);
 
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
@@ -837,7 +837,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 			data += l;
 		}
 
-	unlock(&pallettelock);
+	unlock(&palettelock);
 	if(dolock && hwgc == 0)
 		cursorunlock();
 }
@@ -913,7 +913,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	if(dolock && hwgc == 0)
 		cursorlock(r);
-	lock(&pallettelock);
+	lock(&palettelock);
 
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
@@ -993,7 +993,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 			data += l;
 		}
 
-	unlock(&pallettelock);
+	unlock(&palettelock);
 	if(dolock && hwgc == 0)
 		cursorunlock();
 }
@@ -1279,11 +1279,11 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 	}
 	p &= x;
 	p ^= x;
-	lock(&pallettelock);
+	lock(&palettelock);
 	*pr = colormap[p][0];
 	*pg = colormap[p][1];
 	*pb = colormap[p][2];
-	unlock(&pallettelock);
+	unlock(&palettelock);
 }
 
 int
@@ -1301,7 +1301,7 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	}
 	p &= x;
 	p ^= x;
-	lock(&pallettelock);
+	lock(&palettelock);
 	colormap[p][0] = r;
 	colormap[p][1] = g;
 	colormap[p][2] = b;
@@ -1309,7 +1309,7 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	vgao(DACData, r>>(32-6));
 	vgao(DACData, g>>(32-6));
 	vgao(DACData, b>>(32-6));
-	unlock(&pallettelock);
+	unlock(&palettelock);
 	return ~0;
 }
 

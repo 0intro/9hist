@@ -363,36 +363,38 @@ TEXT	vector180(SB), $-4
 TEXT	exception(SB), $-4
 	MOVW	M(STATUS), R26
 	WAIT
-	AND	$KUSER, R26
-	BEQ	R26, waskernel
-wasuser:
-	CONST	(MACHADDR, R27)		/* R27 = m-> */
-	MOVW	8(R27), R26		/* R26 = m->proc */
-	MOVW	8(R26), R27		/* R27 = m->proc->kstack */
-	MOVW	SP, R26			/* save user sp */
-	ADDU	$(KSTACK-UREGSIZE), R27, SP
+	AND	$KUSER, R26, R27
+	BEQ	R27, waskernel
 
-	MOVW	R26, Ureg_sp(SP)	/* user SP */
+wasuser:
+	MOVW	SP, R27
+	CONST	(MACHADDR, SP)		/* R27 = m-> */
+	MOVW	8(SP), SP		/* R26 = m->proc */
+	MOVW	8(SP), SP		/* R27 = m->proc->kstack */
+	ADDU	$(KSTACK-UREGSIZE), SP
 	MOVV	R31, (Ureg_r31-4)(SP)
+
+	JAL	savereg1(SB)
+
 	MOVV	R30, (Ureg_r30-4)(SP)
-	MOVW	M(CAUSE), R26
 	MOVV	R(MACH), (Ureg_r25-4)(SP)
 	MOVV	R(USER), (Ureg_r24-4)(SP)
-	AND	$(EXCMASK<<2), R26
-	SUBU	$(CSYS<<2), R26
-
-	JAL	saveregs(SB)
 
 	MOVW	$setR30(SB), R30
 	CONST	(MACHADDR, R1)
 	MOVW	R1, R(MACH)			/* R(MACH) = m-> */
 	MOVW	8(R(MACH)), R(USER)		/* up = m->proc */
-	MOVW	4(SP), R1			/* first arg for syscall/trap */
-	BNE	R26, notsys
 
+	AND	$(EXCMASK<<2), R26, R1
+	SUBU	$(CSYS<<2), R1
+	BNE	R1, notsys
+
+	ADDU	$Uoffset, SP, R1	/* first arg for syscall */
 	JAL	syscall(SB)
 
 sysrestore:
+	JAL	restreg1(SB)
+
 	MOVV	(Ureg_r31-4)(SP), R31
 	MOVW	Ureg_status(SP), R26
 	MOVV	(Ureg_r30-4)(SP), R30
@@ -404,11 +406,17 @@ sysrestore:
 	ERET
 
 notsys:
+	JAL	savereg2(SB)
+
+	ADDU	$Uoffset, SP, R1	/* first arg for trap */
 	JAL	trap(SB)
+
 restore:
-	JAL	restregs(SB)
-	MOVV	(Ureg_r31-4)(SP), R31
+	JAL	restreg1(SB)
+	JAL	restreg2(SB)
+
 	MOVV	(Ureg_r30-4)(SP), R30
+	MOVV	(Ureg_r31-4)(SP), R31
 	MOVV	(Ureg_r25-4)(SP), R(MACH)
 	MOVV	(Ureg_r24-4)(SP), R(USER)
 	MOVW	Ureg_sp(SP), SP
@@ -416,17 +424,21 @@ restore:
 	ERET
 
 waskernel:
-	MOVW	SP, R26
+	MOVW	SP, R27
 	SUBU	$UREGSIZE, SP
 	OR	$7, SP
 	XOR	$7, SP
-	MOVW	R26, Ureg_sp(SP)
 	MOVV	R31, (Ureg_r31-4)(SP)
-	MOVW	$1, R26			/* not syscall */
-	JAL	saveregs(SB)
-	MOVW	4(SP), R1		/* first arg for trap */
+
+	JAL	savereg1(SB)
+	JAL	savereg2(SB)
+
+	ADDU	$Uoffset, SP, R1	/* first arg for trap */
 	JAL	trap(SB)
-	JAL	restregs(SB)
+
+	JAL	restreg1(SB)
+	JAL	restreg2(SB)
+
 	MOVV	(Ureg_r31-4)(SP), R31
 	MOVW	Ureg_sp(SP), SP
 	MOVW	R26, M(EPC)
@@ -436,31 +448,43 @@ TEXT	forkret(SB), $0
 	MOVW	R0, R1			/* Fake out system call return */
 	JMP	sysrestore
 
-TEXT	saveregs(SB), $-4
+/*
+ * save manditory registers.
+ * called with old M(STATUS) in R26.
+ * called with old SP in R27
+ * returns with M(CAUSE) in R26
+ */
+TEXT	savereg1(SB), $-4
 	MOVV	R1, (Ureg_r1-4)(SP)
+
+	MOVW	$(~KMODEMASK),R1	/* don't use R28 */
+	AND	R26, R1
+	MOVW	R1, M(STATUS)
+
+	MOVW	R26, Ureg_status(SP)	/* status */
+	MOVW	R27, Ureg_sp(SP)	/* user SP */
+
+	MOVW	M(EPC), R1
+	MOVW	M(CAUSE), R26
+
+	MOVV	R23, (Ureg_r23-4)(SP)
+	MOVV	R22, (Ureg_r22-4)(SP)
+	MOVV	R21, (Ureg_r21-4)(SP)
+	MOVV	R20, (Ureg_r20-4)(SP)
+	MOVV	R19, (Ureg_r19-4)(SP)
+	MOVW	R1, Ureg_pc(SP)
+	RET
+
+/*
+ * all other registers.
+ * called with M(CAUSE) in R26
+ */
+TEXT	savereg2(SB), $-4
 	MOVV	R2, (Ureg_r2-4)(SP)
 
-	MOVV	R6, (Ureg_r6-4)(SP)
-	MOVV	R5, (Ureg_r5-4)(SP)
-
-	ADDU	$Uoffset, SP, R1
-	MOVW	R1, 4(SP)		/* arg to base of regs */
-	MOVW	M(STATUS), R1
-	MOVW	M(EPC), R2
-	WAIT
-	MOVW	R1, Ureg_status(SP)
-	MOVW	R2, Ureg_pc(SP)
-
-	MOVW	$(~KMODEMASK),R2	/* don't let him use R28 */
-	AND	R2, R1
-	MOVW	R1, M(STATUS)
-	WAIT
-	BEQ	R26, return		/* sys call, don't save */
-
-	MOVW	M(CAUSE), R1
 	MOVW	M(BADVADDR), R2
 	NOOP
-	MOVW	R1, Ureg_cause(SP)
+	MOVW	R26, Ureg_cause(SP)
 	MOVW	M(TLBVIRT), R1
 	NOOP
 	MOVW	R2, Ureg_badvaddr(SP)
@@ -473,11 +497,7 @@ TEXT	saveregs(SB), $-4
 	MOVV	R28, (Ureg_r28-4)(SP)
 					/* R27, R26 not saved */
 					/* R25, R24 missing */
-	MOVV	R23, (Ureg_r23-4)(SP)
-	MOVV	R22, (Ureg_r22-4)(SP)
-	MOVV	R21, (Ureg_r21-4)(SP)
-	MOVV	R20, (Ureg_r20-4)(SP)
-	MOVV	R19, (Ureg_r19-4)(SP)
+					/* R23- R19 saved in save1 */
 	MOVV	R18, (Ureg_r18-4)(SP)
 	MOVV	R17, (Ureg_r17-4)(SP)
 	MOVV	R16, (Ureg_r16-4)(SP)
@@ -490,21 +510,26 @@ TEXT	saveregs(SB), $-4
 	MOVV	R9, (Ureg_r9-4)(SP)
 	MOVV	R8, (Ureg_r8-4)(SP)
 	MOVV	R7, (Ureg_r7-4)(SP)
+	MOVV	R6, (Ureg_r6-4)(SP)
+	MOVV	R5, (Ureg_r5-4)(SP)
 	MOVV	R4, (Ureg_r4-4)(SP)
 	MOVV	R3, (Ureg_r3-4)(SP)
-return:
 	RET
 
-TEXT	restregs(SB), $-4
-					/* LINK,SB,SP missing */
-	MOVV	(Ureg_r28-4)(SP), R28
-					/* R27, R26 not saved */
-					/* R25, R24 missing */
+TEXT	restreg1(SB), $-4
 	MOVV	(Ureg_r23-4)(SP), R23
 	MOVV	(Ureg_r22-4)(SP), R22
 	MOVV	(Ureg_r21-4)(SP), R21
 	MOVV	(Ureg_r20-4)(SP), R20
 	MOVV	(Ureg_r19-4)(SP), R19
+	RET
+
+TEXT	restreg2(SB), $-4
+					/* LINK,SB,SP missing */
+	MOVV	(Ureg_r28-4)(SP), R28
+					/* R27, R26 not saved */
+					/* R25, R24 missing */
+					/* R19- R23 restored in rest1 */
 	MOVV	(Ureg_r18-4)(SP), R18
 	MOVV	(Ureg_r17-4)(SP), R17
 	MOVV	(Ureg_r16-4)(SP), R16

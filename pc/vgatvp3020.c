@@ -59,7 +59,7 @@ load(Cursor *c)
 	uchar p, p0, p1;
 	int x, y;
 
-	lock(&pallettelock);
+	lock(&palettelock);
 
 	/*
 	 * Make sure cursor is off by initialising the cursor
@@ -147,7 +147,7 @@ load(Cursor *c)
 
 	tvp3020xo(0x06, 0x40|0x10);			/* Cursor Control Register */
 
-	unlock(&pallettelock);
+	unlock(&palettelock);
 }
 
 static void
@@ -155,7 +155,7 @@ enable(void)
 {
 	uchar r;
 
-	lock(&pallettelock);
+	lock(&palettelock);
 
 	/*
 	 * Make sure cursor is off by initialising the cursor
@@ -172,7 +172,7 @@ enable(void)
 	tvp3020xo(0x23, 0xFF); tvp3020xo(0x24, 0xFF); tvp3020xo(0x25, 0xFF);
 	tvp3020xo(0x26, 0x00); tvp3020xo(0x27, 0x00); tvp3020xo(0x28, 0x00);
 
-	unlock(&pallettelock);
+	unlock(&palettelock);
 
 	/*
 	 * Finally, enable
@@ -189,7 +189,7 @@ enable(void)
 static int
 move(Point p)
 {
-	if(canlock(&pallettelock) == 0)
+	if(canlock(&palettelock) == 0)
 		return 1;
 
 	tvp3020xo(0x00, p.x & 0xFF);			/* Cursor Position X LSB */
@@ -197,7 +197,7 @@ move(Point p)
 	tvp3020xo(0x02, p.y & 0xFF);			/* Cursor Position Y LSB */
 	tvp3020xo(0x03, (p.y>>8) & 0x0F);		/* Cursor Position Y MSB */
 
-	unlock(&pallettelock);
+	unlock(&palettelock);
 	return 0;
 }
 
@@ -212,9 +212,9 @@ disable(void)
 	 *	cursor control enable for Bt485 DAC (!);
 	 *	the hardware cursor external operation mode.
 	 */
-	lock(&pallettelock);
+	lock(&palettelock);
 	tvp3020xo(0x06, 0x10);				/* Cursor Control Register */
-	unlock(&pallettelock);
+	unlock(&palettelock);
 
 	r = vgaxi(Crtx, 0x45) & ~0x20;
 	vgaxo(Crtx, 0x45, r);
