@@ -1251,9 +1251,9 @@ accounttime(void)
 	n = perfticks();
 	per = n - m->perf.last;
 	m->perf.last = n;
-	if(per == 0)
-		per = 1;
-	m->perf.period = (m->perf.period*(HZ-1)+per)/HZ;
+	per = (m->perf.period*(HZ-1) + per)/HZ;
+	if(per != 0)
+		m->perf.period = per;
 
 	m->perf.avg_inidle = (m->perf.avg_inidle*(HZ-1)+m->perf.inidle)/HZ;
 	m->perf.inidle = 0;
