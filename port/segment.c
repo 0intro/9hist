@@ -120,7 +120,7 @@ dupseg(Segment **seg, int segno, int share)
 	s = seg[segno];
 
 	switch(s->type&SG_TYPE) {
-	case SG_TEXT:			/* New segment shares pte set */
+	case SG_TEXT:		/* New segment shares pte set */
 	case SG_SHARED:
 	case SG_PHYSICAL:
 	case SG_SHDATA:
@@ -132,7 +132,7 @@ dupseg(Segment **seg, int segno, int share)
 		n = newseg(s->type, s->base, s->size);
 		break;
 
-	case SG_BSS:			/* Just copy on write */
+	case SG_BSS:		/* Just copy on write */
 		qlock(&s->lk);
 		if(share && s->ref == 1) {
 			s->type = (s->type&~SG_TYPE)|SG_SHARED;
@@ -143,7 +143,7 @@ dupseg(Segment **seg, int segno, int share)
 		n = newseg(s->type, s->base, s->size);
 		break;
 
-	case SG_DATA:			/* Copy on write plus demand load info */
+	case SG_DATA:		/* Copy on write plus demand load info */
 		if(segno == TSEG)
 			return data2txt(s);
 

@@ -629,9 +629,9 @@ sysbrk_(ulong *arg)
 long
 sysrendezvous(ulong *arg)
 {
-	Proc *p, **l;
-	int s, tag;
+	int tag;
 	ulong val;
+	Proc *p, **l;
 
 	tag = arg[0];
 	l = &REND(up->pgrp, tag);
@@ -642,8 +642,8 @@ sysrendezvous(ulong *arg)
 			*l = p->rendhash;
 			val = p->rendval;
 			p->rendval = arg[1];
-			/* Easy race avoidance */
-			while(p->state != Rendezvous)
+
+			while(p->mach != 0)
 				;
 			ready(p);
 			unlock(up->pgrp);
@@ -657,12 +657,10 @@ sysrendezvous(ulong *arg)
 	up->rendval = arg[1];
 	up->rendhash = *l;
 	*l = up;
-
-	s = splhi();
-	unlock(up->pgrp);
 	up->state = Rendezvous;
+	unlock(up->pgrp);
+
 	sched();
-	splx(s);
 
 	return up->rendval;
 }
