@@ -346,7 +346,7 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 	/* dump anything that whose header doesn't checksum */
 	if(ipcsum(&h->vihl)) {
 		ip->istats.ipInHdrErrors++;
-		netlog(f, Logip, "ip: checksum error %I\n", h->src);
+		netlog(f, Logip, "ip: checksum error %V\n", h->src);
 		freeblist(bp);
 		return;
 	}
