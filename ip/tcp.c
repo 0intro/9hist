@@ -576,7 +576,7 @@ static void
 tcpcreate(Conv *c)
 {
 	c->rq = qopen(QMAX, Qcoalesce, tcpacktimer, c);
-	c->wq = qopen(4*QMAX, Qkick, tcpkick, c);
+	c->wq = qopen((3*QMAX)/2, Qkick, tcpkick, c);
 }
 
 static void

@@ -460,8 +460,17 @@ qdiscard(Queue *q, int len)
 		}
 	}
 
-	/* if writer flow controlled, restart */
-	if((q->state & Qflow) && q->len < q->limit/2){
+	/*
+	 *  if writer flow controlled, restart
+	 *
+	 *  This used to be
+	 *	q->len < q->limit/2
+	 *  but it slows down tcp too much for certain write sizes.
+	 *  I really don't understand it completely.  It may be
+	 *  due to the queue draining so fast that the transmission
+	 *  stalls waiting for the app to produce more data.  - presotto
+	 */
+	if((q->state & Qflow) && q->len < q->limit){
 		q->state &= ~Qflow;
 		dowakeup = 1;
 	} else

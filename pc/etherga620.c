@@ -24,13 +24,6 @@
 #include "etherif.h"
 #include "etherga620fw.h"
 
-enum {					/* Compile-time options */
-	DoMhcCheck	= 1,
-	DoCoalUpdateOnly= 1,
-	DoHardwareCksum	= 0,
-	DoCountTicks	= 1,
-};
-
 enum {
 	Mhc		= 0x0040,	/* Miscellaneous Host Control */
 	Mlc		= 0x0044,	/* Miscellaneous Local Control */
@@ -259,9 +252,6 @@ typedef struct Ctlr {
 
 	uchar	ea[Eaddrlen];
 
-	int	interrupts;
-	uvlong	ticks;
-
 	int*	nic;
 	Gib*	gib;
 
@@ -284,6 +274,17 @@ typedef struct Ctlr {
 	int	epi[2];			/* Event Producer Index */
 	int	rrrpi[2];		/* Receive Return Ring Producer Index */
 	int	sci[3];			/* Send Consumer Index ([2] is host) */
+
+	int	interrupts;		/* statistics */
+	uvlong	ticks;
+
+	int	coalupdateonly;		/* tuning */
+	int	hardwarecksum;
+	int	rct;			/* Receive Coalesce Ticks */
+	int	sct;			/* Send Coalesce Ticks */
+	int	st;			/* Stat Ticks */
+	int	smcbd;			/* Send Max. Coalesced BDs */
+	int	rmcbd;			/* Receive Max. Coalesced BDs */
 } Ctlr;
 
 static Ctlr* ctlrhead;
@@ -342,12 +343,123 @@ ga620ifstat(Ether* edev, void* a, long n, ulong offset)
 	}
 
 	l += snprint(p+l, READSTR-l, "interrupts: %ud\n", ctlr->interrupts);
-	snprint(p+l, READSTR-l, "ticks: %llud\n", ctlr->ticks);
+	l += snprint(p+l, READSTR-l, "ticks: %llud\n", ctlr->ticks);
+	l += snprint(p+l, READSTR-l, "coalupdateonly: %d\n", ctlr->coalupdateonly);
+	l += snprint(p+l, READSTR-l, "hardwarecksum: %d\n", ctlr->hardwarecksum);
+	l += snprint(p+l, READSTR-l, "rct: %d\n", ctlr->rct);
+	l += snprint(p+l, READSTR-l, "sct: %d\n", ctlr->sct);
+	l += snprint(p+l, READSTR-l, "smcbd: %d\n", ctlr->smcbd);
+	snprint(p+l, READSTR-l, "rmcbd: %d\n", ctlr->rmcbd);
 
 	n = readstr(offset, a, n, p);
 	free(p);
 
 	return n;
+}
+
+static long
+ga620ctl(Ether* edev, void* buf, long n)
+{
+	char *p;
+	Cmdbuf *cb;
+	Ctlr *ctlr;
+	int control, i, r;
+
+	ctlr = edev->ctlr;
+	if(ctlr == nil)
+		error(Enonexist);
+	r = 0;
+	cb = parsecmd(buf, n);
+	if(cb->nf < 2)
+		r = -1;
+	else if(cistrcmp(cb->f[0], "coalupdateonly") == 0){
+		if(cistrcmp(cb->f[1], "off") == 0){
+			control = ctlr->gib->srcb.control;
+			control &= ~CoalUpdateOnly;
+			ctlr->gib->srcb.control = control;
+		}
+		else if(cistrcmp(cb->f[1], "on") == 0){
+			control = ctlr->gib->srcb.control;
+			control |= CoalUpdateOnly;
+			ctlr->gib->srcb.control = control;
+		}
+		else
+			r = -1;
+	}
+	else if(cistrcmp(cb->f[0], "hardwarecksum") == 0){
+		if(cistrcmp(cb->f[1], "off") == 0){
+			control = ctlr->gib->srcb.control;
+			control &= ~(TcpUdpCksum|NoPseudoHdrCksum);
+			ctlr->gib->srcb.control = control;
+
+			control = ctlr->gib->rsrcb.control;
+			control &= ~(TcpUdpCksum|NoPseudoHdrCksum);
+			ctlr->gib->rsrcb.control = control;
+		}
+		else if(cistrcmp(cb->f[1], "on") == 0){
+			control = ctlr->gib->srcb.control;
+			control |= (TcpUdpCksum|NoPseudoHdrCksum);
+			ctlr->gib->srcb.control = control;
+
+			control = ctlr->gib->rsrcb.control;
+			control |= (TcpUdpCksum|NoPseudoHdrCksum);
+			ctlr->gib->rsrcb.control = control;
+		}
+		else
+			r = -1;
+	}
+	else if(cistrcmp(cb->f[0], "rct") == 0){
+		i = strtol(cb->f[1], &p, 0);
+		if(i < 0 || p == cb->f[1])
+			r = -1;
+		else{
+			ctlr->rct = i;
+			csr32w(ctlr, Rct, ctlr->rct);
+		}
+	}
+	else if(cistrcmp(cb->f[0], "sct") == 0){
+		i = strtol(cb->f[1], &p, 0);
+		if(i < 0 || p == cb->f[1])
+			r = -1;
+		else{
+			ctlr->sct = i;
+			csr32w(ctlr, Sct, ctlr->sct);
+		}
+	}
+	else if(cistrcmp(cb->f[0], "st") == 0){
+		i = strtol(cb->f[1], &p, 0);
+		if(i < 0 || p == cb->f[1])
+			r = -1;
+		else{
+			ctlr->st = i;
+			csr32w(ctlr, St, ctlr->st);
+		}
+	}
+	else if(cistrcmp(cb->f[0], "smcbd") == 0){
+		i = strtol(cb->f[1], &p, 0);
+		if(i < 0 || p == cb->f[1])
+			r = -1;
+		else{
+			ctlr->smcbd = i;
+			csr32w(ctlr, SmcBD, ctlr->smcbd);
+		}
+	}
+	else if(cistrcmp(cb->f[0], "rmcbd") == 0){
+		i = strtol(cb->f[1], &p, 0);
+		if(i < 0 || p == cb->f[1])
+			r = -1;
+		else{
+			ctlr->rmcbd = i;
+			csr32w(ctlr, RmcBD, ctlr->rmcbd);
+		}
+	}
+	else
+		r = -1;
+
+	free(cb);
+	if(r == 0)
+		return n;
+	return r;
 }
 
 static void
@@ -494,12 +606,9 @@ ga620interrupt(Ureg*, void* arg)
 	edev = arg;
 	ctlr = edev->ctlr;
 
-	if(DoMhcCheck){
-		if(!(csr32r(ctlr, Mhc) & Is))
-			return;
-	}
-	if(DoCountTicks)
-		rdtsc(&tsc0);
+	if(!(csr32r(ctlr, Mhc) & Is))
+		return;
+	rdtsc(&tsc0);
 
 	ctlr->interrupts++;
 	csr32w(ctlr, Hi, 1);
@@ -518,10 +627,8 @@ ga620interrupt(Ureg*, void* arg)
 
 	csr32w(ctlr, Hi, 0);
 
-	if(DoCountTicks){
-		rdtsc(&tsc1);
-		ctlr->ticks += tsc1-tsc0;
-	}
+	rdtsc(&tsc1);
+	ctlr->ticks += tsc1-tsc0;
 }
 
 static void
@@ -627,11 +734,11 @@ ga620init(Ether* edev)
 	 */
 	ctlr->sr = malign(sizeof(Sbd)*Nsr);
 	sethost64(&ctlr->gib->srcb.addr, ctlr->sr);
-	if(DoHardwareCksum)
+	if(ctlr->hardwarecksum)
 		flags = TcpUdpCksum|NoPseudoHdrCksum|HostRing;
 	else 
 		flags = HostRing;
-	if(DoCoalUpdateOnly) 
+	if(ctlr->coalupdateonly) 
 		flags |= CoalUpdateOnly;
 	ctlr->gib->srcb.control = (Nsr<<16)|flags;
 	sethost64(&ctlr->gib->scp, ctlr->sci);
@@ -643,7 +750,7 @@ ga620init(Ether* edev)
 	 */
 	ctlr->rsr = malign(sizeof(Rbd)*Nrsr);
 	sethost64(&ctlr->gib->rsrcb.addr, ctlr->rsr);
-	if(DoHardwareCksum)
+	if(ctlr->hardwarecksum)
 		flags = TcpUdpCksum|NoPseudoHdrCksum;
 	else
 		flags = 0;
@@ -695,11 +802,16 @@ ga620init(Ether* edev)
 	 * These defaults are based on the tuning hints in the Alteon
 	 * Host/NIC Software Interface Definition and example software.
 	 */
-	csr32w(ctlr, Rct, 120);
-	csr32w(ctlr, Sct, 400);
-	csr32w(ctlr, St, 1000000);
-	csr32w(ctlr, SmcBD, 60);
-	csr32w(ctlr, RmcBD, 25);
+	ctlr->rct = 100;
+	csr32w(ctlr, Rct, ctlr->rct);
+	ctlr->sct = 0;
+	csr32w(ctlr, Sct, ctlr->sct);
+	ctlr->st = 1000000;
+	csr32w(ctlr, St, ctlr->st);
+	ctlr->smcbd = Nsr/4;
+	csr32w(ctlr, SmcBD, ctlr->smcbd);
+	ctlr->rmcbd = 6;
+	csr32w(ctlr, RmcBD, ctlr->rmcbd);
 
 	/*
 	 * Enable DMA Assist Logic.
@@ -1064,6 +1176,7 @@ ga620pnp(Ether* edev)
 	edev->transmit = ga620transmit;
 	edev->interrupt = ga620interrupt;
 	edev->ifstat = ga620ifstat;
+	edev->ctl = ga620ctl;
 	edev->shutdown = ga620shutdown;
 
 	edev->arg = edev;
