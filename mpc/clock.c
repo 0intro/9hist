@@ -68,7 +68,7 @@ enum {
 static	ulong	clkreload;
 
 void
-clockinit(void)
+delayloopinit(void)
 {
 	long x, est;
 
@@ -86,6 +86,12 @@ clockinit(void)
 	m->delayloop = (m->delayloop*est/Timebase)/(x);
 	if(m->delayloop == 0)
 		m->delayloop = 1;
+}
+
+void
+clockinit(void)
+{
+	delayloopinit();
 
 	clkreload = (m->clockgen/Timebase)/HZ-1;
 	putdec(clkreload);

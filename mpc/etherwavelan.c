@@ -252,6 +252,31 @@ mmc_in(int base, uchar o)
 	return((uchar) (inb(MMD(base))));	
 }
 
+/*
+ * a standard insb causes the wavelan card to not be able
+ * to simultanisouly receive a packet out of the ether.
+ * It appears that the card runs out of bandwidth to it's
+ * internal memory
+ */
+void
+slowinsb(int port, void *buf, int len)
+{
+	int i, j, n;
+	uchar *p, *q;
+
+	p = (uchar*)(port + ISAMEM);
+	q = buf;
+	n = m->delayloop/2000;
+	if(n == 0)
+		n = 1;
+	for(i = 0; i < len; i++){
+		*q++ = *p;
+		// a small delay of about .5micro seconds
+		for(j=0; j<n; j++)
+			;
+	}
+}
+
 static int 
 read_ringbuf(Ether *ether, int addr, uchar *buf, int len)
 {	Ctlr *ctlr;
@@ -261,7 +286,6 @@ read_ringbuf(Ether *ether, int addr, uchar *buf, int len)
 	uchar *buf_ptr = buf;
 	ctlr = ether->ctlr;
 	base = ctlr->port;
-print("read_ringbuf\n");
 
 	/* If buf is NULL, just increment the ring buffer pointer */
 	if (buf == 0)
@@ -270,16 +294,13 @@ print("read_ringbuf\n");
 		/* Position the Program I/O Register at the ring buffer pointer */
 		outb(PIORL(base), ring_ptr & 0xff);
 		outb(PIORH(base), ((ring_ptr >> 8) & PIORH_MASK));
-		delay(1);
 		/* First, determine how much we can read without wrapping around the
  		ring buffer */
 		if ((ring_ptr + len) < (RX_BASE + RX_SIZE))
 			chunk_len = len;
 		else
 			chunk_len = RX_BASE + RX_SIZE - ring_ptr;
-		if(chunk_len > 256)
-			chunk_len = 256;
-		insb(PIOP(base), buf_ptr, chunk_len);
+		slowinsb(PIOP(base), buf_ptr, chunk_len);
 		buf_ptr += chunk_len;
 		len -= chunk_len;
 		ring_ptr = (ring_ptr - RX_BASE + chunk_len) % RX_SIZE + RX_BASE;
@@ -295,8 +316,6 @@ wavelan_hardware_send_packet(Ether *ether, void *buf, short length)
 	register ushort xmtdata_base = TX_BASE;
 	ctlr = ether->ctlr;
 	base = ctlr->port;
-
-print("%ld: send packet %d\n", m->ticks, length);
 
 	outb(PIORL(base), xmtdata_base & 0xff);
 	outb(PIORH(base), ((xmtdata_base >> 8) & PIORH_MASK) | PIORH_SEL_TX);
@@ -408,8 +427,6 @@ static void wavelan_read(Ether *ether, int fd_p, int sksize)
 		ctlr->rx_dropped++;
 		return;
 	} else {
-//print("%d+%d = %d\n", fd_p, sksize, fd_p+sksize);
-//delay(100);
 		fd_p = read_ringbuf(ether, fd_p, ctlr->rbp->rp, sksize);
 		ctlr->rbp->wp = ctlr->rbp->rp + sksize;
 		/* read signal level, silence level and signal quality bytes */
@@ -476,8 +493,7 @@ if(0) print("before wavelan_cs: i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n", i
 		status = c[0] | (c[1] << 8);
 		len = c[2] | (c[3] << 8);
 
-print("%ld: len = %d status = %ux %ux %ux\n", m->ticks, len, status, newrfp, rp);
-//delay(100);
+if(0) print("%ld: len = %d status = %ux %ux %ux\n", m->ticks, len, status, newrfp, rp);
 
 		if(!(status & RX_RCV_OK)) {
 			if(status & RX_NO_SFD) ctlr->rx_no_sfd++;
@@ -496,19 +512,19 @@ print("%ld: len = %d status = %ux %ux %ux\n", m->ticks, len, status, newrfp, rp)
 	* per packet.
 	*/
 	ctlr->stop = (i593_rfp + RX_SIZE - ((RX_SIZE / 64) * 3)) % RX_SIZE;
-//print("ctlr->stop = %ux\n", ctlr->stop);
 	outb(LCCR(base), OP0_SWIT_TO_PORT_1 | CR0_CHNL);
 	outb(LCCR(base), CR1_STOP_REG_UPDATE | (ctlr->stop >> RX_SIZE_SHIFT));
 	outb(LCCR(base), OP1_SWIT_TO_PORT_0);
 
-//delay(100);
-
+if(0){ 
 	newrfp = inb(RPLL(base));
 	newrfp |= inb(RPLH(base)) << 8;
 	newrfp %= RX_SIZE;
 
-if(newrfp != ctlr->rfp)
-print("after wavelan_cs: left over = %d\n", (newrfp - ctlr->rfp + RX_SIZE) % RX_SIZE);
+	if(newrfp != ctlr->rfp)
+		print("after wavelan_cs: left over = %d\n", (newrfp - ctlr->rfp + RX_SIZE) % RX_SIZE);
+}
+
 	return 1;
 } /* wavelan_receive */
 
@@ -529,8 +545,6 @@ interrupt(Ureg*, void* arg)
 
 	outb(LCCR(base), CR0_STATUS_0 | OP0_NOP);
 	interrupt_handler(ether, inb(LCSR(base)));
-outb(LCCR(base), CR0_STATUS_0 | OP0_NOP);
-print("status = %ux\n", inb(LCSR(base)));
 	iunlock(&ctlr->wlock);
 
 }; /* wavelan interrupt */

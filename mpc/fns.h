@@ -19,6 +19,7 @@ void	delay(int);
 ulong	draminit(ulong*);
 void	dtlbmiss(void);
 void	dumpregs(Ureg*);
+void	delayloopinit(void);
 void	eieio(void);
 //#define	eieio()
 void	evenaddr(ulong);

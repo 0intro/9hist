@@ -981,8 +981,7 @@ if(0)print("devbridge: etherread: reading\n");
 if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 		poperror();
 		qlock(b);
-
-		if(port->closed)
+		if(bp == nil || port->closed)
 			break;
 		if(waserror()) {
 print("etherread bridge error\n");

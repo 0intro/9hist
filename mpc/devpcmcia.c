@@ -601,6 +601,7 @@ pcmio(int slotno, ISAConf *isa)
 	// setup io space - this could be better
 	io->pcmr[1].base = ISAMEM+isa->port;
 	x = (0x6<<27) | (2<<16) | (4<<12) | (8<<7) | Rio | Rvalid;
+//	x = (0x6<<27) | (8<<16) | (6<<12) | (24<<7) | Rio | Rvalid;
 	/* 16-bit data path */
 	if(ct->bit16)
 		x |= Rport16;

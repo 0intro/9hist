@@ -43,6 +43,10 @@ main(void)
 // turn on pcmcia
 *(uchar*)(NVRAMMEM+0x100001) |= 0x60;
 
+print("m->delayloop = %ld\n", m->delayloop);
+	delayloopinit();
+print("m->delayloop = %ld\n", m->delayloop);
+
 	pageinit();
 	procinit0();
 	initseg();
@@ -94,8 +98,6 @@ init0(void)
 	int i;
 
 	up->nerrlab = 0;
-
-print("spllo = %ux\n", spllo());
 
 	/*
 	 * These are o.k. because rootinit is null.
