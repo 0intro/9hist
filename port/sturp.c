@@ -11,7 +11,7 @@ enum {
 	Nmask=		0x7,
 };
 
-#define DPRINT if(q->flag&QDEBUG)print
+#define DPRINT if(q->flag&QDEBUG)kprint
 
 typedef struct Urp	Urp;
 
@@ -376,7 +376,7 @@ void
 urpiput(Queue *q, Block *bp)
 {
 	Urp *up;
-	int i;
+	int i, len;
 	int ctl;
 
 	up = (Urp *)q->ptr;
@@ -496,24 +496,25 @@ urpiput(Queue *q, Block *bp)
 	 */
 	case SEQ+0: case SEQ+1: case SEQ+2: case SEQ+3:
 	case SEQ+4: case SEQ+5: case SEQ+6: case SEQ+7:
-		DPRINT("rSEQ%d...", ctl-SEQ);
+		len = up->trbuf[1] + (up->trbuf[2]<<8);
+		DPRINT("rSEQ%d(%d,%d,%d)...", ctl-SEQ, up->trx, len, q->len);
 		i = ctl & Nmask;
 		if(up->trx != 3){
 			urpstat.rjtrs++;
 			sendrej(up);
 			break;
-		} else if(q->len != up->trbuf[1] + (up->trbuf[2]<<8)){
-			DPRINT("rej %d rcvd %d xpctd\n", q->len,
-				up->trbuf[1] + (up->trbuf[2]<<8));
+		}else if(q->len != len){
 			urpstat.rjpks++;
 			sendrej(up);
 			break;
-		} else if(i != ((up->iseq+1)&Nmask)) {
+		}else if(i != ((up->iseq+1)&Nmask)){
 			urpstat.rjseq++;
 			sendrej(up);
 			break;
-		} else if(q->next->len > (3*Streamhi)/2
-			|| q->next->nb > (3*Streambhi)/2) {
+		}else if(q->next->len > (3*Streamhi)/2
+			|| q->next->nb > (3*Streambhi)/2){
+			DPRINT("next->len=%d, next->nb=%d\n",
+				q->next->len, q->next->nb);
 			flushinput(up);
 			break;
 		}

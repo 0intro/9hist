@@ -95,7 +95,7 @@ struct Conf
 	int	nsrv;		/* public servers (devsrv.c) */
 	int	nbitmap;	/* bitmap structs (devbit.c) */
 	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
-	int	nfont;		/* font structs (devbit.c) */
+	int	nsubfont;	/* Gsubfont structs (devbit.c) */
 	int	nurp;		/* max urp conversations */
 	int	nasync;		/* number of async protocol modules */
 	int	npipe;		/* number of pipes */

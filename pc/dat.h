@@ -76,7 +76,7 @@ struct Conf
 	ulong	nsrv;		/* public servers (devsrv.c) */
 	ulong	nbitmap;	/* bitmap structs (devbit.c) */
 	ulong	nbitbyte;	/* bytes of bitmap data (devbit.c) */
-	ulong	nfont;		/* font structs (devbit.c) */
+	ulong	nsubfont;	/* Gsubfont structs (devbit.c) */
 	ulong	nnoifc;		/* number of nonet interfaces */
 	ulong	nnoconv;	/* number of nonet conversations/ifc */
 	ulong	nurp;		/* max urp conversations */

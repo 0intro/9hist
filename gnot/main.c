@@ -271,7 +271,7 @@ confinit(void)
 	conf.nmux = 10;
 	if(*(uchar*)MOUSE & (1<<4))
 		conf.nbitbyte *= 2;	/* ldepth 1 */
-	conf.nfont = 10*mul;
+	conf.nsubfont = 10*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.npipe = conf.nstream/2;

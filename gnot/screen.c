@@ -13,8 +13,8 @@
 
 #define	MINX	8
 
-extern	GFont	defont0;
-GFont		*defont;
+extern	GSubfont	defont0;
+GSubfont		*defont;
 
 struct{
 	Point	pos;
@@ -87,12 +87,12 @@ screenputs(char *s, int n)
 		}else if(r == '\b'){
 			if(out.pos.x >= out.bwid+MINX){
 				out.pos.x -= out.bwid;
-				gstring(&gscreen, out.pos, defont, " ", S);
+				gsubfstring(&gscreen, out.pos, defont, " ", S);
 			}
 		}else{
 			if(out.pos.x >= gscreen.r.max.x-out.bwid)
 				screenputnl();
-			out.pos = gstring(&gscreen, out.pos, defont, buf, S);
+			out.pos = gsubfstring(&gscreen, out.pos, defont, buf, S);
 		}
 	}
 	unlock(&screenlock);

@@ -11,7 +11,7 @@
 #include	<gnot.h>
 #include	"screen.h"
 
-extern GFont	*defont;
+extern GSubfont	*defont;
 
 /*
  * Some monochrome screens are reversed from what we like:
@@ -53,7 +53,7 @@ struct
 	ulong	*words;		/* storage */
 	ulong	nwords;		/* total in arena */
 	ulong	*wfree;		/* pointer to next free word */
-	GFont	*font;		/* arena; looked up linearly BUG */
+	GSubfont *font;		/* arena; looked up linearly BUG */
 	int	lastid;		/* last allocated bitmap id */
 	int	lastfid;	/* last allocated font id */
 	int	init;		/* freshly opened; init message pending */
@@ -161,9 +161,9 @@ bitreset(void)
 	bit.words = ialloc(conf.nbitbyte, 0);
 	bit.nwords = conf.nbitbyte/sizeof(ulong);
 	bit.wfree = bit.words;
-	bit.font = ialloc(conf.nfont * sizeof(GFont), 0);
+	bit.font = ialloc(conf.nsubfont * sizeof(GSubfont), 0);
 	bit.font[0] = *defont;
-	for(i=1; i<conf.nfont; i++)
+	for(i=1; i<conf.nsubfont; i++)
 		bit.font[i].info = ialloc((NINFO+1)*sizeof(Fontchar), 0);
 	Cursortocursor(&arrow);
 }
@@ -263,7 +263,7 @@ bitclose(Chan *c)
 {
 	int i;
 	GBitmap *bp;
-	GFont *fp;
+	GSubfont *fp;
 
 	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
 		lock(&bit);
@@ -271,7 +271,7 @@ bitclose(Chan *c)
 			for(i=1,bp=&bit.map[1]; i<conf.nbitmap; i++,bp++)
 				if(bp->ldepth >= 0)
 					bitfree(bp);
-			for(i=1,fp=&bit.font[1]; i<conf.nfont; i++,fp++)
+			for(i=1,fp=&bit.font[1]; i<conf.nsubfont; i++,fp++)
 				fp->bits = 0;
 		}
 		unlock(&bit);
@@ -531,7 +531,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	Fcode fc;
 	Fontchar *fcp;
 	GBitmap *bp, *src, *dst;
-	GFont *f;
+	GSubfont *f;
 
 	if(c->qid.path == CHDIR)
 		error(Eisdir);
@@ -718,7 +718,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				error(Ebadblt);
 			v = GSHORT(p+1);
 			f = &bit.font[v];
-			if(v<0 || v>=conf.nfont || f->bits==0)
+			if(v<0 || v>=conf.nsubfont || f->bits==0)
 				error(Ebadfont);
 			f->bits = 0;
 			m -= 3;
@@ -752,7 +752,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			v = GSHORT(p+1);
 			if(v<0 || v>NINFO || m<7+6*(v+1))	/* BUG */
 				error(Ebadblt);
-			for(i=1; i<conf.nfont; i++)
+			for(i=1; i<conf.nsubfont; i++)
 				if(bit.font[i].bits == 0)
 					goto fontfound;
 			error(Enofont);
@@ -925,7 +925,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			pt.y = GLONG(p+7);
 			v = GSHORT(p+11);
 			f = &bit.font[v];
-			if(v<0 || v>=conf.nfont || f->bits==0 || f->bits->ldepth<0)
+			if(v<0 || v>=conf.nsubfont || f->bits==0 || f->bits->ldepth<0)
 				error(Ebadblt);
 			p += 15;
 			m -= 15;
@@ -936,7 +936,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				cursoroff(1);
 				isoff = 1;
 			}
-			gstring(dst, pt, f, (char*)p, fc);
+			gsubfstring(dst, pt, f, (char*)p, fc);
 			q++;
 			m -= q-p;
 			p = q;

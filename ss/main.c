@@ -229,7 +229,7 @@ confinit(void)
 	conf.nsrv = 16*mul;			/* was 32 */
 	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;
-	conf.nfont = 10*mul;
+	conf.nsubfont = 10*mul;
 	conf.nnoifc = 1;
 	conf.nnoconv = 32;
 	conf.nurp = 32;
