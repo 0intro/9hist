@@ -484,6 +484,9 @@ qdiscard(Queue *q, int len)
 	return sofar;
 }
 
+/*
+ *  Return length that next qconsume will return
+ */
 long
 qblen(Queue *q)
 {
