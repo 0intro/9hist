@@ -640,6 +640,8 @@ generrstr(char *buf, uint nbuf)
 {
 	char tmp[ERRMAX];
 
+	if(nbuf == 0)
+		error(Ebadarg);
 	validaddr((ulong)buf, nbuf, 1);
 	if(nbuf > sizeof tmp)
 		nbuf = sizeof tmp;

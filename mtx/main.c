@@ -55,9 +55,8 @@ machinit(void)
 	 */
 	m->loopconst = 100000;
 
-	/* turn on caches (instruction only for now) */
-//	puthid0(gethid0() | BIT(16));
-puthid0(gethid0() | BIT(16) | BIT(17));	/* and data */
+	/* turn on caches */
+	puthid0(gethid0() | BIT(16) | BIT(17));
 
 	active.machs = 1;
 	active.exiting = 0;
@@ -262,7 +261,6 @@ procsave(Proc *p)
 	if(p->fpstate == FPactive){
 		if(p->state != Moribund)
 			fpsave(&up->fpsave);
-//		fpoff(p);
 		p->fpstate = FPinactive;
 	}
 }

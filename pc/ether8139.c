@@ -169,7 +169,7 @@ enum {					/* Tsd0 */
 };
 
 enum {
-	Rblen		= Rblen64K,	/* Receive BUffer Length */
+	Rblen		= Rblen64K,	/* Receive Buffer Length */
 	Ntd		= 4,		/* Number of Transmit Descriptors */
 	Tdbsz		= ROUNDUP(sizeof(Etherpkt), 4),
 };

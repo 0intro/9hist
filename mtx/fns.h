@@ -18,7 +18,6 @@ void	evenaddr(ulong);
 void	faultpower(Ureg*, ulong addr, int read);
 void	firmware(void);
 void	fpinit(void);
-void	fpoff(Proc*);
 void	fprestore(FPsave*);
 void	fpsave(FPsave*);
 void	fptrap(Ureg*);

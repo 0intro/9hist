@@ -313,12 +313,10 @@ faultpower(Ureg *ureg, ulong addr, int read)
 	user = (ureg->srr1 & MSR_PR) != 0;
 	insyscall = up->insyscall;
 	up->insyscall = 1;
-	spllo();
 	n = fault(addr, read);
 	if(n < 0){
 		if(!user){
 			dumpregs(ureg);
-//			_dumpstack(ureg);
 			panic("fault: 0x%lux", addr);
 		}
 		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
@@ -427,16 +425,6 @@ fpexcname(Ureg *ur, ulong fpscr, char *buf)
 	return buf;
 }
 
-void
-fpoff(Proc *p)
-{
-	Ureg *ur;
-
-	ur = p->dbgreg;
-	if(ur != nil)
-		ur->srr1 &= ~MSR_FP;
-}
-
 /*
  * Fill in enough of Ureg to get a stack trace, and call a function.
  * Used by debugging interface rdb.
@@ -462,19 +450,30 @@ callwithureg(void (*fn)(Ureg*))
 static void
 _dumpstack(Ureg *ureg)
 {
-	ulong l, v;
+	ulong l, sl, el, v;
 	int i;
 
-	if(up == 0)
+	l = (ulong)&l;
+	if(up == 0){
+		el = (ulong)m+BY2PG;
+		sl = el-KSTACK;
+	}
+	else{
+		sl = (ulong)up->kstack;
+		el = sl + KSTACK;
+	}
+	if(l > el || l < sl){
+		el = (ulong)m+BY2PG;
+		sl = el-KSTACK;
+	}
+	if(l > el || l < sl)
 		return;
-
 	print("ktrace /kernel/path %.8lux %.8lux %.8lux\n", ureg->pc, ureg->sp, ureg->lr);
 	i = 0;
-	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
+	for(; l < el; l += 4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)etext){
 			print("%.8lux=%.8lux ", l, v);
-//delay(1);
 			if(i++ == 4){
 				print("\n");
 				i = 0;
@@ -494,9 +493,9 @@ dumpregs(Ureg *ur)
 {
 	int i;
 	ulong *l;
+
 	if(up) {
 		print("registers for %s %ld\n", up->text, up->pid);
-print("ur %lux\n", ur);
 		if(ur->srr1 & MSR_PR == 0)
 		if(ur->usp < (ulong)up->kstack || ur->usp > (ulong)up->kstack+KSTACK)
 			print("invalid stack ptr\n");
@@ -741,7 +740,6 @@ notify(Ureg* ur)
 		qunlock(&up->debug);
 		pexit(n->msg, n->flag!=NDebug);
 	}
-print("notify: old usp %lux\n", ur->usp);
 	sp = ur->usp & ~(BY2V-1);
 	sp -= sizeof(Ureg);
 
@@ -768,7 +766,6 @@ print("notify: old usp %lux\n", ur->usp);
 	up->nnote--;
 	memmove(&up->lastnote, &up->note[0], sizeof(Note));
 	memmove(&up->note[0], &up->note[1], up->nnote*sizeof(Note));
-print("notify: usp %lux\n", ur->usp);
 
 	qunlock(&up->debug);
 	splx(s);

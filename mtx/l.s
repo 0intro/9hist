@@ -416,7 +416,7 @@ TEXT	trapvec(SB), $-4
 ktrap:
 	MOVW	R1, CR
 	MOVW	SPR(SAVER1), R1
-	RLWNM	$0, R1, $~KZERO, R1		/* PADDR(m->proc->kstack) */
+	RLWNM	$0, R1, $~KZERO, R1		/* PADDR(R1) */
 	SUB	$UREGSPACE, R1
 	BL	saveureg(SB)
 	BL	trap(SB)

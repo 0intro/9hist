@@ -20,6 +20,8 @@ static struct {
 	ulong	size;			/* number of bytes in page table */
 	ulong	mask;		/* hash mask */
 	int		slotgen;		/* next pte (byte offset) when pteg is full */
+
+	int		pidlock;
 	int		pidgen;		/* next mmu pid to use */
 } ptab;
 
@@ -75,6 +77,12 @@ mmuswitch(Proc *p)
 {
 	int i, mp;
 
+	if(p->kp) {
+		for(i = 0; i < 8; i++)
+			putsr(i<<28, 0);
+		return;
+	}
+
 	if(p->newtlb) {
 		p->mmupid = 0;
 		p->newtlb = 0;
@@ -113,13 +121,13 @@ putmmu(ulong va, ulong pa, Page *pg)
 	p = (ulong*)pteg;
 	ep = (ulong*)(pteg+BY2PTEG);
 	q = nil;
-	lock(&ptab);
+	ilock(&ptab);
 	tlbflush(va);
 	while(p < ep) {
 		x = p[0];
 		if(x == ptehi) {
 			q = p;
-if(q[1] == pa) panic("putmmu already set pte");
+if(q[1] == pa) print("putmmu already set pte\n");
 			break;
 		}
 		if(q == nil && (x & BIT(0)) == 0)
@@ -133,7 +141,7 @@ if(q[1] == pa) panic("putmmu already set pte");
 	q[0] = ptehi;
 	q[1] = pa;
 	sync();
-	unlock(&ptab);
+	iunlock(&ptab);
 
 	ctl = &pg->cachectl[m->machno];
 	switch(*ctl) {
@@ -156,11 +164,14 @@ newmmupid(void)
 {
 	int pid;
 
-	lock(&ptab);
+	/* can't use lock() here as we're called from within sched() */
+	while(!tas(&ptab.pidlock))
+		;
 	pid = ptab.pidgen++;
-	unlock(&ptab);
 	if(pid > PIDMAX)
-		panic("newmmupid");
+		pid = PIDBASE;
+	ptab.pidlock = 0;
+	coherence();
 	up->mmupid = pid;
 	return pid;
 }
