@@ -84,7 +84,7 @@ enum {
 	RxReceiving	= 0x8000,	/* RX Receiving */
 };
 
-#define COMMAND(board, cmd, a)	outs(board->io+Command, ((cmd)<<11)|(a))
+#define COMMAND(ctlr, cmd, a)	outs(ctlr->card.io+Command, ((cmd)<<11)|(a))
 
 /*
  * Write two 0 bytes to identify the IDport and then reset the
@@ -116,13 +116,12 @@ idseq(void)
 static int
 reset(Ctlr *ctlr)
 {
-	Board *board = ctlr->board;
 	int i, ea;
 	ushort x, acr;
 
 	/*
 	 * Do the little configuration dance. We only look
-	 * at the first board that responds, if we ever have more
+	 * at the first card that responds, if we ever have more
 	 * than one we'll need to modify this sequence.
 	 *
 	 * 2. get to command state, reset, then return to command state
@@ -172,8 +171,8 @@ reset(Ctlr *ctlr)
 	 *
 	 *    Enable the adapter. 
 	 */
-	board->io = (acr & 0x1F)*0x10 + 0x200;
-	outb(board->io+ConfigControl, 0x01);
+	ctlr->card.io = (acr & 0x1F)*0x10 + 0x200;
+	outb(ctlr->card.io+ConfigControl, 0x01);
 
 	/*
 	 * Read the IRQ from the Resource Configuration Register
@@ -181,14 +180,14 @@ reset(Ctlr *ctlr)
 	 * The EEPROM command is 8bits, the lower 6 bits being
 	 * the address offset.
 	 */
-	board->irq = (ins(board->io+ResourceConfig)>>12) & 0x0F;
+	ctlr->card.irq = (ins(ctlr->card.io+ResourceConfig)>>12) & 0x0F;
 	for(ea = 0, i = 0; i < 3; i++, ea += 2){
-		while(ins(board->io+EEPROMcmd) & 0x8000)
+		while(ins(ctlr->card.io+EEPROMcmd) & 0x8000)
 			;
-		outs(board->io+EEPROMcmd, (2<<6)|i);
-		while(ins(board->io+EEPROMcmd) & 0x8000)
+		outs(ctlr->card.io+EEPROMcmd, (2<<6)|i);
+		while(ins(ctlr->card.io+EEPROMcmd) & 0x8000)
 			;
-		x = ins(board->io+EEPROMdata);
+		x = ins(ctlr->card.io+EEPROMdata);
 		ctlr->ea[ea] = (x>>8) & 0xFF;
 		ctlr->ea[ea+1] = x & 0xFF;
 	}
@@ -199,29 +198,24 @@ reset(Ctlr *ctlr)
 	 * Commands have the format 'CCCCCAAAAAAAAAAA' where C
 	 * is a bit in the command and A is a bit in the argument.
 	 */
-	COMMAND(board, SelectWindow, 2);
+	COMMAND(ctlr, SelectWindow, 2);
 	for(i = 0; i < 6; i++)
-		outb(board->io+i, ctlr->ea[i]);
+		outb(ctlr->card.io+i, ctlr->ea[i]);
 
 	/*
 	 * Finished with window 2.
 	 * Set window 1 for normal operation.
 	 */
-	COMMAND(board, SelectWindow, 1);
+	COMMAND(ctlr, SelectWindow, 1);
 
 	/*
 	 * If we have a 10BASE2 transceiver, start the DC-DC
 	 * converter. Wait > 800 microseconds.
 	 */
 	if(((acr>>14) & 0x03) == 0x03){
-		COMMAND(board, StartCoax, 0);
+		COMMAND(ctlr, StartCoax, 0);
 		delay(1);
 	}
-
-	print("3C509 I/O addr %lux irq %d:", board->io, board->irq);
-	for(i = 0; i < sizeof(ctlr->ea); i++)
-		print(" %2.2ux", ctlr->ea[i]);
-	print("\n");
 
 	return 0;
 }
@@ -229,8 +223,6 @@ reset(Ctlr *ctlr)
 static void
 attach(Ctlr *ctlr)
 {
-	Board *board = ctlr->board;
-
 	/*
 	 * Set the receiver packet filter for our own and
 	 * and broadcast addresses, set the interrupt masks
@@ -239,44 +231,30 @@ attach(Ctlr *ctlr)
 	 * is the receiver interrupt. If the transmit FIFO fills up,
 	 * we will also see TxAvailable interrupts.
 	 */
-	COMMAND(board, SetRxFilter, Broadcast|MyEtherAddr);
-	COMMAND(board, SetReadZeroMask, AllIntr|Latch);
-	COMMAND(board, SetIntrMask, AllIntr|Latch);
-	COMMAND(board, RxEnable, 0);
-	COMMAND(board, TxEnable, 0);
+	COMMAND(ctlr, SetRxFilter, Broadcast|MyEtherAddr);
+	COMMAND(ctlr, SetReadZeroMask, AllIntr|Latch);
+	COMMAND(ctlr, SetIntrMask, AllIntr|Latch);
+	COMMAND(ctlr, RxEnable, 0);
+	COMMAND(ctlr, TxEnable, 0);
 }
 
 static void
 mode(Ctlr *ctlr, int on)
 {
-	Board *board = ctlr->board;
-
 	if(on)
-		COMMAND(board, SetRxFilter, Promiscuous|Broadcast|MyEtherAddr);
+		COMMAND(ctlr, SetRxFilter, Promiscuous|Broadcast|MyEtherAddr);
 	else
-		COMMAND(board, SetRxFilter, Broadcast|MyEtherAddr);
-}
-
-static int
-getdiag(Board *board)
-{
-	int bytes;
-
-	COMMAND(board, SelectWindow, 4);
-	bytes = ins(board->io+FIFOdiag);
-	COMMAND(board, SelectWindow, 1);
-	return bytes & 0xFFFF;
+		COMMAND(ctlr, SetRxFilter, Broadcast|MyEtherAddr);
 }
 
 static void
 receive(Ctlr *ctlr)
 {
-	Board *board = ctlr->board;
 	ushort status;
 	RingBuf *rb;
 	int len;
 
-	while(((status = ins(board->io+RxStatus)) & RxEmpty) == 0){
+	while(((status = ins(ctlr->card.io+RxStatus)) & RxEmpty) == 0){
 		/*
 		 * If we had an error, log it and continue
 		 * without updating the ring.
@@ -317,9 +295,9 @@ receive(Ctlr *ctlr)
 				 * doubleword. We can pick them out 16-bits
 				 * at a time (can try 32-bits at a time
 				 * later).
-				insl(board->io+Fifo, rb->pkt, HOWMANY(len, 4));
+				insl(ctlr->card.io+Fifo, rb->pkt, HOWMANY(len, 4));
 				 */
-				inss(board->io+Fifo, rb->pkt, HOWMANY(len, 2));
+				inss(ctlr->card.io+Fifo, rb->pkt, HOWMANY(len, 2));
 
 				/*
 				 * Update the ring.
@@ -333,8 +311,8 @@ receive(Ctlr *ctlr)
 		 * Discard the packet as we're done with it.
 		 * Wait for discard to complete.
 		 */
-		COMMAND(board, RxDiscard, 0);
-		while(ins(board->io+Status) & CmdInProgress)
+		COMMAND(ctlr, RxDiscard, 0);
+		while(ins(ctlr->card.io+Status) & CmdInProgress)
 			;
 	}
 }
@@ -342,12 +320,9 @@ receive(Ctlr *ctlr)
 static void
 transmit(Ctlr *ctlr)
 {
-	Board *board = ctlr->board;
 	RingBuf *tb;
-	int s;
 	ushort len;
 
-	s = splhi();
 	for(tb = &ctlr->tb[ctlr->ti]; tb->owner == Interface; tb = &ctlr->tb[ctlr->ti]){
 		/*
 		 * If there's no room in the FIFO for this packet,
@@ -356,8 +331,8 @@ transmit(Ctlr *ctlr)
 		 * we need 4 bytes for the preamble.
 		 */
 		len = ROUNDUP(tb->len, 4);
-		if(len > ins(board->io+TxFreeBytes)+4){
-			COMMAND(board, SetTxAvailable, len);
+		if(len > ins(ctlr->card.io+TxFreeBytes)+4){
+			COMMAND(ctlr, SetTxAvailable, len);
 			break;
 		}
 
@@ -365,23 +340,32 @@ transmit(Ctlr *ctlr)
 		 * There's room, copy the packet to the FIFO and free
 		 * the buffer back to the host.
 		 */
-		outs(board->io+Fifo, tb->len);
-		outs(board->io+Fifo, 0);
-		outss(board->io+Fifo, tb->pkt, len/2);
+		outs(ctlr->card.io+Fifo, tb->len);
+		outs(ctlr->card.io+Fifo, 0);
+		outss(ctlr->card.io+Fifo, tb->pkt, len/2);
 		tb->owner = Host;
 		ctlr->ti = NEXT(ctlr->ti, ctlr->ntb);
 	}
-	splx(s);
+}
+
+static ushort
+getdiag(Ctlr *ctlr)
+{
+	ushort bytes;
+
+	COMMAND(ctlr, SelectWindow, 4);
+	bytes = ins(ctlr->card.io+FIFOdiag);
+	COMMAND(ctlr, SelectWindow, 1);
+	return bytes & 0xFFFF;
 }
 
 static void
 interrupt(Ctlr *ctlr)
 {
-	Board *board = ctlr->board;
 	ushort status, diag;
 	uchar txstatus, x;
 
-	status = ins(board->io+Status);
+	status = ins(ctlr->card.io+Status);
 
 	if(status & Failure){
 		/*
@@ -391,16 +375,16 @@ interrupt(Ctlr *ctlr)
 		 * need to retransmit?
 		 * This probably isn't right.
 		 */
-		diag = getdiag(board);
+		diag = getdiag(ctlr);
 		print("ether509: status #%ux, diag #%ux\n", status, diag);
 
 		if(diag & TxOverrun){
-			COMMAND(board, TxReset, 0);
-			COMMAND(board, TxEnable, 0);
+			COMMAND(ctlr, TxReset, 0);
+			COMMAND(ctlr, TxEnable, 0);
 		}
 
 		if(diag & RxUnderrun){
-			COMMAND(board, RxReset, 0);
+			COMMAND(ctlr, RxReset, 0);
 			attach(ctlr);
 		}
 
@@ -425,14 +409,14 @@ interrupt(Ctlr *ctlr)
 		 */
 		txstatus = 0;
 		do{
-			if(x = inb(board->io+TxStatus))
-				outb(board->io+TxStatus, 0);
+			if(x = inb(ctlr->card.io+TxStatus))
+				outb(ctlr->card.io+TxStatus, 0);
 			txstatus |= x;
-		}while(ins(board->io+Status) & TxComplete);
+		}while(ins(ctlr->card.io+Status) & TxComplete);
 
 		if(txstatus & (TxJabber|TxUnderrun))
-			COMMAND(board, TxReset, 0);
-		COMMAND(board, TxEnable, 0);
+			COMMAND(ctlr, TxReset, 0);
+		COMMAND(ctlr, TxEnable, 0);
 		ctlr->oerrs++;
 	}
 
@@ -441,7 +425,7 @@ interrupt(Ctlr *ctlr)
 		 * Reset the Tx FIFO threshold.
 		 */
 		if(status & TxAvailable)
-			COMMAND(board, AckIntr, TxAvailable);
+			COMMAND(ctlr, AckIntr, TxAvailable);
 		transmit(ctlr);
 		wakeup(&ctlr->tr);
 		status &= ~(TxAvailable|TxComplete);
@@ -453,18 +437,25 @@ interrupt(Ctlr *ctlr)
 	 * Otherwise, acknowledge the interrupt.
 	 */
 	if(status & AllIntr)
-		panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(board));
+		panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(ctlr));
 
-	COMMAND(board, AckIntr, Latch);
+	COMMAND(ctlr, AckIntr, Latch);
 }
 
-Board ether509 = {
-	reset,
-	0,			/* init */
-	attach,
-	mode,
-	0,			/* receive */
-	transmit,
-	interrupt,
-	0,			/* watch */
+Card ether509 = {
+	"3Com509",			/* ident */
+
+	reset,				/* reset */
+	0,				/* init */
+	attach,				/* attach */
+	mode,				/* mode */
+
+	0,				/* read */
+	0,				/* write */
+
+	0,				/* receive */
+	transmit,			/* transmit */
+	interrupt,			/* interrupt */
+	0,				/* watch */
+	0,				/* overflow */
 };

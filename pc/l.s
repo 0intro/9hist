@@ -766,3 +766,31 @@ l20:
 	MOVB	BX,-1(DI)(CX*1)
 	LOOP	l20
 	RET
+
+/*
+ * The DP8390 ethernet chip needs some time between
+ * successive chip selects, so we force a jump into
+ * the instruction stream to break the pipeline.
+ */
+TEXT dp8390inb(SB), $0
+	MOVL	p+0(FP),DX
+	XORL	AX,AX				/* CF = 0 */
+	INB
+
+	JCC	_dp8390inb0			/* always true */
+	MOVL	AX,AX
+
+_dp8390inb0:
+	RET
+
+TEXT dp8390outb(SB), $0
+	MOVL	p+0(FP),DX
+	MOVL	b+4(FP),AX
+	OUTB
+
+	CLC					/* CF = 0 */
+	JCC	_dp8390outb0			/* always true */
+	MOVL	AX,AX
+
+_dp8390outb0:
+	RET

@@ -286,8 +286,10 @@ intr(Ureg *ur)
 			cause &= ~INTR5;
 	}
 	if(limit == 0) {
+		LEDON(LED5);
 		print("intr: unable to identify and clear level5\n");
 		cause &= ~INTR5;
+		LEDOFF(LED5);
 	}
 
 	if(cause & (INTR2|INTR4)) {

@@ -15,9 +15,9 @@
  * laptop. The manual says NE2000 compatible.
  * The interface appears to be pretty well described in the National
  * Semiconductor Local Area Network Databook (1992) as one of the
- * AT evaluation boards.
+ * AT evaluation cards.
  *
- * The NE2000 is really just a DP8390 plus a data port
+ * The NE2000 is really just a DP83901 plus a data port
  * and a reset port.
  */
 enum {
@@ -28,7 +28,6 @@ enum {
 static int
 reset(Ctlr *ctlr)
 {
-	Board *board = ctlr->board;
 	ushort buf[16];
 	int i;
 
@@ -36,12 +35,12 @@ reset(Ctlr *ctlr)
 	 * We look for boards.
 	 * We look for boards to make us barf.
 	 */
-	for(board->io = 0x300; board->io < 0x380; board->io += 0x20){
+	for(ctlr->card.io = 0x300; ctlr->card.io < 0x380; ctlr->card.io += 0x20){
 		/*
 		 * Reset the board. This is done by doing a read
 		 * followed by a write to the Reset address.
 		 */
-		outb(board->io+Reset, inb(board->io+Reset));
+		outb(ctlr->card.io+Reset, inb(ctlr->card.io+Reset));
 
 		/*
 		 * Init the (possible) chip, then use the (possible)
@@ -52,17 +51,16 @@ reset(Ctlr *ctlr)
 		 * enough, there are other ethernet boards which could
 		 * match.
 		 */
-		board->dp8390 = board->io;
-		board->data = board->io+Data;
+		ctlr->card.dp8390 = ctlr->card.io;
+		ctlr->card.data = ctlr->card.io+Data;
 		dp8390reset(ctlr);
 		memset(buf, 0, sizeof(buf));
 		dp8390read(ctlr, buf, 0, sizeof(buf));
-		if(buf[0x0E] == 0x57 && buf[0x0F] == 0x57)
+		if((buf[0x0E] & 0xFF) == 0x57 && (buf[0x0F] & 0xFF) == 0x57)
 			break;
 	}
-	if(board->io >= 0x380)
+	if(ctlr->card.io >= 0x380)
 		return -1;
-
 	/*
 	 * Stupid machine. We asked for shorts, we got shorts,
 	 * although the PROM is a byte array.
@@ -72,37 +70,38 @@ reset(Ctlr *ctlr)
 		ctlr->ea[i] = buf[i];
 	dp8390setea(ctlr);
 
-	print("NE2000 I/O addr %lux width %d addr %lux size %d irq %d:",
-		board->io, board->bit16 ? 16: 8, board->ramstart,
-		board->ramstop-board->ramstart, board->irq);
-	for(i = 0; i < sizeof(ctlr->ea); i++)
-		print(" %2.2ux", ctlr->ea[i]);
-	print("\n");
-
 	return 0;
 }
 
-Board ether2000 = {
-	reset,
-	0,			/* init */
-	dp8390attach,
-	dp8390mode,
-	dp8390receive,
-	dp8390transmit,
-	dp8390intr,
-	0,			/* watch */
+Card ether2000 = {
+	"NE2000",			/* ident */
 
-	0x300,			/* addr */
-	2,			/* irq */
-	1,			/* bit16 */
+	reset,				/* reset */
+	0,				/* init */
+	dp8390attach,			/* attach */
+	dp8390mode,			/* mode */
 
-	0,			/* ram */
-	0x4000,			/* ramstart */
-	0x4000+16*1024,		/* ramstop */
+	dp8390read,			/* read */
+	dp8390write,			/* write */
 
-	0x300,			/* dp8390 */
-	0x300+Data,		/* data */
-	0x4000/Dp8390BufSz,	/* tstart */
-	0x4600/Dp8390BufSz,	/* pstart */
-	0x8000/Dp8390BufSz,	/* pstop */
+	dp8390receive,			/* receive */
+	dp8390transmit,			/* transmit */
+	dp8390intr,			/* interrupt */
+	dp8390watch,			/* watch */
+	dp8390overflow,			/* overflow */
+
+	0x300,				/* addr */
+	2,				/* irq */
+	1,				/* bit16 */
+
+	0,				/* ram */
+	0x4000,				/* ramstart */
+	0x4000+16*1024,			/* ramstop */
+
+	0x300,				/* dp8390 */
+	0x300+Data,			/* data */
+	0,				/* software bndry */
+	0x4000/Dp8390BufSz,		/* tstart */
+	0x4600/Dp8390BufSz,		/* pstart */
+	0x8000/Dp8390BufSz,		/* pstop */
 };

@@ -19,7 +19,7 @@ enum {					/* 83C584 Bus Interface Controller */
 	Ijr		= 0x06,		/* Initialisation Jumpers */
 	Gp2		= 0x07,		/* General Purpose Data Register */
 	Lar		= 0x08,		/* LAN Address Registers */
-	Id		= 0x0E,		/* Board ID byte */
+	Id		= 0x0E,		/* Card ID byte */
 	Cksum		= 0x0F,		/* Checksum */
 };
 
@@ -47,7 +47,6 @@ static int intrmap[] = {
 static int
 reset(Ctlr *ctlr)
 {
-	Board *board = ctlr->board;
 	int i;
 	uchar msr, icr, laar, irr, sum;
 
@@ -56,18 +55,18 @@ reset(Ctlr *ctlr)
 	 * and validate the checksum - the sum of all 8 bytes
 	 * should be 0xFF.
 	 */
-	for(board->io = 0x200; board->io < 0x400; board->io += 0x20){
+	for(ctlr->card.io = 0x200; ctlr->card.io < 0x400; ctlr->card.io += 0x20){
 		sum = 0;
 		for(i = 0; i < sizeof(ctlr->ea); i++){
-			ctlr->ea[i] = inb(board->io+Lar+i);
+			ctlr->ea[i] = inb(ctlr->card.io+Lar+i);
 			sum += ctlr->ea[i];
 		}
-		sum += inb(board->io+Id);
-		sum += inb(board->io+Cksum);
+		sum += inb(ctlr->card.io+Id);
+		sum += inb(ctlr->card.io+Cksum);
 		if(sum == 0xFF)
 			break;
 	}
-	if(board->io >= 0x400)
+	if(ctlr->card.io >= 0x400)
 		return -1;
 
 	/*
@@ -75,10 +74,10 @@ reset(Ctlr *ctlr)
 	 * Be careful to preserve the Msr address bits,
 	 * they don't get reloaded from the EEPROM on reset.
 	 */
-	msr = inb(board->io+Msr);
-	outb(board->io+Msr, Rst|msr);
+	msr = inb(ctlr->card.io+Msr);
+	outb(ctlr->card.io+Msr, Rst|msr);
 	delay(1);
-	outb(board->io+Msr, msr);
+	outb(ctlr->card.io+Msr, msr);
 	delay(2);
 
 	/*
@@ -90,60 +89,53 @@ reset(Ctlr *ctlr)
 	 * 8003EBT, 8003S, 8003SH or 8003WT, we don't care), in which
 	 * case the default irq gets used.
 	 */
-	msr = inb(board->io+Msr);
-	icr = inb(board->io+Icr);
-	laar = inb(board->io+Laar);
-	irr = inb(board->io+Irr);
+	msr = inb(ctlr->card.io+Msr);
+	icr = inb(ctlr->card.io+Icr);
+	laar = inb(ctlr->card.io+Laar);
+	irr = inb(ctlr->card.io+Irr);
 	if(icr != ctlr->ea[1] || irr != ctlr->ea[4] || laar != ctlr->ea[5])
-		board->irq = intrmap[((irr>>5) & 0x3)|(icr & 0x4)];
+		ctlr->card.irq = intrmap[((irr>>5) & 0x3)|(icr & 0x4)];
 	else {
-		msr = (((ulong)board->ramstart)>>13) & 0x3F;
+		msr = (((ulong)ctlr->card.ramstart)>>13) & 0x3F;
 		icr = laar = 0;
-		board->watch = 0;
+		ctlr->card.watch = 0;
 	}
 
 	/*
 	 * Set up the bus-size, RAM address and RAM size
 	 * from the info in the configuration registers.
 	 */
-	board->bit16 = icr & 0x1;
+	ctlr->card.bit16 = icr & 0x1;
 
-	board->ram = 1;
-	board->ramstart = KZERO|((msr & 0x3F)<<13);
-	if(board->bit16)
-		board->ramstart |= (laar & 0x1F)<<19;
+	ctlr->card.ram = 1;
+	ctlr->card.ramstart = KZERO|((msr & 0x3F)<<13);
+	if(ctlr->card.bit16)
+		ctlr->card.ramstart |= (laar & 0x1F)<<19;
 	else
-		board->ramstart |= 0x80000;
+		ctlr->card.ramstart |= 0x80000;
 
 	if(icr & (1<<3))
-		board->ramstop = 32*1024;
+		ctlr->card.ramstop = 32*1024;
 	else
-		board->ramstop = 8*1024;
-	if(board->bit16)
-		board->ramstop <<= 1;
-	board->ramstop += board->ramstart;
+		ctlr->card.ramstop = 8*1024;
+	if(ctlr->card.bit16)
+		ctlr->card.ramstop <<= 1;
+	ctlr->card.ramstop += ctlr->card.ramstart;
 
 	/*
 	 * Set the DP8390 ring addresses.
 	 */
-	board->dp8390 = board->io+0x10;
-	board->pstart = HOWMANY(sizeof(Etherpkt), Dp8390BufSz);
-	board->pstop = HOWMANY(board->ramstop-board->ramstart, Dp8390BufSz);
-	board->tstart = 0;
-
-	print("WD8003 I/O addr %lux width %d addr %lux size %d irq %d:",
-		board->io, board->bit16 ? 16: 8, board->ramstart,
-		board->ramstop-board->ramstart, board->irq);
-	for(i = 0; i < sizeof(ctlr->ea); i++)
-		print(" %2.2ux", ctlr->ea[i]);
-	print("\n");
+	ctlr->card.dp8390 = ctlr->card.io+0x10;
+	ctlr->card.pstart = HOWMANY(sizeof(Etherpkt), Dp8390BufSz);
+	ctlr->card.pstop = HOWMANY(ctlr->card.ramstop-ctlr->card.ramstart, Dp8390BufSz);
+	ctlr->card.tstart = 0;
 
 	/*
 	 * Enable interface RAM, set interface width.
 	 */
-	outb(board->io+Msr, Menb|msr);
-	if(board->bit16)
-		outb(board->io+Laar, laar|L16en|M16en|ZeroWS16);
+	outb(ctlr->card.io+Msr, Menb|msr);
+	if(ctlr->card.bit16)
+		outb(ctlr->card.io+Laar, laar|L16en|M16en|ZeroWS16);
 
 	/*
 	 * Finally, init the 8390 and set the
@@ -155,17 +147,36 @@ reset(Ctlr *ctlr)
 	return 0;
 }
 
+static void*
+read(Ctlr *ctlr, void *to, ulong from, ulong len)
+{
+	/*
+	 * In this case, 'from' is an index into the shared memory.
+	 */
+	memmove(to, (void*)(ctlr->card.ramstart+from), len);
+	return to;
+}
+
+static void*
+write(Ctlr *ctlr, ulong to, void *from, ulong len)
+{
+	/*
+	 * In this case, 'to' is an index into the shared memory.
+	 */
+	memmove((void*)(ctlr->card.ramstart+to), from, len);
+	return (void*)to;
+}
+
 static void
 watch(Ctlr *ctlr)
 {
-	Board *board = ctlr->board;
 	uchar msr;
 	int s;
 
 	s = splhi();
-	msr = inb(board->io+Msr);
+	msr = inb(ctlr->card.io+Msr);
 	/*
-	 * If the board has reset itself,
+	 * If the card has reset itself,
 	 * start again.
 	 */
 	if((msr & Menb) == 0){
@@ -184,21 +195,28 @@ watch(Ctlr *ctlr)
  * Defaults are set for the dumb 8003E
  * which can't be autoconfigured.
  */
-Board ether8003 = {
-	reset,
-	0,			/* init */
-	dp8390attach,
-	dp8390mode,
-	dp8390receive,
-	dp8390transmit,
-	dp8390intr,
-	watch,
+Card ether8003 = {
+	"WD8003",			/* ident */
 
-	0x280,			/* io */
-	3,			/* irq */
-	0,			/* bit16 */
+	reset,				/* reset */
+	0,				/* init */
+	dp8390attach,			/* attach */
+	dp8390mode,			/* mode */
 
-	1,			/* ram */
-	0xD0000,		/* ramstart */
-	0xD0000+8*1024,		/* ramstop */
+	read,				/* read */
+	write,				/* write */
+
+	dp8390receive,			/* receive */
+	dp8390transmit,			/* transmit */
+	dp8390intr,			/* interrupt */
+	watch,				/* watch */
+	0,				/* overflow */
+
+	0x280,				/* io */
+	3,				/* irq */
+	0,				/* bit16 */
+
+	1,				/* ram */
+	0xD0000,			/* ramstart */
+	0xD0000+8*1024,			/* ramstop */
 };
