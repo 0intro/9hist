@@ -151,6 +151,15 @@ TEXT	fpenab(SB), $-8
 	CALL_PAL $PALwrfen
 	RET
 
+TEXT rpcc(SB), $0
+	MOVL	R0, R1
+	MOVL	$0, R0
+	WORD	$0x6000C000		/* RPCC R0 */
+	BEQ	R1, _ret
+	MOVQ	R0, (R1)
+_ret:
+	RET
+
 /*
  *	Exception handlers.  The stack frame looks like this:
  *
