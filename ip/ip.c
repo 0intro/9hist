@@ -264,7 +264,8 @@ ipoput4(Fs *f, Block *bp, int gating, int ttl, int tos)
 		ip->stats[OutNoRoutes]++;
 		netlog(f, Logip, "no interface %V\n", eh->dst);
 		if(!gating){
-			freeblist(bp);	
+			freeblist(bp);
+print("ipoput4: no route\n");
 			error("no route");
 		}
 		goto free;
