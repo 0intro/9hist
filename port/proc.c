@@ -98,7 +98,7 @@ sched(void)
 	}
 	up = runproc();
 	up->state = Running;
-	up->mach = m;
+	up->mach = MACHP(m->machno);
 	m->proc = up;
 	mmuswitch(up);
 	gotolabel(&up->sched);
@@ -193,7 +193,7 @@ loop:
 		if((m->ticks % HZ) == 0){
 			for(rq = runq; rq < &runq[Nrq]; rq++){
 				p = rq->head;
-				if(p == 0 || p->mp != m)
+				if(p == 0 || p->mp != MACHP(m->machno))
 					continue;
 
 				i = m->ticks - p->readytime;
@@ -214,7 +214,7 @@ loop:
 			if(p == 0)
 				continue;
 			for(; p; p = p->rnext){
-				if(p->mp == m || p->movetime < m->ticks)
+				if(p->mp == MACHP(m->machno) || p->movetime < m->ticks)
 					goto found;
 			}
 		}
@@ -227,7 +227,7 @@ found:
 
 	l = 0;
 	for(p = rq->head; p; p = p->rnext){
-		if(p->mp == m || p->movetime < m->ticks)
+		if(p->mp == MACHP(m->machno) || p->movetime < m->ticks)
 			break;
 		l = p;
 	}
@@ -252,9 +252,9 @@ found:
 	unlock(runq);
 
 	p->state = Scheding;
-	if(p->mp != m)
+	if(p->mp != MACHP(m->machno))
 		p->movetime = m->ticks + HZ/2;
-	p->mp = m;
+	p->mp = MACHP(m->machno);
 	return p;
 }
 
