@@ -21,10 +21,9 @@ static struct
 	char	line[1024];	/* current input line */
 
 	int	count;
-	int	repeat;
 	int	ctlpoff;
 
-	/* someplace to save up characters at interrupt time before dumping them in the q */
+	/* a place to save up characters at interrupt time before dumping them in the queue */
 	Lock	lockputc;
 	char	istage[512];
 	char	*iw;
@@ -314,7 +313,6 @@ echoprintq(char *buf, int n)
 		qiwrite(printq, ebuf, p - ebuf);
 }
 
-
 void
 echo(char *buf, int n)
 {
@@ -393,8 +391,7 @@ echo(char *buf, int n)
 /*
  *  Called by a uart interrupt for console input.
  *
- *  turn '\r' into '\n' before putting it into the queue.  we
- *  can't type runes on alternate consoles, so don't worry about it.
+ *  turn '\r' into '\n' before putting it into the queue.
  */
 int
 kbdcr2nl(Queue*, int ch)

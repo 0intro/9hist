@@ -365,7 +365,7 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 				 || (!isdigit(*field[2]) && *field[2] != '-')
 				 || (!isdigit(*field[3]) && *field[3] != '-')
 				 || (!isdigit(*field[4]) && *field[4] != '-'))
-					error(Ectlsyntax);
+					error("bad syntax in control file message");
 				calibration.scalex = strtol(field[1], nil, 0);
 				calibration.scaley = strtol(field[2], nil, 0);
 				calibration.transx = strtol(field[3], nil, 0);

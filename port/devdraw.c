@@ -1363,9 +1363,8 @@ drawmesg(Client *client, void *av, int n)
 				continue;
 			}
 			i = allocmemimage(r, chan);
-			if(i == 0){
+			if(i == 0)
 				error(Edrawmem);
-			}
 			if(repl)
 				i->flags |= Frepl;
 			i->clipr = clipr;
