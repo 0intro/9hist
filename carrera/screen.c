@@ -336,6 +336,9 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 
 	d = DAC;
 
+	/* to protect DAC from mouse movement */
+	lock(&cursor);
+
 	d->cr0 = revtab0[255 - (p & 0xFF)];
 	d->cr1 = 0;
 	r = d->cr3;
@@ -344,6 +347,8 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 	*pr = (r<<24) | (r<<16) | (r<<8) | r;
 	*pg = (g<<24) | (g<<16) | (g<<8) | g;
 	*pb = (b<<24) | (b<<16) | (b<<8) | b;
+
+	unlock(&cursor);
 }
 
 int
@@ -354,11 +359,17 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 
 	d = DAC;
 
+	/* to protect DAC from mouse movement */
+	lock(&cursor);
+
 	d->cr0 = revtab0[255 - (p & 0xFF)];
 	d->cr1 = 0;
 	d->cr3 = r >> 24;
 	d->cr3 = g >> 24;
 	d->cr3 = b >> 24;
+
+	unlock(&cursor);
+
 	return 1;
 }
 
@@ -407,6 +418,7 @@ setcursor(Cursor *curs)
 		}
 
 	d = DAC;
+
 	/* have to set y offscreen before writing cursor bits */
 	d->cr1 = 0x03;
 	d->cr0 = 0x03;
@@ -426,6 +438,7 @@ setcursor(Cursor *curs)
 	d->cr0 = 0x03;
 	d->cr2 = ylow;
 	d->cr2 = yhigh;
+	
 	free(hwcursor.base);
 }
 
