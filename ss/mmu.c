@@ -14,12 +14,15 @@ struct
 	KMap	arena[(IOEND-IOSEGM)/BY2PG];
 }kmapalloc;
 
+#define	NKLUDGE	8
+
 /*
  * On SPARC, tlbpid i == context i-1 so that 0 means unallocated
  */
 
 int	newpid(Proc*);
 void	purgepid(int);
+int	pidtime[NTLBPID];	/* should be per m */
 
 /*
  * Called splhi, not in Running state
@@ -36,14 +39,12 @@ mapstack(Proc *p)
 		p->pidonmach[m->machno] = tp;
 	}
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
-		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
-	/* don't set m->pidhere[*tp] because we're only writing U entry */
+		panic("mapstack %s %d %lux 0x%lux 0x%lux", p->text, p->pid, p->upage, p->upage->pa, p->upage->va);
 	tlbphys = PPN(p->upage->pa)|PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
 	putcontext(tp-1);
 	/*
-	 * putw4(USERADDR, tlbphys) might be good enough but
-	 * there is that fuss in pexit/pwait() copying between
-	 * u areas and that might surprise any cache entries
+	 * shouldn't need putpmeg because nothing has been mapped at
+	 * USERADDR in this context except this page.  however, it crashes.
 	 */
 	putpmeg(USERADDR, tlbphys);
 	u = (User*)USERADDR;
@@ -56,28 +57,34 @@ int
 newpid(Proc *p)
 {
 	int i, j, k;
+	ulong t;
 	Proc *sp;
 
-	i = m->lastpid+1;
-	if(i >= NCONTEXT+1)
-		i = 1;
+	t = ~0;
+	i = 1+((m->ticks)&(NCONTEXT-1));	/* random guess */
+	for(j=1; j<NTLBPID; j++)
+		if(pidtime[j] < t){
+			i = j;
+			t = pidtime[j];
+		}
+	
 	sp = m->pidproc[i];
 	if(sp){
 		sp->pidonmach[m->machno] = 0;
 		purgepid(i);
 	}
+	pidtime[i] = m->ticks;
 	m->pidproc[i] = p;
 	m->lastpid = i;
 	putcontext(i-1);
-/* print("new pid %d\n", i); /**/
 	/*
-	 * kludge: each context is allowed 5 pmegs, four for text & data and one for stack
+	 * kludge: each context is allowed NKLUDGE pmegs, NKLUDGE-1 for text & data and 1 for stack
 	 */
-	for(j=0; j<4; j++)
-		putsegm(UZERO, kmapalloc.lowpmeg+(2*i)+j);
-	putsegm(TSTKTOP-BY2SEGM, kmapalloc.lowpmeg+(2*i)+4);
+	for(j=0; j<NKLUDGE-1; j++)
+		putsegm(UZERO+j*BY2SEGM, kmapalloc.lowpmeg+(NKLUDGE*(i-1))+j);
+	putsegm(TSTKTOP-BY2SEGM, kmapalloc.lowpmeg+(NKLUDGE*(i-1))+(NKLUDGE-1));
 	for(j=0; j<PG2SEGM; j++){
-		for(k=0; k<4; k++)
+		for(k=0; k<NKLUDGE-1; k++)
 			putpmeg(UZERO+k*BY2SEGM+j*BY2PG, INVALIDPTE);
 		putpmeg((TSTKTOP-BY2SEGM)+j*BY2PG, INVALIDPTE);
 	}
@@ -87,26 +94,30 @@ newpid(Proc *p)
 void
 putcontext(int c)
 {
-	m->pidhere[c] = 1;
+	m->pidhere[c+1] = 1;
 	putcxreg(c);
+}
+
+void
+flushcontext(void)
+{
+	int i;
+
+	/*
+	 * Clear context from cache
+	 */
+	for(i=0; i<0x1000; i+=16)
+		putwE16((i<<4), 0);
 }
 
 void
 purgepid(int pid)
 {
-	int i, rpid;
-
 	if(m->pidhere[pid] == 0)
 		return;
-/* print("purge pid %d\n", pid);/**/
 	memset(m->pidhere, 0, sizeof m->pidhere);
 	putcontext(pid-1);
-	/*
-	 * Clear context from cache
-	 */
-	for(i=0; i<0x1000; i++)
-		putwE((i<<4), 0);
-/* print("purge done\n");/**/
+	flushcontext();
 }
 
 
@@ -129,7 +140,6 @@ mmuinit(void)
 	pte = PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
 	for(i=0; i<conf.maxialloc/BY2PG; i++)
 		putpmeg(KZERO+i*BY2PG, pte+i);
-		
 
 	/*
 	 * Create invalid pmeg; use highest segment
@@ -178,10 +188,6 @@ mmuinit(void)
 				for(i=0; i<PG2SEGM; i++)
 					putpmeg(IOSEGM0+j*BY2SEGM+i*BY2PG, INVALIDPTE);
 		}
-		/*
-		 * Lance
-		 */
-		putsegm(LANCESEGM, LANCEPMEG);
 	}
 	putcontext(0);
 }
@@ -202,8 +208,10 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 	/*
 	 * kludge part 2: make sure we've got a valid segment
 	 */
-	if(tlbvirt>=TSTKTOP || (UZERO+4*BY2SEGM<=tlbvirt && tlbvirt<(TSTKTOP-BY2SEGM)))
-		panic("putmmu %lux", tlbvirt);
+	if(tlbvirt>=TSTKTOP || (UZERO+(NKLUDGE-1)*BY2SEGM<=tlbvirt && tlbvirt<(TSTKTOP-BY2SEGM))){
+		pprint("putmmu %lux", tlbvirt);
+		pexit("Suicide", 0);
+	}
 	putpmeg(tlbvirt, tlbphys);
 	spllo();
 }
@@ -219,8 +227,8 @@ putpmeg(ulong virt, ulong phys)
 	/*
 	 * Flush old entries from cache
 	 */
-	for(i=0; i<0x100; i++)
-		putwD(virt+(i<<4), 0);
+	for(i=0; i<0x100; i+=16)
+		putwD16(virt+(i<<4), 0);
 	if(u && u->p)
 		m->pidhere[u->p->pidonmach[m->machno]] = 1;	/* UGH! */
 	putw4(virt, phys);
@@ -229,7 +237,13 @@ putpmeg(ulong virt, ulong phys)
 void
 flushmmu(void)
 {
+	int tp;
+
 	splhi();
+	flushcontext();
+	tp = u->p->pidonmach[m->machno];
+	if(tp)
+		pidtime[tp] = 0;
 	/* easiest is to forget what pid we had.... */
 	memset(u->p->pidonmach, 0, sizeof u->p->pidonmach);
 	/* ....then get a new one by trying to map our stack */
@@ -240,14 +254,19 @@ flushmmu(void)
 void
 cacheinit(void)
 {
-	int i;
+	int c, i;
 
 	/*
 	 * Initialize cache by clearing the valid bit
 	 * (along with the others) in all cache entries
 	 */
-	for(i=0; i<0x1000; i++)
-		putw2(CACHETAGS+(i<<4), 0);
+	for(c=0; c<NCONTEXT; c++){	/* necessary? */
+		putcontext(c);
+		for(i=0; i<0x1000; i++)
+			putw2(CACHETAGS+(i<<4), 0);
+	}
+	putcontext(0);
+
 	/*
 	 * Turn cache on
 	 */
@@ -260,6 +279,7 @@ kmapinit(void)
 	KMap *k;
 	int i;
 
+print("low pmeg %d high pmeg %d\n", kmapalloc.lowpmeg, TOPPMEG);
 	kmapalloc.free = 0;
 	k = kmapalloc.arena;
 	for(i=0; i<(IOEND-IOSEGM)/BY2PG; i++,k++){
@@ -272,6 +292,7 @@ KMap*
 kmappa(ulong pa, ulong flag)
 {
 	KMap *k;
+	ulong s;
 
 	lock(&kmapalloc);
 	k = kmapalloc.free;
@@ -287,7 +308,29 @@ kmappa(ulong pa, ulong flag)
 	 * Must avoid having the same entry in the cache twice, so
 	 * must use NOCACHE or else extreme cleverness elsewhere.
 	 */
+	s = splhi();
+#ifdef stupid
+{
+	int i, c, d;
+
+	c = u->p->pidonmach[m->machno];
+	/*
+	 * Flush old entries from cache
+	 */
+	for(d=0; d<NCONTEXT; d++){
+		putcontext(d);
+		for(i=0; i<0x100; i+=16)
+			putwD16(k->va+(i<<4), 0);
+	}
+	putcontext(c-1);
+	if(u && u->p)
+		m->pidhere[c] = 1;	/* UGH! */
+	putw4(k->va, PPN(pa)|PTEVALID|PTEKERNEL|PTEWRITE|PTENOCACHE|flag);
+}
+#else
 	putpmeg(k->va, PPN(pa)|PTEVALID|PTEKERNEL|PTEWRITE|PTENOCACHE|flag);
+#endif
+	splx(s);
 	return k;
 }
 

@@ -266,6 +266,7 @@ duartintr(void)
 	Duart *dp;
 
 	cause = duartrdreg(&duart[0], 3);
+
 	/*
 	 * Keyboard
 	 */
@@ -290,6 +291,7 @@ duartintr(void)
 	}
 	if(cause & TxPendB)
 		duartwrreg(dp, 0, ResTxPend);
+	cause = duartrdreg(&duart[0], 3);
 }
 
 /*

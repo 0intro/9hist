@@ -21,7 +21,7 @@ fault(ulong addr, int read)
 
 	s = seg(u->p, addr);
 	if(s == 0){
-		if(addr>USTKTOP)
+		if(addr > USTKTOP)
 			return -1;
 		s = &u->p->seg[SSEG];
 		if(s->o==0 || addr<s->maxva-USTACKSIZE || addr>=s->maxva)

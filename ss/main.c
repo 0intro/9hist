@@ -15,6 +15,8 @@ char bootline[64];
 char bootserver[64];
 char bootdevice[64];
 
+uchar *intrreg;
+
 void unloadboot(void);
 
 #ifdef asdf
@@ -68,6 +70,7 @@ main(void)
 	trapinit();
 	kmapinit();
 	cacheinit();
+	intrinit();
 	procinit0();
 	pgrpinit();
 	chaninit();
@@ -80,6 +83,15 @@ main(void)
 	userinit();
 	clockinit();
 	schedinit();
+}
+
+void
+intrinit(void)
+{
+	KMap *k;
+
+	k = kmappa(INTRREG, PTEIO);
+	intrreg = (uchar*)k->va;
 }
 
 void
@@ -162,7 +174,7 @@ userinit(void)
 	/*
 	 * Kernel Stack
 	 */
-	p->sched.pc = (ulong)init0;
+	p->sched.pc = (((ulong)init0) - 8);	/* 8 because of RETURN in gotolabel */
 	p->sched.sp = USERADDR+BY2PG-20;	/* BUG */
 	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
 
@@ -289,7 +301,7 @@ confinit(void)
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
-	conf.npage0 = (8*1024*1024)/BY2PG;	/* BUG */
+	conf.npage0 = (6*1024*1024)/BY2PG;	/* BUG */
 	conf.npage = conf.npage0;
 	conf.base0 = 0;
 	conf.npage = conf.npage0+conf.npage1;
@@ -297,8 +309,8 @@ confinit(void)
 	mul = 2;
 	conf.nproc = 50*mul;
 	conf.npgrp = 12*mul;
-	conf.npte = 700*mul;
-	conf.nmod = 400*mul;
+	conf.npte = 1400*mul;
+	conf.nmod = 800*mul;
 	conf.nalarm = 1000;
 	conf.norig = 150*mul;
 	conf.nchan = 200*mul;

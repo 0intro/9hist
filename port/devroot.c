@@ -94,7 +94,9 @@ rootread(Chan *c, void *buf, long n)
 			return 0;
 		if(c->offset+n > sizeof bootcode)
 			n = sizeof bootcode - c->offset;
+ck("1");
 		memcpy(buf, ((char*)bootcode)+c->offset, n);
+ck("2");
 		return n;
 
 	case Qdev:

@@ -228,9 +228,9 @@ struct Mach
 	void	(*intr)(ulong, ulong);	/* !!Compatibility with mips!! */
 	ulong	cause;			/*	... */
 	ulong	pc;			/*	... */
-	char	pidhere[NCONTEXT];	/* is this tlbpid possibly in this mmu? */
+	char	pidhere[NTLBPID];	/* is this tlbpid possibly in this mmu? */
 	int	lastpid;		/* last pid allocated on this machine */
-	Proc	*pidproc[NCONTEXT];	/* process that owns this pid on this mach */
+	Proc	*pidproc[NTLBPID];	/* process that owns this pid on this mach */
 	int	stack[1];
 };
 
@@ -773,6 +773,7 @@ extern	FPsave	initfp;
 extern	Mach	mach0;
 extern	char	user[NAMELEN];
 extern	char	*errstrtab[];
+extern	uchar	*intrreg;
 
 extern  void	(*kprofp)(ulong);
 

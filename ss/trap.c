@@ -58,6 +58,10 @@ trap(Ureg *ur)
 	ulong tbr;
 
 	tbr = (ur->tbr&0xFFF)>>4;
+	if(tbr == 16+15){			/* interrupt 14: counter 1 */
+		faultasync(ur);
+		return;
+	}
 	if(tbr == 16+14){			/* interrupt 14: counter 1 */
 		clock(ur);
 		return;
@@ -77,11 +81,8 @@ trap(Ureg *ur)
 		u->p->pc = ur->pc;		/* BUG */
 	if(user){
 		print("user trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
-dumpregs(ur);
 		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(tbr));
-print("call postnote\n");
 		postnote(u->p, 1, buf, NDebug);
-print("return from postnote\n");
 	}else{
 		print("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
 		dumpregs(ur);
@@ -169,7 +170,6 @@ notify(Ureg *ur)
 		if(u->note[0].flag == NDebug)
 			pprint("suicide: %s\n", u->note[0].msg);
     Die:
-print("suicide: %s\n", u->note[0].msg);
 		unlock(&u->p->debug);
 		pexit(u->note[0].msg, u->note[0].flag!=NDebug);
 	}

@@ -58,7 +58,7 @@
 #define	NPMEG		(1<<12)
 #define	BY2SEGM		(1<<18)
 #define	PG2SEGM		(1<<6)
-#define	NTLBPID		(NCONTEXT+1)
+#define	NTLBPID		(1+NCONTEXT)	/* TLBPID 0 is unallocated */
 #define	NCONTEXT	8
 #define	CONTEXT		0x30000000	/* in ASI 2 */
 
@@ -77,9 +77,7 @@
 #define	IOPMEG0		(SCREENPMEG-NIOSEGM)
 #define	IOSEGM		ROMEND
 #define	IOEND		SCREENSEGM
-#define	LANCESEGM	(16*1024*1024-BY2SEGM)
-#define	LANCEPMEG	(IOSEGM0-1)
-#define	TOPPMEG		LANCEPMEG
+#define	TOPPMEG		IOPMEG0
 
 /*
  * MMU entries
@@ -97,15 +95,14 @@
 #define	INVALIDPTE	0
 #define	PPN(pa)		((pa>>12)&0xFFFF)
 
-#define	KMAP	((unsigned long *)0xD0000000)
-#define	UMAP	((unsigned long *)0x50000000)
-
 /*
  * Weird addresses in various ASI's
  */
 #define	CACHETAGS	0x80000000		/* ASI 2 */
 #define	SER		0x60000000		/* ASI 2 */
 #define	SEVAR		0x60000004		/* ASI 2 */
+#define	ASER		0x60000008		/* ASI 2 */
+#define	ASEVAR		0x6000000C		/* ASI 2 */
 
 /*
  * Virtual addresses

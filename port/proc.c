@@ -412,8 +412,13 @@ pexit(char *s, int freemem)
 	Proc *p, *c, *k, *l;
 	int n;
 	Chan *ch;
+	char msg[ERRLEN];
 	ulong *up, *ucp, *wp;
 
+	if(s)	/* squirrel away; we'll lose our address space */
+		strcpy(msg, s);
+	else
+		msg[0] = 0;
 	c = u->p;
 	mypid = c->pid;
 	if(freemem){
@@ -450,10 +455,7 @@ pexit(char *s, int freemem)
 	qlock(&p->wait);
 	lock(&p->wait.queue);
 	if(p->pid==c->parentpid && !p->exiting){
-		if(s)
-			strcpy(p->waitmsg.msg, s);
-		else
-			p->waitmsg.msg[0] = 0;
+		memcpy(p->waitmsg.msg, msg, ERRLEN);
 		p->waitmsg.pid = mypid;
 		wp = &p->waitmsg.time[TUser];
 		up = &c->time[TUser];

@@ -7,6 +7,7 @@ typedef struct	Duart	Duart;
 #define	KMDUART		0xF0000000	/* keyboard A, mouse B */
 #define	ETHER		0xF8C00000	/* RDP, RAP */
 #define	EEPROM		0xF2000000
+#define	INTRREG		0xF5000000	/* interrupt register, IO space */
 
 #define	ENAB		0x40000000	/* ASI 2, System Enable Register */
 #define	ENABCACHE	0x10

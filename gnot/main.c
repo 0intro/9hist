@@ -340,6 +340,7 @@ confinit(void)
 	conf.nservice = 3*mul;			/* was conf.nproc/5 */
 	conf.nfsyschan = 31 + conf.nchan/20;
 	conf.copymode = 0;		/* copy on write */
+	conf.portispaged = 0;
 }
 
 /*

@@ -1,6 +1,6 @@
 #include "mem.h"
 
-#define	SYSPSR	(PSREF|SPL(0x0)|PSRSUPER)
+#define	SYSPSR	(SPL(0xF)|PSRSUPER)
 
 TEXT	start(SB), $-4
 
@@ -33,13 +33,11 @@ TEXT	getpsr(SB), $0
 	MOVW	PSR, R7
 	RETURN
 
-/*
-TEXT	swap1_please(SB), $0
+TEXT	swap1(SB), $0
 
 	MOVW	keyaddr+0(FP), R8
-	LDSTUB	(R8), R7
+	TAS	(R8), R7
 	RETURN
-*/
 
 TEXT	swap1_should_work(SB), $0
 
@@ -48,7 +46,7 @@ TEXT	swap1_should_work(SB), $0
 	SWAP	(R8), R7
 	RETURN
 
-TEXT	swap1(SB), $0
+TEXT	swap1x(SB), $0
 
 	MOVW	keyaddr+0(FP), R8
 	MOVW	PSR, R9
@@ -100,7 +98,7 @@ TEXT	splx(SB), $0
 
 TEXT	touser(SB), $-4
 
-	MOVW	$SYSPSR, R7	/* BUG SPL(0xF) for now */
+	MOVW	$SYSPSR, R7
 	MOVW	R7, PSR
 
 	OR	R0, R0
@@ -400,10 +398,84 @@ TEXT	putwD(SB), $0
 	MOVW	R8, (R7, 0xD)
 	RETURN
 
+TEXT	putwD16(SB), $0
+
+	MOVW	0(FP), R7
+	MOVW	4(FP), R8
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xD)
+	RETURN
+
 TEXT	putwE(SB), $0
 
 	MOVW	0(FP), R7
 	MOVW	4(FP), R8
+	MOVW	R8, (R7, 0xE)
+	RETURN
+
+TEXT	putwE16(SB), $0
+
+	MOVW	0(FP), R7
+	MOVW	4(FP), R8
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
+	MOVW	R8, (R7, 0xE)
+	ADD	$(1<<4), R7
 	MOVW	R8, (R7, 0xE)
 	RETURN
 

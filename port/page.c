@@ -85,7 +85,7 @@ audit(char *s)
 	do;while(here);
 	here=1;
 	p = palloc.head;
-	nf=nb=0;
+	nf = nb = 0;
 	while(p){
 		print("%lux %lux %d\n", p->pa, p->va, p->ref);
 		if(p->o){
@@ -208,7 +208,7 @@ loop:
 	goto loop;
     out:
 	if(p->o){
-		print("page in use %lux %lux %lux\n", p->va, p->o, origalloc.arena);
+		print("page in use %lux %lux %lux %lux\n", p, p->va, p->o, origalloc.arena);
 		print("%c %lux %lux, %d %d %d\n", devchar[p->o->type], p->o->va, p->o->qid, p->o->flag, p->o->nproc, p->o->npte);
 		panic("shit");
 	}
