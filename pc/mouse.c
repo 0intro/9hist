@@ -101,6 +101,80 @@ ps2mouse(void)
 	mousetype = MousePS2;
 }
 
+static int intellimouse;
+static int resolution;
+static int accelerated;
+
+static void
+setaccelerated(int x)
+{
+	accelerated = x;
+	switch(mousetype){
+	case MousePS2:
+		i8042auxcmd(0xE7);
+		break;
+	default:
+		mouseaccelerate(x);
+		break;
+	}
+}
+
+static void
+setlinear(void)
+{
+	accelerated = 0;
+	switch(mousetype){
+	case MousePS2:
+		i8042auxcmd(0xE6);
+		break;
+	default:
+		mouseaccelerate(0);
+		break;
+	}
+}
+
+static void
+setres(int n)
+{
+	resolution = n;
+	switch(mousetype){
+	case MousePS2:
+		i8042auxcmd(0xE8);
+		i8042auxcmd(n);
+		break;
+	}
+}
+
+static void
+setintellimouse(void)
+{
+	intellimouse = 1;
+	switch(mousetype){
+	case MousePS2:
+		i8042auxcmd(0xF3);	/* set sample */
+		i8042auxcmd(0xC8);
+		i8042auxcmd(0xF3);	/* set sample */
+		i8042auxcmd(0x64);
+		i8042auxcmd(0xF3);	/* set sample */
+		i8042auxcmd(0x50);
+		break;
+	}
+}
+
+static void
+resetmouse(void)
+{
+	switch(mousetype){
+	case MousePS2:
+		i8042auxcmd(0xF6);
+		i8042auxcmd(0xEA);	/* streaming */
+		i8042auxcmd(0xE8);	/* set resolution */
+		i8042auxcmd(3);
+		i8042auxcmd(0xF4);	/* enabled */
+		break;
+	}
+}
+
 void
 mousectl(char* field[], int n)
 {
@@ -119,44 +193,27 @@ mousectl(char* field[], int n)
 		}
 	} else if(strcmp(field[0], "ps2") == 0){
 		ps2mouse();
+	} else if(strcmp(field[0], "ps2intellimouse") == 0){
+		ps2mouse();
+		setintellimouse();
 	} else if(strcmp(field[0], "accelerated") == 0){
-		switch(mousetype){
-		case MousePS2:
-			i8042auxcmd(0xE7);
-			break;
-		default:
-			if(n == 1)
-				mouseaccelerate("1");
-			else
-				mouseaccelerate(field[1]);
-			break;
-		}
+		setaccelerated(n == 1 ? 1 : atoi(field[1]));
 	} else if(strcmp(field[0], "linear") == 0){
-		switch(mousetype){
-		case MousePS2:
-			i8042auxcmd(0xE6);
-			break;
-		default:
-			mouseaccelerate("0");
-			break;
-		}
+		setlinear();
 	} else if(strcmp(field[0], "res") == 0){
-		if(n < 2)
-			n = 1;
-		else
+		if(n >= 2)
 			n = atoi(field[1]);
-		switch(mousetype){
-		case MousePS2:
-			i8042auxcmd(0xE8);
-			i8042auxcmd(n);
-			break;
-		}
+		setres(n);
 	} else if(strcmp(field[0], "reset") == 0){
-		i8042auxcmd(0xF6);
-		i8042auxcmd(0xEA);	/* streaming */
-		i8042auxcmd(0xE8);	/* set resolution */
-		i8042auxcmd(3);
-		i8042auxcmd(0xF4);	/* enabled */
+		resetmouse();
+		if(accelerated)
+			setaccelerated(accelerated);
+		if(resolution)
+			setres(resolution);
+		if(intellimouse)
+			setintellimouse();
+	} else if(strcmp(field[0], "intellimouse") == 0){
+		setintellimouse();
 	}
 	else
 		error(Ebadctl);

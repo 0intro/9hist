@@ -9,7 +9,7 @@ struct Cursorinfo {
 extern void mousetrack(int, int, int);
 extern Point mousexy(void);
 
-extern void mouseaccelerate(char*);
+extern void mouseaccelerate(int);
 extern int m3mouseputc(void*, int);
 extern int mouseputc(void*, int);
 

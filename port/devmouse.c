@@ -535,11 +535,9 @@ mousexy(void)
 }
 
 void
-mouseaccelerate(char *x)
+mouseaccelerate(int x)
 {
-	if(x == 0)
-		x = "1";
-	mouse.acceleration = atoi(x);
+	mouse.acceleration = x;
 	if(mouse.acceleration < 3)
 		mouse.maxacc = 2;
 	else
