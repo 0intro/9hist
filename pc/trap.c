@@ -335,7 +335,7 @@ dumpstack(void)
 			p = (uchar*)v;
 			if(*(p-5) == 0xE8
 			|| (*(p-2) == 0xFF && *(p-1) == 0xD0)){
-				print("%lux ", p-5);
+				print("%p ", p-5);
 				i++;
 			}
 		}
