@@ -106,12 +106,11 @@ envopen(Chan *c, int omode)
 }
 
 void
-envcreate(Chan *c, char *name, int omode, ulong perm)
+envcreate(Chan *c, char *name, int omode, ulong)
 {
 	Egrp *eg;
 	Evalue *e;
 
-	USED(perm);
 	if(c->qid.path != CHDIR)
 		error(Eperm);
 

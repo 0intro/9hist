@@ -71,6 +71,8 @@ pcicfgr(int busno, int devno, int funcno, int regno, void* data, int nbytes)
 		break;
 
 	case 2:
+		if(devno >= 16)
+			break;
 		outb(PCIcse, 0x80|((funcno & 0x07)<<1));
 		outb(PCIforward, busno);
 	
@@ -115,6 +117,8 @@ pcicfgw(int busno, int devno, int funcno, int regno, void* data, int nbytes)
 		break;
 
 	case 2:
+		if(devno >= 16)
+			break;
 		outb(PCIcse, 0x80|((funcno & 0x07)<<1));
 		outb(PCIforward, busno);
 	
@@ -137,7 +141,14 @@ pcimatch(int busno, int devno, PCIcfg* pcicfg)
 {
 	ulong l;
 
+	lock(&pcicfglock);
+	if(pcicfgmode == -1)
+		pcicfginit(busno);
+	unlock(&pcicfglock);
+
 	while(devno < MaxPCI){
+		if(pcicfgmode == 2 && devno >= 16)
+			break;
 		l = 0;
 		pcicfgr(busno, devno, 0, 0, &l, sizeof(ulong));
 		devno++;

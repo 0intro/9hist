@@ -43,7 +43,7 @@
 #define	UZERO		0			/* base of user address space */
 #define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
 #define	KZERO		0x80000000		/* base of kernel address space */
-#define	KTZERO		KZERO			/* first address in kernel text */
+#define	KTZERO		0x80100000		/* first address in kernel text */
 #define	TSTKTOP		0xC0000000		/* end of new stack in sysexec */
 #define TSTKSIZ 10
 #define	USTKTOP		(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */

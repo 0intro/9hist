@@ -290,9 +290,8 @@ ataopen(Chan *c, int omode)
 }
 
 void
-atacreate(Chan *c, char *name, int omode, ulong perm)
+atacreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 

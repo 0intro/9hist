@@ -87,9 +87,8 @@ configopen(Chan *c, int omode)
 }
 
 void
-configcreate(Chan *c, char *name, int omode, ulong perm)
+configcreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 

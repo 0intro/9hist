@@ -65,9 +65,8 @@ etheropen(Chan *c, int omode)
 }
 
 void
-ethercreate(Chan *c, char *name, int omode, ulong perm)
+ethercreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 }
 
 void

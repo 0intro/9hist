@@ -353,9 +353,8 @@ floppyopen(Chan *c, int omode)
 }
 
 void
-floppycreate(Chan *c, char *name, int omode, ulong perm)
+floppycreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 

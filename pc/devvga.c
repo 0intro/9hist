@@ -152,9 +152,8 @@ vgaopen(Chan *c, int omode)
 }
 
 void
-vgacreate(Chan *c, char *name, int omode, ulong perm)
+vgacreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 

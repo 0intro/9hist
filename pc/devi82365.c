@@ -665,23 +665,20 @@ i82365open(Chan *c, int omode)
 }
 
 void
-i82365create(Chan *c, char *name, int omode, ulong perm)
+i82365create(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
-i82365remove(Chan *c)
+i82365remove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void
-i82365wstat(Chan *c, char *dp)
+i82365wstat(Chan*, char*)
 {
-	USED(c, dp);
 	error(Eperm);
 }
 

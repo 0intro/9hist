@@ -1214,9 +1214,8 @@ astarbwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void
-astarcreate(Chan *c, char *name, int omode, ulong perm)
+astarcreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 

@@ -287,9 +287,8 @@ hardopen(Chan *c, int omode)
 }
 
 void
-hardcreate(Chan *c, char *name, int omode, ulong perm)
+hardcreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 

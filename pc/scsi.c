@@ -466,7 +466,7 @@ scsibufsize(Target *t, char lun, int size)
 }
 
 int
-scsireadcdda(Target *t, char lun, void *b, long n, long bsize, long bno)
+scsireadcdda(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
 {
 	uchar cmd[10];
 	int s, nbytes;

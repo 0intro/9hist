@@ -124,9 +124,8 @@ lptopen(Chan *c, int omode)
 }
 
 void
-lptcreate(Chan *c, char *name, int omode, ulong perm)
+lptcreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
