@@ -112,21 +112,22 @@ boot(int argc, char *argv[])
 		newkernel();
 
 	/*
-	 *  if a local file server exists and it's not the
-	 *  root file server, start it and mount it onto /n/kfs
+	 *  if a local file server exists and it's not
+	 *  running, start it and mount it onto /n/kfs
 	 */
-	if(!islocal){
-		for(mp = method; mp->name; mp++)
-			if(strcmp(mp->name, "local")==0){
-				(*mp->config)(mp);
-				fd = (*mp->connect)();
-				if(fd < 0)
-					break;
-				if(mount(fd, "/n/kfs", MAFTER|MCREATE, "", "") < 0)
-					print("failed to mount kfs\n");
-				close(fd);
-				break;
-			}
+	for(mp = method; mp->name; mp++){
+		if(strcmp(mp->name, "local") != 0)
+			continue;
+		if(access("#s/kfs", ORDWR) >= 0)
+			break;
+		(*mp->config)(mp);
+		fd = (*mp->connect)();
+		if(fd < 0)
+			break;
+		if(mount(fd, "/n/kfs", MAFTER|MCREATE, "", "") < 0)
+			print("failed to mount kfs\n");
+		close(fd);
+		break;
 	}
 
 	settime(islocal);

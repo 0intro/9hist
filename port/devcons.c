@@ -176,7 +176,6 @@ panic(char *fmt, ...)
 	else
 		for(;;);
 }
-
 int
 pprint(char *fmt, ...)
 {

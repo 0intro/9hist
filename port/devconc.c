@@ -466,6 +466,7 @@ concread(Chan *c, void *a, long n, ulong offset)
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, concgen);
 	error(Eio);
+	return -1;	/* does not return */
 }
 
 long	 

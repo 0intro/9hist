@@ -184,7 +184,6 @@ procopen(Chan *c, int omode)
 		c->qid.vers = p->pid;
 
 	return devopen(c, omode, 0, 0, procgen);
-;
 }
 
 void

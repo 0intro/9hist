@@ -875,6 +875,7 @@ rdpackets(Incon *ip)
  *  how to use more than one incon, this routine only
  *  is for incon[0].
  */
+void
 inconintr(Ureg *ur)
 {
 	uchar status;

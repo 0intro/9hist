@@ -350,6 +350,7 @@ confinit(void)
 	conf.portispaged = 0;
 	conf.cntrlp = 0;
 	conf.dkif = 2;
+	confinit1(mul);
 }
 
 /*

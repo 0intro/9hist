@@ -155,8 +155,6 @@ hifistat(Chan *c, char *dp)
 Chan*
 hifiopen(Chan *c, int omode)
 {
-	Hifichan *hp = &hifichan[c->dev];
-
 	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
 			error(Eperm);
@@ -183,8 +181,6 @@ hificreate(Chan *c, char *name, int omode, ulong perm)
 void	 
 hificlose(Chan *c)
 {
-	Hifichan *hp = &hifichan[c->dev];
-
 	if(c->qid.path != CHDIR)
 		streamclose(c);
 }
@@ -235,7 +231,6 @@ long
 hifiwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	Hifichan *hp = &hifichan[c->dev];
-	Hifi *hifi = hp->hdev;
 	char nbuf[32], *p;
 
 	if(n < 0)
