@@ -142,6 +142,8 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 			if(c->qid.path & CHDIR){
 				if(c->name == nil)
 					elem = "???";
+				else if(strcmp(c->name->s, "/") == 0)
+					elem = "/";
 				else
 					for(elem=p=c->name->s; *p; p++)
 						if(*p = '/')

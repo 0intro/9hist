@@ -145,6 +145,12 @@ xallocz(ulong size, int zero)
 	return nil;
 }
 
+void*
+xalloc(ulong size)
+{
+	return xallocz(size, 1);
+}
+
 void
 xfree(void *p)
 {
@@ -156,6 +162,20 @@ xfree(void *p)
 		panic("xfree(0x%lux) 0x%lux!=0x%lux", p, Magichole, x->magix);
 	}
 	xhole(PADDR(x), x->size);
+}
+
+int
+xmerge(void *vp, void *vq)
+{
+	Xhdr *p, *q;
+
+	p = vp;
+	if((uchar*)vp+p->size == (uchar*)vq) {
+		q = vq;
+		p->size += q->size;
+		return 1;
+	}
+	return 0;
 }
 
 void

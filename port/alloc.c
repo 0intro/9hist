@@ -1,400 +1,69 @@
 #include	"u.h"
 #include	"../port/lib.h"
 #include	"mem.h"
-#include	"pool.h"
 #include	"dat.h"
 #include	"fns.h"
 #include	"error.h"
+#include	"pool.h"
 
-#define left	u.s.bhl
-#define right	u.s.bhr
-#define fwd	u.s.bhf
-#define prev	u.s.bhv
-#define parent	u.s.bhp
-
-struct Pool
-{
-	char*	name;
-	ulong	maxsize;
-	int	quanta;
-	int	chunk;
-	ulong	cursize;
-	ulong	arenasize;
-	ulong	hw;
-	Lock	l;
-	Bhdr*	root;
-	Bhdr*	chain;
-	int	nalloc;
-	int	nfree;
-	int	nbrk;
-	int	lastfree;
-	void	(*move)(void*, void*);
+static Pool pmainmem = {
+	.name=	"Main",
+	.maxsize=	4*1024*1024,
+	.minarena=	128*1024,
+	.quantum=	32,
+	.alloc=	xalloc,
+	.merge=	xmerge,
+	.flags=	0,
 };
 
-struct
-{
-	int	n;
-	Pool	pool[MAXPOOL];
-	Lock	l;
-} table = {
-	2,
-	{
-		{ "Main",	 4*1024*1024, 31,  128*1024 },
-		{ "Image",	 16*1024*1024, 31, 2*1024*1024 },
-	}
+static Pool pimagmem = {
+	.name=	"Image",
+	.maxsize=	16*1024*1024,
+	.minarena=	2*1024*1024,
+	.quantum=	32,
+	.alloc=	xalloc,
+	.merge=	xmerge,
+	.flags=	0,
 };
 
-Pool*	mainmem = &table.pool[0];
-Pool*	imagmem = &table.pool[1];
-
-int	poolcompact(Pool*);
-
-Bhdr*
-poolchain(Pool *p)
-{
-	return p->chain;
-}
-
-void
-pooldel(Pool *p, Bhdr *t)
-{
-	Bhdr *s, *f, *rp, *q;
-
-	if(t->parent == nil && p->root != t) {
-		t->prev->fwd = t->fwd;
-		t->fwd->prev = t->prev;
-		return;
-	}
-
-	if(t->fwd != t) {
-		f = t->fwd;
-		s = t->parent;
-		f->parent = s;
-		if(s == nil)
-			p->root = f;
-		else {
-			if(s->left == t)
-				s->left = f;
-			else
-				s->right = f;
-		}
-
-		rp = t->left;
-		f->left = rp;
-		if(rp != nil)
-			rp->parent = f;
-		rp = t->right;
-		f->right = rp;
-		if(rp != nil)
-			rp->parent = f;
-
-		t->prev->fwd = t->fwd;
-		t->fwd->prev = t->prev;
-		return;
-	}
-
-	if(t->left == nil)
-		rp = t->right;
-	else {
-		if(t->right == nil)
-			rp = t->left;
-		else {
-			f = t;
-			rp = t->right;
-			s = rp->left;
-			while(s != nil) {
-				f = rp;
-				rp = s;
-				s = rp->left;
-			}
-			if(f != t) {
-				s = rp->right;
-				f->left = s;
-				if(s != nil)
-					s->parent = f;
-				s = t->right;
-				rp->right = s;
-				if(s != nil)
-					s->parent = rp;
-			}
-			s = t->left;
-			rp->left = s;
-			s->parent = rp;
-		}
-	}
-	q = t->parent;
-	if(q == nil)
-		p->root = rp;
-	else {
-		if(t == q->left)
-			q->left = rp;
-		else
-			q->right = rp;
-	}
-	if(rp != nil)
-		rp->parent = q;
-}
-
-void
-pooladd(Pool *p, Bhdr *q)
-{
-	int size;
-	Bhdr *tp, *t;
-
-	q->magic = MAGIC_F;
-
-	q->left = nil;
-	q->right = nil;
-	q->parent = nil;
-	q->fwd = q;
-	q->prev = q;
-
-	t = p->root;
-	if(t == nil) {
-		p->root = q;
-		return;
-	}
-
-	size = q->size;
-
-	tp = nil;
-	while(t != nil) {
-		if(size == t->size) {
-			q->fwd = t->fwd;
-			q->fwd->prev = q;
-			q->prev = t;
-			t->fwd = q;
-			return;
-		}
-		tp = t;
-		if(size < t->size)
-			t = t->left;
-		else
-			t = t->right;
-	}
-
-	q->parent = tp;
-	if(size < tp->size)
-		tp->left = q;
-	else
-		tp->right = q;
-}
-
-void*
-poolalloc(Pool *p, long size)
-{
-	Bhdr *q, *t;
-	int alloc, ldr, ns, frag;
-
-	if(size < 0 || size >= 1024*1024*1024)	/* for sanity and to avoid overflow */
-		return nil;
-	size = (size + BHDRSIZE + p->quanta) & ~(p->quanta);
-
-	ilock(&p->l);
-	p->nalloc++;
-
-	t = p->root;
-	q = nil;
-	while(t) {
-		if(t->size == size) {
-			pooldel(p, t);
-			t->magic = MAGIC_A;
-			p->cursize += t->size;
-			if(p->cursize > p->hw)
-				p->hw = p->cursize;
-			iunlock(&p->l);
-			return B2D(t);
-		}
-		if(size < t->size) {
-			q = t;
-			t = t->left;
-		}
-		else
-			t = t->right;
-	}
-	if(q != nil) {
-		pooldel(p, q);
-		q->magic = MAGIC_A;
-		frag = q->size - size;
-		if(frag < (size>>2)) {
-			p->cursize += q->size;
-			if(p->cursize > p->hw)
-				p->hw = p->cursize;
-			iunlock(&p->l);
-			return B2D(q);
-		}
-		/* Split */
-		ns = q->size - size;
-		q->size = size;
-		B2T(q)->hdr = q;
-		t = B2NB(q);
-		t->size = ns;
-		B2T(t)->hdr = t;
-		pooladd(p, t);
-		p->cursize += q->size;
-		if(p->cursize > p->hw)
-			p->hw = p->cursize;
-		iunlock(&p->l);
-		return B2D(q);
-	}
-
-	ns = p->chunk;
-	if(size > ns)
-		ns = size;
-	ldr = p->quanta+1;
-
-	alloc = ns+ldr+sizeof(t->magic);
-	p->arenasize += alloc;
-	if(p->arenasize > p->maxsize) {
-		p->arenasize -= alloc;
-
-		if(poolcompact(p)) {
-			iunlock(&p->l);
-			return poolalloc(p, size);
-		}
-
-		iunlock(&p->l);
-		print("%s arena too large: size %ld cursize %lud arenasize %lud maxsize %lud\n",
-			 p->name, size, p->cursize, p->arenasize, p->maxsize);
-		return nil;
-	}
-
-	p->nbrk++;
-	t = xalloc(alloc);
-	if(t == nil) {
-		iunlock(&p->l);
-		return nil;
-	}
-
-	t->magic = MAGIC_E;		/* Make a leader */
-	t->size = ldr;
-	t->csize = ns+ldr;
-	t->clink = p->chain;
-	p->chain = t;
-	B2T(t)->hdr = t;
-	t = B2NB(t);
-
-	t->magic = MAGIC_A;		/* Make the block we are going to return */
-	t->size = size;
-	B2T(t)->hdr = t;
-	q = t;
-
-	ns -= size;			/* Free the rest */
-	if(ns > 0) {
-		q = B2NB(t);
-		q->size = ns;
-		B2T(q)->hdr = q;
-		pooladd(p, q);
-	}
-	B2NB(q)->magic = MAGIC_E;	/* Mark the end of the chunk */
-
-	p->cursize += t->size;
-	if(p->cursize > p->hw)
-		p->hw = p->cursize;
-	iunlock(&p->l);
-	return B2D(t);
-}
-
-void
-poolfree(Pool *p, void *v)
-{
-	Bhdr *b, *c;
-
-	D2B(b, v);
-
-	ilock(&p->l);
-	p->nfree++;
-	p->cursize -= b->size;
-
-	c = B2NB(b);
-	if(c->magic == MAGIC_F) {	/* Join forward */
-		pooldel(p, c);
-		c->magic = 0;
-		b->size += c->size;
-		B2T(b)->hdr = b;
-	}
-
-	c = B2PT(b)->hdr;
-	if(c->magic == MAGIC_F) {	/* Join backward */
-		pooldel(p, c);
-		b->magic = 0;
-		c->size += b->size;
-		b = c;
-		B2T(b)->hdr = b;
-	}
-
-	pooladd(p, b);
-	iunlock(&p->l);
-}
-
-int
-poolread(char *va, int count, ulong offset)
-{
-	Pool *p;
-	int n, i, signed_off;
-
-	n = 0;
-	signed_off = offset;
-	for(i = 0; i < table.n; i++) {
-		p = &table.pool[i];
-		n += snprint(va+n, count-n, "%11lud %11lud %11lud %11d %11d %11d %s\n",
-			p->cursize,
-			p->maxsize,
-			p->hw,
-			p->nalloc,
-			p->nfree,
-			p->nbrk,
-			p->name);
-
-		if(signed_off > 0) {
-			signed_off -= n;
-			if(signed_off < 0) {
-				memmove(va, va+n+signed_off, -signed_off);
-				n = -signed_off;
-			}
-			else
-				n = 0;
-		}
-
-	}
-	return n;
-}
-
-void
-tagwithpc(void *v, ulong pc)
-{
-	Bhdr *h;
-
-	D2B(h, v);
-	B2T(h)->pad = pc;
-}
-
-void*
-malloc(ulong size)
-{
-	void *v;
-
-	v = poolalloc(mainmem, size);
-	if(v != nil)
-		memset(v, 0, size);
-	if(v != nil)
-		tagwithpc(v, getcallerpc(&size));
-	return v;
-}
+Pool*	mainmem = &pmainmem;
+Pool*	imagmem = &pimagmem;
 
 void*
 smalloc(ulong size)
 {
 	void *v;
+	ulong *l;
 
 	for(;;) {
-		v = poolalloc(mainmem, size);
+		v = poolalloc(mainmem, size+8);
 		if(v != nil)
 			break;
 		tsleep(&up->sleep, return0, 0, 100);
 	}
+	l = v;
+	l[0] = getcallerpc(&size);
+	v = l+2;
 	memset(v, 0, size);
-	tagwithpc(v, getcallerpc(&size));
+	return v;
+}
+
+void*
+malloc(ulong size)
+{
+	ulong *l;
+	void *v;
+
+	if(size == 0)
+		return nil;
+
+	v = poolalloc(mainmem, size+8);
+	if(v != nil) {
+		l = v;
+		l[0] = getcallerpc(&size);
+		v = l+2;
+		memset(v, 0, size);
+	}
 	return v;
 }
 
@@ -402,395 +71,84 @@ void*
 mallocz(ulong size, int clr)
 {
 	void *v;
+	ulong *l;
 
-	v = poolalloc(mainmem, size);
+	if(size == 0)
+		return nil;
+
+	v = poolalloc(mainmem, size+8);
+	if(v != nil) {
+		l = v;
+		l[0] = getcallerpc(&size);
+		v = l+2;
+	}
 	if(clr && v != nil)
 		memset(v, 0, size);
-	if(v != nil)
-		tagwithpc(v, getcallerpc(&size));
 	return v;
 }
 
 void
 free(void *v)
 {
-	if(v != nil)
-		poolfree(mainmem, v);
+	if(v != nil) {
+		poolfree(mainmem, (uchar*)v-8);
+	}
 }
 
 void*
 realloc(void *v, ulong size)
 {
-	Bhdr *b;
+	ulong *l;
 	void *nv;
-	int osize;
+	long nsize;
 
+	if(size == 0) {
+		free(v);
+		return nil;
+	}
 	if(v == nil)
 		return malloc(size);
 
-	D2B(b, v);
-
-	osize = b->size - BHDRSIZE;
-	if(osize >= size)
-		return v;
-
-	nv = poolalloc(mainmem, size);
-	if(nv != nil) {
-		memmove(nv, v, osize);
-		free(v);
-	}
-	if(nv != nil)
-		tagwithpc(nv, getcallerpc(&v));
-	return nv;
+	nv = (uchar*)v-8;
+	nsize = size+8;
+	if(l = poolrealloc(mainmem, nv, nsize))
+		return l+2;
+	return nil;
 }
 
-int
+ulong
 msize(void *v)
 {
-	Bhdr *b;
-
-	D2B(b, v);
-	return b->size - BHDRSIZE;
+	return poolmsize(mainmem, (uchar*)v-8)-8;
 }
 
 void*
 calloc(ulong n, ulong szelem)
 {
-	return malloc(n*szelem);
+	return mallocz(n*szelem, 1);
 }
 
-/*
 void
-pooldump(Bhdr *b, int d, int c)
+poolsummary(Pool *p)
 {
-	Bhdr *t;
+	print("%s max %lud cur %lud free %lud alloc %lud\n", p->name,
+		p->maxsize, p->cursize, p->curfree, p->curalloc);
+}
 
-	if(b == nil)
+void
+mallocsummary(void)
+{
+	poolsummary(mainmem);
+	poolsummary(imagmem);
+}
+
+void
+tagwithpc(void *v, ulong pc)
+{
+	ulong *u;
+	if(v == nil)
 		return;
-
-	print("%.8lux %.8lux %.8lux %c %4d %d (f %.8lux p %.8lux)\n",
-		b, b->left, b->right, c, d, b->size, b->fwd, b->prev);
-	d++;
-	for(t = b->fwd; t != b; t = t->fwd)
-		print("\t%.8lux %.8lux %.8lux\n", t, t->prev, t->fwd);
-	pooldump(b->left, d, 'l');
-	pooldump(b->right, d, 'r');
+	u = v;
+	u[-2] = pc;
 }
 
-
-void
-poolshow(void)
-{
-	int i;
-
-	for(i = 0; i < table.n; i++) {
-		print("Arena: %s root=%.8lux\n", table.pool[i].name, table.pool[i].root);
-		pooldump(table.pool[i].root, 0, 'R');
-	}
-}
-*/
-
-void
-poolsummary(void)
-{
-	int i;
-
-	for(i = 0; i < table.n; i++)
-		print("Arena: %s cursize=%lud; arenasize=%lud; maxsize=%lud\n",
-			table.pool[i].name,
-			table.pool[i].cursize,
-			table.pool[i].arenasize,
-			table.pool[i].maxsize);
-}
-
-/*
-void
-pooldump(Pool *p)
-{
-	Bhdr *b, *base, *limit, *ptr;
-
-	b = p->chain;
-	if(b == nil)
-		return;
-	base = b;
-	ptr = b;
-	limit = B2LIMIT(b);
-
-	while(base != nil) {
-		print("\tbase #%.8lux ptr #%.8lux", base, ptr);
-		if(ptr->magic == MAGIC_A)
-			print("\tA%.5d\n", ptr->size);
-		else if(ptr->magic == MAGIC_E)
-			print("\tE\tL#%.8lux\tS#%.8lux\n", ptr->clink, ptr->csize);
-		else
-			print("\tF%.5d\tL#%.8lux\tR#%.8lux\tF#%.8lux\tP#%.8lux\tT#%.8lux\n",
-				ptr->size, ptr->left, ptr->right, ptr->fwd, ptr->prev, ptr->parent);
-		ptr = B2NB(ptr);
-		if(ptr >= limit) {
-			print("link to #%.8lux\n", base->clink);
-			base = base->clink;
-			if(base == nil)
-				break;
-			ptr = base;
-			limit = B2LIMIT(base);
-		}
-	}
-	return;
-}
-*/
-
-void
-poolsetparam(char *name, ulong maxsize, int quanta, int chunk, void (*move)(void*, void*))
-{
-	Pool *p;
-	int i;
-
-	for(i=0; i<table.n; i++){
-		p = &table.pool[i];
-		if(strcmp(name, p->name) == 0){
-			if(maxsize != 0)
-				p->maxsize = maxsize;
-			if(quanta != 0)
-				p->quanta = quanta;
-			if(chunk != 0)
-				p->chunk = chunk;
-			if(move != nil)
-				p->move = move;
-			return;
-		}
-	}
-}
-
-int
-poolcompact(Pool *pool)
-{
-	Bhdr *base, *limit, *ptr, *end, *next;
-	int compacted, recov, nb;
-
-	if(pool->move == nil || pool->lastfree == pool->nfree)
-		return 0;
-
-	pool->lastfree = pool->nfree;
-
-	base = pool->chain;
-	ptr = B2NB(base);	/* First Block in arena has clink */
-	limit = B2LIMIT(base);
-	compacted = 0;
-
-	pool->root = nil;
-	end = ptr;
-	recov = 0;
-	while(base != nil) {
-		next = B2NB(ptr);
-		if(ptr->magic == MAGIC_A) {
-			if(ptr != end) {
-				memmove(end, ptr, ptr->size);
-				pool->move(B2D(ptr), B2D(end));
-				recov = (uchar*)ptr - (uchar*)end;
-				compacted = 1;
-			}
-			end = B2NB(end);
-		}
-		if(next >= limit) {
-			nb = (uchar*)limit - (uchar*)end;
-			//print("recovered %d bytes\n", recov);
-			//print("%d bytes at end\n", nb);
-			USED(recov);
-			if(nb > 0){
-				if(nb < pool->quanta+1)
-					panic("poolcompact: leftover too small\n");
-				end->size = nb;
-				pooladd(pool, end);
-			}
-			base = base->clink;
-			if(base == nil)
-				break;
-			ptr = B2NB(base);
-			end = ptr;	/* could do better by copying between chains */
-			limit = B2LIMIT(base);
-			recov = 0;
-		} else
-			ptr = next;
-	}
-
-	return compacted;
-}
-
-int
-recur(Bhdr *t)
-{
-	if(t == 0)
-		return 1;
-	if(((ulong)t) < 0x80000000)
-		return 0;
-	if(((ulong)t) > 0x90000000)
-		return 0;
-	return recur(t->right) && recur(t->left);
-}
-
-enum
-{
-	Hdrspc		= 64,		/* leave room for high-level headers */
-	Bdead		= 0x51494F42,	/* "QIOB" */
-};
-
-struct
-{
-	Lock;
-	ulong	bytes;
-} ialloc;
-
-/*
- *  allocate blocks, round the data base upt to a multiple of BLOCKALIGN.
- */
-Block*
-allocb(int size)
-{
-	Block *b;
-	ulong addr;
-	int n;
-
-	n = sizeof(Block) + size;
-	b = poolalloc(mainmem, n+Hdrspc);
-	if(b == 0)
-		exhausted("Blocks");
-	memset(b, 0, sizeof(Block));
-
-	/* align start of data portion by rounding up */
-	addr = (ulong)b;
-	addr = ROUND(addr + sizeof(Block), BLOCKALIGN);
-	b->base = (uchar*)addr;
-
-	/* align end of data portion by rounding down */
-	b->lim = ((uchar*)b) + msize(b);
-	addr = (ulong)(b->lim);
-	addr = addr & ~(BLOCKALIGN-1);
-	b->lim = (uchar*)addr;
-
-	/* leave sluff at beginning for added headers */
-	b->rp = b->lim - ROUND(size, BLOCKALIGN);
-	if(b->rp < b->base)
-		panic("allocb");
-	b->wp = b->rp;
-	tagwithpc(b, getcallerpc(&size));
-
-	return b;
-}
-
-/*
- *  interrupt time allocation
- */
-Block*
-iallocb(int size)
-{
-	Block *b;
-	ulong addr;
-	int n;
-
-	if(ialloc.bytes > conf.ialloc){
-		print("iallocb: limited %lud/%lud\n",
-			ialloc.bytes, conf.ialloc);
-		return 0;
-	}
-
-	n = sizeof(Block) + size;
-	b = poolalloc(mainmem, n+Hdrspc);
-	if(b == 0){
-		print("iallocb: no memory %lud/%lud\n",
-			ialloc.bytes, conf.ialloc);
-		return nil;
-	}
-	memset(b, 0, sizeof(Block));
-
-	/* align start of data portion by rounding up */
-	addr = (ulong)b;
-	addr = ROUND(addr + sizeof(Block), BLOCKALIGN);
-	b->base = (uchar*)addr;
-
-	/* align end of data portion by rounding down */
-	b->lim = ((uchar*)b) + msize(b);
-	addr = (ulong)(b->lim);
-	addr = addr & ~(BLOCKALIGN-1);
-	b->lim = (uchar*)addr;
-
-	/* leave sluff at beginning for added headers */
-	b->rp = b->lim - ROUND(size, BLOCKALIGN);
-	if(b->rp < b->base)
-		panic("allocb");
-	b->wp = b->rp;
-
-	b->flag = BINTR;
-
-	ilock(&ialloc);
-	ialloc.bytes += b->lim - b->base;
-	iunlock(&ialloc);
-	tagwithpc(b, getcallerpc(&size));
-
-	return b;
-}
-
-void
-freeb(Block *b)
-{
-	void *dead = (void*)Bdead;
-
-	if(b == nil)
-		return;
-
-	/*
-	 * drivers which perform non cache coherent DMA manage their own buffer
-	 * pool of uncached buffers and provide their own free routine.
-	 */
-	if(b->free) {
-		b->free(b);
-		return;
-	}
-	if(b->flag & BINTR) {
-		ilock(&ialloc);
-		ialloc.bytes -= b->lim - b->base;
-		iunlock(&ialloc);
-	}
-
-	/* poison the block in case someone is still holding onto it */
-	b->next = dead;
-	b->rp = dead;
-	b->wp = dead;
-	b->lim = dead;
-	b->base = dead;
-
-	poolfree(mainmem, b);
-}
-
-void
-checkb(Block *b, char *msg)
-{
-	void *dead = (void*)Bdead;
-
-	if(b == dead)
-		panic("checkb b %s %lux", msg, b);
-	if(b->base == dead || b->lim == dead || b->next == dead
-	  || b->rp == dead || b->wp == dead){
-		print("checkb: base 0x%8.8luX lim 0x%8.8luX next 0x%8.8luX\n",
-			b->base, b->lim, b->next);
-		print("checkb: rp 0x%8.8luX wp 0x%8.8luX\n", b->rp, b->wp);
-		panic("checkb dead: %s\n", msg);
-	}
-
-	if(b->base > b->lim)
-		panic("checkb 0 %s %lux %lux", msg, b->base, b->lim);
-	if(b->rp < b->base)
-		panic("checkb 1 %s %lux %lux", msg, b->base, b->rp);
-	if(b->wp < b->base)
-		panic("checkb 2 %s %lux %lux", msg, b->base, b->wp);
-	if(b->rp > b->lim)
-		panic("checkb 3 %s %lux %lux", msg, b->rp, b->lim);
-	if(b->wp > b->lim)
-		panic("checkb 4 %s %lux %lux", msg, b->wp, b->lim);
-
-}
-
-void
-iallocsummary(void)
-{
-	print("ialloc %lud/%lud\n", ialloc.bytes, conf.ialloc);
-}

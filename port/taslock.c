@@ -151,7 +151,7 @@ unlock(Lock *l)
 	if(l->key == 0)
 		print("unlock: not locked: pc %luX\n", getcallerpc(&l));
 	if(l->isilock)
-		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
+		print("unlock of ilock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 	l->pc = 0;
 	l->key = 0;
 	coherence();
@@ -165,7 +165,7 @@ iunlock(Lock *l)
 	if(l->key == 0)
 		print("iunlock: not locked: pc %luX\n", getcallerpc(&l));
 	if(!l->isilock)
-		print("unlock of ilock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
+		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 
 	sr = l->sr;
 	l->pc = 0;

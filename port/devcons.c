@@ -233,7 +233,7 @@ echo(Rune r, char *buf, int n)
 		case 'x':
 			xsummary();
 			ixsummary();
-			poolsummary();
+			mallocsummary();
 			pagersummary();
 			break;
 		case 'd':
@@ -364,6 +364,7 @@ enum{
 	Qsysstat,
 	Qtime,
 	Quser,
+	Qzero,
 };
 
 static Dirtab consdir[]={
@@ -394,6 +395,7 @@ static Dirtab consdir[]={
 	"time",		{Qtime},	NUMSIZE,	0664,
 	"timing",	{Qtiming},	3*8,		0664,
 	"user",		{Quser},	NAMELEN,	0666,
+	"zero",	{Qzero},	0,	0666,
 };
 
 uvlong billion = 1000000000ULL;
@@ -786,6 +788,10 @@ consread(Chan *c, void *buf, long n, vlong off)
 		free(b);
 		return n;
 
+	case Qzero:
+		memset(buf, 0, n);
+		return n;
+
 	default:
 		print("consread %lux\n", c->qid.path);
 		error(Egreg);
@@ -869,7 +875,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 			n = sizeof(cbuf)-1;
 		strncpy(cbuf, a, n);
 		cbuf[n] = 0;
-		f = strtovl(cbuf, 0, 0);
+		f = strtoll(cbuf, 0, 0);
 		if(f <= 0L)
 			error(Ebadarg);
 		fasthz = f;
@@ -883,8 +889,8 @@ conswrite(Chan *c, void *va, long n, vlong off)
 			n = sizeof cbuf - 1;
 		strncpy(cbuf, a, n);
 		cbuf[n] = 0;
-		nsec = strtovl(cbuf, &a, 0);
-		delta = strtovl(a, &a, 0);
+		nsec = strtoll(cbuf, &a, 0);
+		delta = strtoll(a, &a, 0);
 		n = strtol(a, &a, 0);
 		todset(nsec, delta, n);
 		break;
@@ -965,6 +971,9 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		if(sysname[n-1] == '\n')
 			sysname[n-1] = 0;
 		break;
+
+	case Qzero:
+		return n;
 
 	default:
 		print("conswrite: %lud\n", c->qid.path);
