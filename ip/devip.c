@@ -765,7 +765,6 @@ setladdrport(Conv* c, char* str, int announcing)
 				parseip(c->laddr, str);
 			lport = atoi(p);
 		}
-		rv = setluniqueport(c, lport);
 	} else {
 		if(p == nil){
 			setladdr(c);
@@ -777,11 +776,11 @@ setladdrport(Conv* c, char* str, int announcing)
 				parseip(c->laddr, str);
 			lport = atoi(p);
 		}
-		if(lport <= 0)
-			setlport(c);
-		else
-			rv = setluniqueport(c, lport);
 	}
+	if(lport <= 0)
+		setlport(c);
+	else
+		rv = setluniqueport(c, lport);
 	return rv;
 }
 
