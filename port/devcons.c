@@ -27,6 +27,7 @@ static struct
 } kbd;
 
 char	sysname[NAMELEN];
+vlong	fasthz;
 
 static ulong	randomread(void*, ulong);
 static void	randominit(void);
@@ -393,115 +394,6 @@ static Dirtab consdir[]={
 	"user",		{Quser},	NAMELEN,	0666,
 };
 
-ulong	boottime;		/* seconds since epoch at boot */
-
-struct
-{
-	Lock;
-	vlong	hz;		/* frequency of fast clock */
-	vlong	last;		/* last reading of fast clock */
-	vlong	off;		/* offset from epoch to last */
-	vlong	lastns;		/* last return value from gettod */
-	vlong	bias;		/* current bias */
-	vlong	delta;		/* amount to add to bias each slow clock tick */
-	int	n;		/* number of times to add in delta */
-	int	i;		/* number of times we've added in delta */
-} tod;
-
-void
-settod(vlong now, vlong delta, int n)
-{
-	ilock(&tod);
-	tod.last = fastticks(nil);
-	tod.off = now;
-	tod.delta = delta;
-	tod.n = n;
-	tod.i = 0;
-	iunlock(&tod);
-}
-
-// largest vlong devided by 10, 100, ...
-static vlong vlmax[9] = {
-	9223372036LL,
-	92233720368LL,
-	922337203685LL,
-	9223372036854LL,
-	92233720368547LL,
-	922337203685477LL,
-	9223372036854775LL,
-	92233720368547758LL,
-	922337203685477580LL,
-};
-static vlong vlmult[9] = {
-	1000000000LL,
-	100000000LL,
-	10000000LL,
-	1000000LL,
-	100000LL,
-	10000LL,
-	1000LL,
-	100LL,
-	10LL,
-};
-
-vlong
-gettod(void)
-{
-	vlong x;
-	int i;
-
-	ilock(&tod);
-	if(tod.hz == 0)
-		x = fastticks((uvlong*)&tod.hz);
-	else
-		x = fastticks(nil);
-	x -= tod.last;
-
-	/* convert to nanoseconds */
-	for(i = 0; i < 9; i++)
-		if(x < vlmax[i]){
-			x *= vlmult[i];
-			break;
-		}
-	x /= tod.hz;
-	if(i > 0)
-		x *= vlmult[9-i];
-
-	/* convert to epoch */
-	x += tod.off;
-
-	/* add in bias */
-	x += tod.bias;
-
-	if(x < tod.lastns)
-		x = tod.lastns;
-	tod.lastns = x;
-	iunlock(&tod);
-
-	return x;
-}
-
-void
-fixtod(void)
-{
-	ilock(&tod);
-	if(tod.n > tod.i)
-		tod.bias += tod.delta;
-	iunlock(&tod);
-}
-
-long
-seconds(void)
-{
-	vlong x;
-	int i;
-
-	x = gettod();
-	x /= 1000000000LL;
-	i = x;
-	return i;
-}
-
 int
 readvlnum(ulong off, char *buf, ulong n, uvlong val, int size)
 {
@@ -549,6 +441,7 @@ readstr(ulong off, char *buf, ulong n, char *str)
 static void
 consinit(void)
 {
+	todinit();
 	randominit();
 }
 
@@ -718,8 +611,8 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return n;
 
 	case Qfastclock:
-		if(tod.hz == 0L)
-			ticks = fastticks((uvlong*)&tod.hz);
+		if(fasthz == 0L)
+			ticks = fastticks((uvlong*)&fasthz);
 		else
 			ticks = fastticks(nil);
 
@@ -729,7 +622,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 		if(k+n > 4*NUMSIZE)
 			n = 4*NUMSIZE - k;
 		readvlnum(0, tmp, 2*NUMSIZE, ticks, 2*NUMSIZE);
-		readvlnum(0, tmp+2*NUMSIZE, 2*NUMSIZE, tod.hz, 2*NUMSIZE);
+		readvlnum(0, tmp+2*NUMSIZE, 2*NUMSIZE, fasthz, 2*NUMSIZE);
 		memmove(buf, tmp+k, n);
 		return n;
 
@@ -758,17 +651,17 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return 0;
 
 	case Qnsec:
-		x = gettod();
+		x = todget();
 		return readvlnum((ulong)offset, buf, n, x, 2*NUMSIZE);
 
 	case Qmsec:
-		x = gettod();
+		x = todget();
 		x /= 1000000LL;
 		i = x;
 		return readnum((ulong)offset, buf, n, i, NUMSIZE);
 
 	case Qtime:
-		x = gettod();
+		x = todget();
 		x /= 1000000000LL;
 		i = x;
 		return readnum((ulong)offset, buf, n, i, NUMSIZE);
@@ -902,7 +795,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		cbuf[n] = 0;
 		nsec = strtol(cbuf, 0, 0);
 		nsec *= 1000000000LL;
-		settod(nsec, 0, 0);
+		todset(nsec, 0, 0);
 		break;
 
 	case Qfastclock:
@@ -915,7 +808,8 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		f = strtovl(cbuf, 0, 0);
 		if(f <= 0L)
 			error(Ebadarg);
-		tod.hz = f;
+		fasthz = f;
+		todsetfreq(f);
 		break;
 
 	case Qnsec:
@@ -928,7 +822,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		nsec = strtovl(cbuf, &a, 0);
 		delta = strtovl(a, &a, 0);
 		n = strtol(a, &a, 0);
-		settod(nsec, delta, n);
+		todset(nsec, delta, n);
 		break;
 
 	case Qkey:

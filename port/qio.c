@@ -65,6 +65,8 @@ enum
 	Hdrspc		= 64,		/* leave room for high-level headers */
 
 	Bdead		= 0x51494F42,	/* "QIOB" */
+
+	Maxatomic	= 32*1024,
 };
 
 void
@@ -1092,7 +1094,7 @@ qbwrite(Queue *q, Block *b)
 }
 
 /*
- *  write to a queue.  only 128k at a time is atomic.
+ *  write to a queue.  only Maxatomic bytes at a time is atomic.
  */
 int
 qwrite(Queue *q, void *vp, int len)
@@ -1107,8 +1109,8 @@ qwrite(Queue *q, void *vp, int len)
 	sofar = 0;
 	do {
 		n = len-sofar;
-		if(n > 128*1024)
-			n = 128*1024;
+		if(n > Maxatomic)
+			n = Maxatomic;
 
 		b = allocb(n);
 		if(waserror()){
@@ -1143,8 +1145,8 @@ qiwrite(Queue *q, void *vp, int len)
 	sofar = 0;
 	do {
 		n = len-sofar;
-		if(n > 128*1024)
-			n = 128*1024;
+		if(n > Maxatomic)
+			n = Maxatomic;
 
 		b = allocb(n);
 		memmove(b->wp, p+sofar, n);

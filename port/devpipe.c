@@ -294,7 +294,7 @@ pipewrite(Chan *c, void *va, long n, vlong)
 		/* avoid notes when pipe is a mounted queue */
 		if((c->flag & CMSG) == 0)
 			postnote(up, 1, "sys: write on closed pipe", NUser);
-		error(Ehungup);
+		nexterror();
 	}
 
 	p = c->aux;
@@ -326,7 +326,7 @@ pipebwrite(Chan *c, Block *bp, ulong)
 		/* avoid notes when pipe is a mounted queue */
 		if((c->flag & CMSG) == 0)
 			postnote(up, 1, "sys: write on closed pipe", NUser);
-		error(Ehungup);
+		nexterror();
 	}
 
 	p = c->aux;

@@ -152,4 +152,5 @@ ether589link(void)
 {
 	addethercard("3C589", reset);
 	addethercard("3C562", reset);
+	addethercard("589E", reset);
 }

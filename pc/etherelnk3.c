@@ -1399,11 +1399,22 @@ tcm59Xpci(void)
 	}
 }
 
+static char* tcmpcmcia[] = {
+	"3C589",			/* 3COM 589[ABCD] */
+	"3C562",			/* 3COM 562 */
+	"589E",				/* 3COM Megahertz 589E */
+	nil,
+};
+
 static int
 tcm5XXpcmcia(Ether* ether)
 {
-	if(!cistrcmp(ether->type, "3C589") || !cistrcmp(ether->type, "3C562"))
-		return ether->port;
+	int i;
+
+	for(i = 0; tcmpcmcia[i] != nil; i++){
+		if(!cistrcmp(ether->type, tcmpcmcia[i]))
+			return ether->port;
+	}
 
 	return 0;
 }

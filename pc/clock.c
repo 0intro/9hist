@@ -42,7 +42,6 @@ clockintr(Ureg* ureg, void*)
 	m->ticks++;
 	if(m->proc)
 		m->proc->pc = ureg->pc;
-	fixtod();
 
 	accounttime();
 	if(kproftimer != nil)

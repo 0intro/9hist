@@ -885,7 +885,7 @@ audioclose(Chan *c)
 				b = audio.filling;
 				if(b) {
 					audio.filling = 0;
-					memset(b->virt, 0, Bufsize-audio.curcount);
+					memset(b->virt+audio.curcount, 0, Bufsize-audio.curcount);
 					swab(b->virt);
 					putbuf(&audio.full, b);
 				}
