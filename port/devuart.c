@@ -350,6 +350,7 @@ uartctl(Uart *p, char *cmd)
 		switch(*f[i]){
 		case 'B':
 		case 'b':
+			sleep(&p->r, uartdrained, p);
 			if((*p->phys->baud)(p, n) < 0)
 				return -1;
 			break;
@@ -359,6 +360,7 @@ uartctl(Uart *p, char *cmd)
 			break;
 		case 'D':
 		case 'd':
+			sleep(&p->r, uartdrained, p);
 			(*p->phys->dtr)(p, n);
 			break;
 		case 'E':
@@ -379,19 +381,23 @@ uartctl(Uart *p, char *cmd)
 			break;
 		case 'i':
 		case 'I':
+			sleep(&p->r, uartdrained, p);
 			(*p->phys->fifo)(p, n);
 			break;
 		case 'K':
 		case 'k':
+			sleep(&p->r, uartdrained, p);
 			(*p->phys->dobreak)(p, n);
 			break;
 		case 'L':
 		case 'l':
+			sleep(&p->r, uartdrained, p);
 			if((*p->phys->bits)(p, n) < 0)
 				return -1;
 			break;
 		case 'm':
 		case 'M':
+			sleep(&p->r, uartdrained, p);
 			(*p->phys->modemctl)(p, n);
 			break;
 		case 'n':
@@ -401,6 +407,7 @@ uartctl(Uart *p, char *cmd)
 			break;
 		case 'P':
 		case 'p':
+			sleep(&p->r, uartdrained, p);
 			if((*p->phys->parity)(p, *(f[i]+1)) < 0)
 				return -1;
 			break;
@@ -413,10 +420,12 @@ uartctl(Uart *p, char *cmd)
 			break;
 		case 'R':
 		case 'r':
+			sleep(&p->r, uartdrained, p);
 			(*p->phys->rts)(p, n);
 			break;
 		case 'S':
 		case 's':
+			sleep(&p->r, uartdrained, p);
 			if((*p->phys->stop)(p, n) < 0)
 				return -1;
 			break;
@@ -477,7 +486,6 @@ uartwrite(Chan *c, void *buf, long n, vlong)
 		}
 
 		/* let output drain */
-		sleep(&p->r, uartdrained, p);
 		if(uartctl(p, cmd) < 0)
 			error(Ebadarg);
 
