@@ -65,9 +65,9 @@ struct Conf
 {
 	int	nmach;		/* processors */
 	int	nproc;		/* processes */
+	ulong	monitor;	/* graphics monitor id; 0 for none */
 	char	ss2;		/* is a sparcstation 2 */
 	char	ss2cachebug;	/* has sparcstation2 cache bug */
-	char	monitor;	/* has graphics monitor */
 	int	ncontext;	/* in mmu */
 	int	npmeg;
 	int	vacsize;	/* size of virtual address cache, in bytes */

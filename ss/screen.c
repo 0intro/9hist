@@ -22,14 +22,16 @@ struct{
 
 void	(*kprofp)(ulong);
 
-GBitmap	gscreen =
+GBitmap gscreen;
+
+struct screens
 {
-	(ulong*)SCREENSEGM,
-	0,
-	1152/32,
-	0,
-	{0, 0, 1152, 900},
-	{0, 0, 1152, 900},
+	ulong	type;
+	int	x;
+	int	y;
+	int	ld;
+}screens[] = {
+	{ 0xFE010104, 1152, 900, 0 },
 	0
 };
 
@@ -38,8 +40,27 @@ Lock screenlock;
 void
 screeninit(void)
 {
-	if(!conf.monitor)
-		return;
+	struct screens *s;
+
+	for(s=screens; s->type; s++)
+		if(s->type == conf.monitor)
+			goto found;
+	/* default is 0th element of table */
+	if(conf.monitor){
+		s = screens;
+		goto found;
+	]
+	conf.monitor = 0;
+	return;
+
+    found:
+	gscreen.base = (ulong*)SCREENSEGM;
+	gscreen.zero = 0;
+	gscreen.width = (s->x<<s->ld)/32;
+	gscreen.ldepth = s->ld;
+	gscreen.r = Rect(0, 0, s->x, s->y);
+	gscreen.clipr = gscreen.r;
+	gscreen.cache = 0;
 	defont = &defont0;
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 	out.pos.x = MINX;

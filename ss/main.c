@@ -5,18 +5,18 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"init.h"
-#include	"rom.h"
 
 #include	<libg.h>
 #include	<gnot.h>
 
 uchar	*intrreg;
 uchar	idprom[32];
-ROM	*rom;		/* open boot rom vector */
+ulong	rom;		/* open boot rom vector */
 int	cpuserver;
-void	(*romputcxsegm)(int, ulong, int);
+ulong	romputcxsegm;
 ulong	bank[2];
 char	mempres[256];
+Label	catch;
 
 typedef struct Sysparam Sysparam;
 struct Sysparam
@@ -29,18 +29,17 @@ struct Sysparam
 	int	ncontext;	/* Number of MMU contexts */
 	int	npmeg;		/* Number of process maps */
 	char	cachebug;	/* Machine needs cache bug work around */
-	char	monitor;	/* Needs to be computed */
 	int	memscan;	/* Number of Meg to scan looking for memory */
 }
 sysparam[] =
 {
-	{ 0x51, "1 4/60",   0, 65536, 16,  8, 128, 0, 1, 64 },
-	{ 0x52, "IPC 4/40", 0, 65536, 16,  8, 128, 0, 1, 64 },
-	{ 0x53, "1+ 4/65",  0, 65536, 16,  8, 128, 0, 1, 64 },
-	{ 0x54, "SLC 4/20", 0, 65536, 16,  8, 128, 0, 1, 64 },
-	{ 0x55, "2 4/75",   1, 65536, 32, 16, 256, 1, 0, 64 },
-	{ 0x56, "ELC 4/25", 1, 65536, 32, 16, 256, 1, 0, 64 },
-	{ 0x57, "IPX 4/50", 1, 65536, 32, 16, 256, 1, 0, 64 },
+	{ 0x51, "1 4/60",   0, 65536, 16,  8, 128, 0, 64 },
+	{ 0x52, "IPC 4/40", 0, 65536, 16,  8, 128, 0, 64 },
+	{ 0x53, "1+ 4/65",  0, 65536, 16,  8, 128, 0, 64 },
+	{ 0x54, "SLC 4/20", 0, 65536, 16,  8, 128, 0, 64 },
+	{ 0x55, "2 4/75",   1, 65536, 32, 16, 256, 1, 64 },
+	{ 0x56, "ELC 4/25", 1, 65536, 32, 16, 256, 1, 64 },
+	{ 0x57, "IPX 4/50", 1, 65536, 32, 16, 256, 1, 64 },
 	{ 0 }
 };
 Sysparam *sparam;
@@ -54,16 +53,15 @@ main(void)
 	machinit();
 	active.exiting = 0;
 	active.machs = 1;
+	trapinit();
 	confinit();
 	xinit();
 	mmuinit();
-	if(conf.monitor)
-		screeninit();
+	screeninit();
 	printinit();
-	trapinit();
 	kmapinit();
 	ioinit();
-	if(!conf.monitor)
+	if(conf.monitor == 0)
 		sccspecial(2, &printq, &kbdq, 9600);
 	pageinit();
 	cacheinit();
@@ -90,7 +88,7 @@ intrinit(void)
 void
 systemreset(void)
 {
-	delay(100);
+	delay(200);
 	putenab(ENABRESET);
 }
 
@@ -137,6 +135,7 @@ init0(void)
 
 	print("Sun Sparcstation %s\n", sparam->name);
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
+	print("frame buffer id %lux\n", conf.monitor);
 
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
@@ -286,6 +285,19 @@ confinit(void)
 		*(ulong*)va = 0;
 	putw4(va, INVALIDPTE);
 
+	/* map frame buffer id */
+	putw4(va, ((FRAMEBUFID>>PGSHIFT)&0xFFFF)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEIO);
+	i = getpsr();
+	conf.monitor = 0;
+	/* if frame buffer not present, we will trap, so prepare to catch it */
+	if(setlabel(&catch) == 0){
+		setpsr(i|PSRET|(0xF<<8));	/* enable traps, not interrupts */
+		conf.monitor = *(ulong*)va;
+	}
+	setpsr(i);
+	catch.pc = 0;
+	putw4(va, INVALIDPTE);
+
 	for(sparam = sysparam; sparam->id; sparam++)
 		if(sparam->id == idprom[1])
 			break;
@@ -300,7 +312,6 @@ confinit(void)
 	conf.ncontext = sparam->ncontext;
 	conf.npmeg = sparam->npmeg;
 	conf.ss2cachebug = sparam->cachebug;
-	conf.monitor = sparam->monitor;		/* BUG */
 
 	/* Chart memory */
 	scanmem(mempres, sparam->memscan);
@@ -333,7 +344,7 @@ confinit(void)
 			conf.upages +=  i - ((6*MB)/BY2PG);
 	}
 
-	romputcxsegm = rom->putcxsegm;
+	romputcxsegm = *(ulong*)(rom+260);
 
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);

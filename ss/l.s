@@ -342,6 +342,12 @@ TEXT	getpsr(SB), $0
 	MOVW	PSR, R7
 	RETURN
 
+TEXT	setpsr(SB), $0
+
+	MOVW	R7, PSR
+	NOOP
+	RETURN
+
 TEXT	putsegm(SB), $0
 
 	MOVW	4(FP), R8

@@ -1,4 +1,5 @@
-#define	DISPLAYRAM	0x1E800000
+#define	FRAMEBUFID	0xFE000000
+#define	DISPLAYRAM	0xFE800000
 #define	EPROM		0xF6000000
 #define	CLOCK		0xF3000000
 #define	CLOCKFREQ	1000000		/* one microsecond increments */

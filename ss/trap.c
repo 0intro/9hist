@@ -11,6 +11,7 @@ void	noted(Ureg**, ulong);
 void	rfnote(Ureg**);
 int	domuldiv(ulong, Ureg*);
 
+extern	Label catch;
 extern	void traplink(void);
 extern	void syslink(void);
 
@@ -102,12 +103,18 @@ trap(Ureg *ur)
 	char buf[64];
 	ulong tbr, iw;
 
+	tbr = (ur->tbr&0xFFF)>>4;
+	/*
+	 * Hack to catch bootstrap fault during probe
+	 */
+	if(catch.pc)
+		longjmp(&catch, 1);
+
 	if(u)
 		u->dbgreg = ur;
 
 	fpunsafe = 0;
 	user = !(ur->psr&PSRPSUPER);
-	tbr = (ur->tbr&0xFFF)>>4;
 	/* SS2 bug: flush cache line holding trap entry in table */
 	if(conf.ss2cachebug)
 		putsysspace(CACHETAGS+((TRAPS+16*tbr)&(conf.vacsize-1)), 0);
