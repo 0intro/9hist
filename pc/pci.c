@@ -41,7 +41,7 @@ pciscan(int bno, Pcidev** list)
 
 	maxubn = bno;
 	head = tail = 0;
-	for(dno = 0; dno < pcimaxdno; dno++){
+	for(dno = 0; dno <= pcimaxdno; dno++){
 		maxfno = 0;
 		for(fno = 0; fno <= maxfno; fno++){
 			/*
@@ -191,7 +191,7 @@ pcicfgrw8(int tbdf, int rno, int data, int read)
 	else
 		type = 0x00;
 	x = -1;
-	if(BUSDNO(tbdf) >= pcimaxdno)
+	if(BUSDNO(tbdf) > pcimaxdno)
 		return x;
 
 	lock(&pcicfglock);
@@ -248,7 +248,7 @@ pcicfgrw16(int tbdf, int rno, int data, int read)
 	else
 		type = 0x00;
 	x = -1;
-	if(BUSDNO(tbdf) >= pcimaxdno)
+	if(BUSDNO(tbdf) > pcimaxdno)
 		return x;
 
 	lock(&pcicfglock);
@@ -305,7 +305,7 @@ pcicfgrw32(int tbdf, int rno, int data, int read)
 	else
 		type = 0x00;
 	x = -1;
-	if(BUSDNO(tbdf) >= pcimaxdno)
+	if(BUSDNO(tbdf) > pcimaxdno)
 		return x;
 
 	lock(&pcicfglock);
