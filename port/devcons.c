@@ -135,7 +135,7 @@ print(char *fmt, ...)
 }
 
 int
-fprint(int, char *fmt, ...)	/* needed so we can use user-level libg */
+fprint(int, char *fmt, ...)
 {
 	char buf[PRINTSIZE];
 	va_list arg;
