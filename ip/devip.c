@@ -500,26 +500,27 @@ setlport(Conv* c)
 	int x, found;
 
 	p = c->p;
-	/*
-	 * For compatibility with old Plan9/Brazil systems restrict
-	 * the port number for now such that it can't sign-extend on
-	 * the other end.
-	 */
-	while(p->nextport < 5000 || p->nextport >= (1<<15))
-		p->nextport = nrand(1<<16);
-
 	if(c->restricted)
 		pp = &p->nextrport;
 	else
 		pp = &p->nextport;
 	lock(p);
 	for(;;(*pp)++){
-		if(*pp == 0 || *pp >= (1<<15)) {	/* BSD hack */
-			if(c->restricted)
+		/*
+		 * Fsproto initialises p->nextport to 0 and the restricted
+		 * ports (p->nextrport) to 600.
+		 * Restricted ports must lie between 600 and 1024.
+		 * For the initial condition or if the unrestricted port number
+		 * has wrapped round, select a random port between 5000 and 1<<16
+		 * to start at.
+		 */
+		if(c->restricted){
+			if(*pp >= 1024)
 				*pp = 600;
-			else
-				*pp = 5000;
 		}
+		else while(*pp < 5000)
+			*pp = nrand(1<<16);
+
 		found = 0;
 		for(x = 0; x < p->nc; x++){
 			if(p->conv[x] == nil)
