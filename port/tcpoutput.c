@@ -93,6 +93,7 @@ tcp_output(Ipconv *s)
 		stop_timer(&tcb->acktimer);
 
 		tcb->flags &= ~FORCE;
+		tcprcvwin(s);
 
 		seg.source = s->psrc;
 		seg.dest = s->pdst;

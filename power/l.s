@@ -175,6 +175,7 @@ TEXT	puttlb(SB), $4
 	NOOP
 	JAL	splx(SB)
 	RET
+
 index:
 	TLBWI
 	NOOP
@@ -238,6 +239,52 @@ TEXT	gettlbvirt(SB), $0
 
 TEXT	vector80(SB), $-4
 
+	MOVW	$exception(SB), R26
+	JMP	(R26)
+
+TEXT	vector0(SB), $-4
+
+	MOVW	$utlbmiss(SB), R26
+	MOVW	M(TLBVIRT), R27
+	SLL	$(STLBLOG-9), R27		/* delay slot fodder */
+	JMP	(R26)
+
+TEXT	utlbmiss(SB), $-4
+
+	SRL	$(STLBLOG), R27, R26
+	XOR	R26, R27
+	AND	$((STLBSIZE-1)<<3), R27
+	MOVW	R27, M(TLBPHYS)			/* scratch register, store */
+
+	MOVW	$((MACHADDR+4) & 0xffff0000), R26
+	MOVW	$MPID, R27
+	MOVB	3(R27), R27
+	AND	$7, R27
+	SLL	$PGSHIFT, R27
+	ADDU	R27, R26
+	
+	MOVW	M(TLBPHYS), R27			/* scratch register, load */
+	MOVW	((MACHADDR+4) & 0xffff)(R26), R26
+	ADDU	R26, R27
+	MOVW	4(R27), R26
+	MOVW	R26, M(TLBPHYS)
+
+	MOVW	M(TLBVIRT), R26
+	MOVW	(R27), R27
+	BNE	R26, R27, stlbm
+
+	TLBP
+	MOVW	M(EPC), R27
+	MOVW	M(INDEX), R26
+	BGEZ	R26, uind
+	TLBWR
+	NOOP
+	RFE	(R27)
+uind:
+	TLBWI
+	NOOP
+	RFE	(R27)		
+stlbm:	
 	MOVW	$exception(SB), R26
 	JMP	(R26)
 

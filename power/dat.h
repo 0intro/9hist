@@ -18,6 +18,7 @@ typedef struct Label	Label;
 typedef struct List	List;
 typedef struct Lock	Lock;
 typedef struct Mach	Mach;
+typedef struct Softtlb	Softtlb;
 typedef struct Mount	Mount;
 typedef struct Mtab	Mtab;
 typedef struct Note	Note;
@@ -218,10 +219,16 @@ struct Envp
 	int	chref;			/* # chans from pgrp pointing here */
 };
 
+struct Softtlb
+{
+	ulong	virt;
+	ulong	phys;
+};
+
 struct Mach
 {
-	int	machno;			/* physical id of processor */
-	int	mmask;			/* 1<<m->machno */
+	int	machno;			/* physical id of processor NB. MUST BE FIRST */
+	Softtlb *stb;			/* Software tlb simulation NB. MUST BE SECOND */
 	ulong	ticks;			/* of the clock since boot time */
 	Proc	*proc;			/* current process on this processor */
 	Label	sched;			/* scheduler wakeup */
@@ -230,6 +237,15 @@ struct Mach
 	char	pidhere[NTLBPID];	/* is this pid possibly in this mmu? */
 	int	lastpid;		/* last pid allocated on this machine */
 	Proc	*pidproc[NTLBPID];	/* process that owns this tlbpid on this mach */
+
+	int	tlbfault;
+	int	tlbpurge;
+	int	pfault;
+	int	cs;
+	int	syscall;
+	int	spinlock;
+	int	intr;
+
 	int	stack[1];
 };
 

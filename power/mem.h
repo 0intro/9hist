@@ -96,6 +96,11 @@
 #define	PTEWRITE	(1<<10)
 #define PTERONLY	0
 #define	PTEPID(n)	((n)<<6)
+#define TLBPID(n)	(((n)>>6)&0x3F)
+
+/* N.B. MUST CHANGE l.s utlbmiss if you want to change this */
+#define STLBLOG		13
+#define STLBSIZE	(1<<STLBLOG)
 
 #define	NTLBPID	64	/* number of pids */
 #define	NTLB	64	/* number of entries */

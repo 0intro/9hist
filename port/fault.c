@@ -16,7 +16,7 @@ fault(ulong addr, int read)
 	char *l;
 	Page *pg;
 	int zeroed = 0, head = 1;
-	int i;
+	int i, touched = 0;
 	KMap *k, *k1;
 
 	s = seg(u->p, addr);
@@ -61,6 +61,7 @@ fault(ulong addr, int read)
 			pte = opte;
 	}
 	if(pte->page == 0){
+		touched = 1;
 		if(o->chan==0 || addr>(o->va+(o->maxca-o->minca))){
 			/*
 			 * Zero fill page.  If we are really doing a copy-on-write
@@ -114,7 +115,7 @@ fault(ulong addr, int read)
 	if((o->flag & OWRPERM) && (conf.copymode || !read)
 	&& ((head && ((o->flag&OPURE) || o->nproc>1))
 	    || (!head && pte->page->ref>1))){
-
+		touched = 1;
 		/*
 		 * Look for the easy way out: are we the last non-modified?
 		 */
@@ -194,6 +195,8 @@ fault(ulong addr, int read)
 		panic("addr %lux seg %d wrong proc in tail", addr, s-u->p->seg);
 	}
 	unlock(o);
+	if(touched == 0)
+		m->tlbfault++;
 	putmmu(mmuvirt, mmuphys);
 	return 0;
 }

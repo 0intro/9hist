@@ -17,6 +17,7 @@ faultmips(Ureg *ur, int user, int code)
 	extern char *excname[];
 	int read;
 
+	m->pfault++;
 	addr = ur->badvaddr;
 	addr &= ~(BY2PG-1);
 	read = !(code==CTLBM || code==CTLBS);

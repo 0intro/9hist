@@ -30,6 +30,7 @@ enum
 void
 bit3send(Bit3msg *bp, ulong cmd, void *addr, ulong count)
 {
+
 	do; while(*BIT3ADDR);
 	bp->cmd = cmd;
 	bp->addr = (ulong)addr;
@@ -38,6 +39,7 @@ bit3send(Bit3msg *bp, ulong cmd, void *addr, ulong count)
 	wbflush();
 	do; while(*BIT3HOLD);
 	*BIT3INTR = 0x20;
+
 }
 
 void

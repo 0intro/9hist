@@ -47,6 +47,8 @@ struct{
 	PTEA	*free;
 }modalloc;
 
+extern long end;
+
 /*
  * Called to allocate permanent data structures, before calling pageinit().
  */

@@ -223,6 +223,14 @@ struct Mach
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	int	fpstate;		/* state of fp registers on machine */
+
+	int	tlbfault;
+	int	pfault;
+	int	cs;
+	int	syscall;
+	int	spinlock;
+	int	intr;
+
 	int	stack[1];
 };
 

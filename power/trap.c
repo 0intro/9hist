@@ -151,6 +151,7 @@ trap(Ureg *ur)
 				sprint(buf, "sys: fp: %s FCR31 %lux", fpexcname(x), x);
 			else
 				sprint(buf, "sys: trap: %s[%d]", excname[ecode], m->machno);
+
 			postnote(u->p, 1, buf, NDebug);
 		}else{
 			print("%s %s pc=%lux\n", user? "user": "kernel", excname[ecode], ur->pc);
@@ -182,6 +183,7 @@ intr(Ureg *ur)
 	ulong cause;
 	static int bogies;
 
+	m->intr++;
 	cause = ur->cause&(INTR5|INTR4|INTR3|INTR2|INTR1);
 	if(cause & (INTR2|INTR4)){
 		clock(ur);
@@ -237,6 +239,7 @@ intr(Ureg *ur)
 			print("new pend %ux\n", xxx);
 			npend = pend |= xxx;
 			i = SBCCREG->flevel;
+			USED(i);
 		}
 
 		/*
@@ -468,6 +471,7 @@ syscall(Ureg *aur)
 	Ureg *ur;
 	char *msg;
 
+	m->syscall++;
 	u->p->insyscall = 1;
 	ur = aur;
 	u->p->pc = ur->pc;		/* BUG */

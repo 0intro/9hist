@@ -84,6 +84,7 @@ sched(void)
 
 	if(u){
 		splhi();
+		m->cs++;
 		procsave(procstate, sizeof(procstate));
 		if(setlabel(&u->p->sched)){	/* woke up */
 			p = u->p;
@@ -190,6 +191,7 @@ loop:
 		p->exiting = 0;
 		p->pgrp = 0;
 		p->fpstate = FPinit;
+		p->kp = 0;
 		memset(p->pidonmach, 0, sizeof p->pidonmach);
 		memset(p->seg, 0, sizeof p->seg);
 		lock(&pidalloc);
@@ -327,13 +329,18 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	int s;
 	Rendez *r;
 
+	SET(k);
+	USED(k);
+
 	if(dolock)
 		lock(&p->debug);
+
 	if(p != u->p){
 		k = kmap(p->upage);
 		up = (User*)VA(k);
-	}else
+	}else 
 		up = u;
+
 	if(flag!=NUser && (up->notify==0 || up->notified))
 		up->nnote = 0;	/* force user's hand */
 	else if(up->nnote == NNOTE-1){

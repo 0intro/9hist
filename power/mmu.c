@@ -25,6 +25,7 @@ mapstack(Proc *p)
 	tlbvirt = USERADDR | PTEPID(tp);
 	tlbphys = p->upage->pa | PTEWRITE | PTEVALID | PTEGLOBL;
 	puttlbx(0, tlbvirt, tlbphys);
+	putstlb(tlbvirt, tlbphys);
 	u = (User*)USERADDR;
 }
 
@@ -34,19 +35,44 @@ mapstack(Proc *p)
 int
 newtlbpid(Proc *p)
 {
-	int i;
+	int i, s;
 	Proc *sp;
-
+	char *h;
+/*
+	s = m->lastpid;
+	if(s >= NTLBPID)
+		s = 1;
+	i = s;
+	h = m->pidhere;
+	do{
+		i++;
+		if(i >= NTLBPID)
+			i = 1;
+	}while(h[i] && i != s);
+	
+	if(i == s){
+		sp = m->pidproc[i];
+		if(sp){
+			if(sp->pidonmach[m->machno] == i)
+				sp->pidonmach[m->machno] = 0;
+			purgetlb(i);
+		}
+	}
+*/
 	i = m->lastpid+1;
 	if(i >= NTLBPID)
 		i = 1;
 	sp = m->pidproc[i];
 	if(sp){
+		if(sp->pidonmach[m->machno] == i)
+			sp->pidonmach[m->machno] = 0;
+
 		sp->pidonmach[m->machno] = 0;
 		purgetlb(i);
 	}
-	m->pidproc[i] = p;
+
 	m->lastpid = i;
+	m->pidproc[i] = p;
 	return i;
 }
 
@@ -68,6 +94,7 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 		p->pidonmach[m->machno] = tp;
 	}
 	tlbvirt |= PTEPID(tp);
+	putstlb(tlbvirt, tlbphys);
 	puttlb(tlbvirt, tlbphys);
 	m->pidhere[tp] = 1;
 	p->state = Running;
@@ -77,18 +104,38 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 void
 purgetlb(int pid)
 {
+	Softtlb *entry, *etab;
+	char p[NTLBPID];
+	Proc *sp;
 	int i, rpid;
 
-	if(m->pidhere[pid] == 0)
+	if(m->pidproc[pid] == 0)
 		return;
-	memset(m->pidhere, 0, sizeof m->pidhere);
-	for(i=TLBROFF; i<NTLB; i++){
-		rpid = (gettlbvirt(i)>>6) & 0x3F;
-		if(rpid == pid)
+
+	m->tlbpurge++;
+	m->pidproc[pid] = 0;
+	memset(p, 0, sizeof p);
+	for(i=TLBROFF; i<NTLB; i++)
+		if(TLBPID(gettlbvirt(i)) == pid)
 			puttlbx(i, KZERO | PTEPID(i), 0);
-		else
-			m->pidhere[rpid] = 1;
+	entry = m->stb;
+	etab = &entry[STLBSIZE];
+	for(; entry < etab; entry++){
+		rpid = TLBPID(entry->virt);
+		if(rpid == pid){
+			entry->phys = 0;
+			entry->virt = 0;
+		}else
+			p[rpid] = 1;
 	}
+	for(i = 0; i < NTLBPID; i++)
+		if(p[i] == 0){
+			sp = m->pidproc[i];
+			if(sp && sp->pidonmach[m->machno] == i)
+				sp->pidonmach[m->machno] = 0;
+			m->pidproc[i] = 0;
+			m->pidhere[i] = 0;
+		}
 }
 
 void
@@ -111,4 +158,17 @@ void
 invalidateu(void)
 {
 	puttlbx(0, KZERO | PTEPID(0), 0);
+	putstlb(KZERO | PTEPID(0), 0);
+}
+
+void
+putstlb(ulong tlbvirt, ulong tlbphys)
+{
+	Softtlb *entry;
+
+	entry = &m->stb[((tlbvirt<<1) ^ (tlbvirt>>12)) & (STLBSIZE-1)];
+	entry->phys = tlbphys;
+	entry->virt = tlbvirt;
+	if(tlbphys == 0)
+		entry->virt = 0;
 }

@@ -61,7 +61,18 @@ dupwalk(Chan *c, char *name)
 void
 dupstat(Chan *c, char *db)
 {
-	devstat(c, db, (Dirtab *)0, 0L, dupgen);
+	int fd;
+	Chan *f;
+
+	if(c->qid.path == CHDIR){
+		devstat(c, db, (Dirtab *)0, 0L, dupgen);
+	}else{
+		fd = c->qid.path;
+		SET(f);
+		if(fd<0 || NFD<=fd || (f=u->fd[fd])==0)
+			error(Ebadfd);
+		(*devtab[f->type].stat)(f, (char*)db);
+	}
 }
 
 Chan *

@@ -8,6 +8,11 @@
 #include	"init.h"
 
 /*
+ * software tlb simulation
+ */
+Softtlb stlb[4][STLBSIZE];
+
+/*
  *  args passed by boot process
  */
 int _argc; char **_argv; char **_env;
@@ -77,7 +82,7 @@ machinit(void)
 	n = m->machno;
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
-	m->mmask = 1<<m->machno;
+	m->stb = &stlb[n][0];
 }
 
 void
@@ -100,7 +105,7 @@ vecinit(void)
 	for(size=0; size<4; size++)
 		*p++ = *q++;
 	p = (ulong*)UTLBMISS;
-	q = (ulong*)vector80;
+	q = (ulong*)vector0;
 	for(size=0; size<4; size++)
 		*p++ = *q++;
 }

@@ -320,6 +320,7 @@ enum{
 	Qtime,
 	Quser,
 	Qvmereset,
+	Qsysstat,
 };
 
 Dirtab consdir[]={
@@ -334,6 +335,7 @@ Dirtab consdir[]={
 	"time",		{Qtime},	12,	0600,
 	"user",		{Quser},	0,	0600,
 	"vmereset",	{Qvmereset},	0,	0600,
+	"sysstat",	{Qsysstat},	0,	0600,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
@@ -443,13 +445,14 @@ consclose(Chan *c)
 long
 consread(Chan *c, void *buf, long n, ulong offset)
 {
-	int ch, i, j, k;
+	int ch, i, j, k, id;
 	ulong l;
 	uchar *out;
 	char *cbuf = buf;
 	char *user;
 	int userlen;
-	char tmp[6*NUMSIZE];
+	char tmp[6*NUMSIZE], xbuf[512];
+	Mach *mp;
 
 	if(n <= 0)
 		return n;
@@ -532,6 +535,18 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	case Qlog:
 		return readlog(offset, buf, n);
 
+	case Qsysstat:
+		j = 0;
+		for(id = 0; id < 32; id++) {
+			if(active.machs & (1<<id)) {
+				mp = MACHP(id);
+				j += sprint(&xbuf[j], "%d %d %d %d %d %d %d %d\n",
+					id, mp->cs, mp->intr, mp->syscall, mp->pfault,
+					    mp->tlbfault, mp->tlbpurge, mp->spinlock);
+			}
+		}
+
+		return readstr(offset, buf, n, xbuf);
 	case Qnull:
 		return 0;
 
@@ -547,7 +562,9 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	char cbuf[64];
 	char buf[256];
 	long l, m;
+	int id;
 	char *a = va;
+	Mach *mp;
 
 	switch(c->qid.path){
 	case Qcons:
@@ -601,7 +618,21 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			error(Eperm);
 		vmereset();
 		break;
+	case Qsysstat:
+		for(id = 0; id < 32; id++) {
+			if(active.machs & (1<<id)) {
+				mp = MACHP(id);
+				mp->cs = 0;
+				mp->intr = 0;
+				mp->syscall = 0;
+				mp->pfault = 0;
+				mp->tlbfault = 0;
+				mp->tlbpurge = 0;
+				mp->spinlock = 0;
+			}
+		}
 
+		break;
 	default:
 		error(Egreg);
 	}
