@@ -228,11 +228,11 @@ ioinit(int mapeisa)
 	 *  Set the 8259 as master with edge triggered
 	 *  input with fully nested interrupts.
 	 */
-	EISAOUTB(Int0ctl, 0x11);		/* ICW1 - edge triggered, master,
-						   ICW4 will be sent */
-	EISAOUTB(Int0aux, Int0vec);		/* ICW2 - interrupt vector offset */
-	EISAOUTB(Int0aux, 0x04);		/* ICW3 - have slave on level 2 */
-	EISAOUTB(Int0aux, 0x01);		/* ICW4 - 8086 mode, not buffered */
+	EISAOUTB(Int0ctl, 0x11);	/* ICW1 - edge triggered, master,
+					   ICW4 will be sent */
+	EISAOUTB(Int0aux, Int0vec);	/* ICW2 - interrupt vector offset */
+	EISAOUTB(Int0aux, 0x04);	/* ICW3 - have slave on level 2 */
+	EISAOUTB(Int0aux, 0x01);	/* ICW4 - 8086 mode, not buffered */
 
 	/*
 	 *  Set up the second 8259 interrupt processor.
@@ -240,11 +240,11 @@ ioinit(int mapeisa)
 	 *  Set the 8259 as master with edge triggered
 	 *  input with fully nested interrupts.
 	 */
-	EISAOUTB(Int1ctl, 0x11);		/* ICW1 - edge triggered, master,
-						   ICW4 will be sent */
-	EISAOUTB(Int1aux, Int1vec);		/* ICW2 - interrupt vector offset */
-	EISAOUTB(Int1aux, 0x02);		/* ICW3 - I am a slave on level 2 */
-	EISAOUTB(Int1aux, 0x01);		/* ICW4 - 8086 mode, not buffered */
+	EISAOUTB(Int1ctl, 0x11);	/* ICW1 - edge triggered, master,
+					   ICW4 will be sent */
+	EISAOUTB(Int1aux, Int1vec);	/* ICW2 - interrupt vector offset */
+	EISAOUTB(Int1aux, 0x02);	/* ICW3 - I am a slave on level 2 */
+	EISAOUTB(Int1aux, 0x01);	/* ICW4 - 8086 mode, not buffered */
 
 	/*
 	 *  pass #2 8259 interrupts to #1

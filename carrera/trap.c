@@ -319,7 +319,6 @@ intr(Ureg *ur)
 	}
 	if(cause & INTR2) {
 		isr = IO(ulong, R4030Isr);
-
 		if(isr & (1<<5)) {
 			audiodmaintr();
 			isr &= ~(1<<5);

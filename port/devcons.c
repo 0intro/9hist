@@ -146,6 +146,7 @@ panic(char *fmt, ...)
 
 	exit(1);
 }
+
 int
 pprint(char *fmt, ...)
 {

@@ -10,6 +10,7 @@ enum
 	Eisaphys	= 0x90000000,	/* IO port physical */
 	Devicevirt	= 0xE0000000,
 	Dmabase		= 0xE0000000,	
+	  R4030ier	= 0xE00000E8,	/* Interrupt enable register */
 	  R4030Isr	= 0xE0000204,	/* Interrupt status register */
 	  R4030Et	= 0xE000020C,	/* Eisa error type */
 	  R4030Rfa	= 0xE000003C,	/* Remote failed address */
