@@ -135,8 +135,11 @@ enum {
 	IP_VER		= 0x40,		/* Using IP version 4 */
 	IP_HLEN		= 0x05,		/* Header length in characters */
 	IP_TCPPROTO = 6,
+	EOLOPT		= 0,
+	NOOPOPT		= 1,
 	MSSOPT		= 2,
 	MSS_LENGTH	= 4,		/* Mean segment size */
+	SYN		= 0x02,		/* Pkt. is synchronise */
 };
 
 struct Iphdr
@@ -163,9 +166,6 @@ struct Tcphdr
 	uchar	win[2];
 	uchar	cksum[2];
 	uchar	urg[2];
-	/* Options segment */
-	uchar	opt[2];
-	uchar	mss[2];
 };
 
 static Bridge bridgetab[Maxbridge];
@@ -850,20 +850,20 @@ ethermultiwrite(Bridge *b, Block *bp, Port *port)
 }
 
 static void
-tcpmsshack(Block *bp)
+tcpmsshack(Etherpkt *epkt, int n)
 {
-	int n = BLEN(bp);
 	int hl;
-	Etherpkt *epkt;
 	Iphdr *iphdr;
 	Tcphdr *tcphdr;
+	ulong mss;
+	ulong cksum;
+	int optlen;
+	uchar *optr;
 
-	epkt = (Etherpkt*)bp->rp;
 	// check it is an ip packet
 	if(nhgets(epkt->type) != 0x800)
 		return;
-print("tcpmsshack is IP\n");
-	iphdr = (Iphdr*)(bp->rp + ETHERHDRSIZE);
+	iphdr = (Iphdr*)(epkt->data);
 	n -= ETHERHDRSIZE;
 	if(n < sizeof(Iphdr))
 		return;
@@ -873,30 +873,65 @@ print("tcpmsshack is IP\n");
 		hl = (iphdr->vihl&0xF)<<2;
 		if((iphdr->vihl&0xF0) != IP_VER || hl < (IP_HLEN<<2))
 			return;
-	} else {
+	} else
 		hl = IP_HLEN<<2;
-	}
-print("tcpmsshack is ok IP\n");
 
 	// check TCP
 	if(iphdr->proto != IP_TCPPROTO)
 		return;
-print("tcpmsshack is TCP\n");
-	tcphdr = (Tcphdr*)((uchar*)(iphdr) + hl);
 	n -= hl;
 	if(n < sizeof(Tcphdr))
 		return;
-	hl = (tcphdr->flag[0] & 0xf0)>>2;
-	if(hl < sizeof(Tcphdr))
+	tcphdr = (Tcphdr*)((uchar*)(iphdr) + hl);
+	// MSS can only appear in SYN packet
+	if(!(tcphdr->flag[1] & SYN))
 		return;
-print("tcpmsshack is big enough\n");
+	hl = (tcphdr->flag[0] & 0xf0)>>2;
+	if(n < hl)
+		return;
+
 	// check for MSS option
-	// for the momment, assume MSS is the first option
-	// we could do better, but since options are not aligned,
-	// this would make the checksum correction code tougher
-	if(tcphdr->opt[0] != MSSOPT || tcphdr->opt[1] != MSS_LENGTH)
+	optr = (uchar*)(tcphdr) + sizeof(Tcphdr);
+	n = hl - sizeof(Tcphdr);
+	for(;;) {
+		if(n <= 0 || *optr == EOLOPT)
 			return;
-print("got mss = %d\n", nhgets(tcphdr->mss));
+		if(*optr == NOOPOPT) {
+			n--;
+			optr++;
+			continue;
+		}
+		optlen = optr[1];
+		if(optlen < 2 || optlen > n)
+			return;
+		if(*optr == MSSOPT && optlen == MSS_LENGTH)
+			break;
+		n -= optlen;
+		optr += optlen;
+	}
+
+	mss = nhgets(optr+2);
+	if(mss <= TcpMssMax)
+		return;
+	// fit checksum
+	cksum = nhgets(tcphdr->cksum);
+	if(optr-(uchar*)tcphdr & 1) {
+print("tcpmsshack: odd alignment!\n");
+		// odd alignments are a pain
+		cksum += nhgets(optr+1);
+		cksum -= (optr[1]<<8)|(TcpMssMax>>8);
+		cksum += (cksum>>16);
+		cksum &= 0xffff;
+		cksum += nhgets(optr+3);
+		cksum -= ((TcpMssMax&0xff)<<8)|optr[4];
+		cksum += (cksum>>16);
+	} else {
+		cksum += mss;
+		cksum -= TcpMssMax;
+		cksum += (cksum>>16);
+	}
+	hnputs(tcphdr->cksum, cksum);
+	hnputs(optr+2, TcpMssMax);
 }
 
 /*
@@ -937,8 +972,11 @@ if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 		if(blocklen(bp) < ETHERMINTU)
 			error("short packet");
 		port->in++;
+
 		ep = (Etherpkt*)bp->rp;
 		cacheupdate(b, ep->s, port->id);
+		if(b->tcpmss)
+			tcpmsshack(ep, BLEN(bp));
 
 		if(ep->d[0] & 1) {
 			log(b, Logmcast, "mulitcast: port=%d src=%E dst=%E type=%#.4ux\n",
@@ -951,14 +989,10 @@ if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 			if(ce == nil) {
 				b->miss++;
 				port->inunknown++;
-				if(b->tcpmss)
-					tcpmsshack(bp);
 				bp2 = bp; bp = nil;
 				ethermultiwrite(b, bp2, port);
 			} else if (ce->port != port->id) {
 				b->hit++;
-				if(b->tcpmss)
-					tcpmsshack(bp);
 				bp2 = bp; bp = nil;
 				oport = b->port[ce->port];
 				oport->out++;

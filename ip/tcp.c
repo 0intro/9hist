@@ -766,7 +766,8 @@ ntohtcp(Tcp *tcph, Block **bpp)
 	Tcphdr *h;
 	uchar *optr;
 	ushort hdrlen;
-	ushort i, optlen;
+	ushort optlen;
+	int n;
 
 	*bpp = pullupblock(*bpp, TCP_PKT+TCP_HDRSIZE);
 	if(*bpp == nil)
@@ -800,23 +801,25 @@ ntohtcp(Tcp *tcph, Block **bpp)
 		tcph->wnd, nhgets(h->length)-hdrlen-TCP_PKT); */
 
 	optr = h->tcpopt;
-	for(i = TCP_HDRSIZE; i < hdrlen;) {
-		switch(optr[i]) {
-		default:
-			i += optr[i+1];
+	n = hdrlen - TCP_HDRSIZE;
+	while(n > 0 && *optr != EOLOPT) {
+		if(*optr == NOOPOPT) {
+			n--;
+			optr++;
+			continue;
+		}
+		optlen = optr[1];
+		if(optlen < 2 || optlen > n)
 			break;
-		case EOLOPT:
-			return hdrlen;
-		case NOOPOPT:
-			i++;
-			break;
+if(0) print("tcpopt %d %d\n", *optr, optlen);
+		switch(*optr) {
 		case MSSOPT:
-			optlen = optr[i+1];
 			if(optlen == MSS_LENGTH)
 				tcph->mss = nhgets(optr+2);
-			i += optlen;
 			break;
 		}
+		n -= optlen;
+		optr += optlen;
 	}
 	return hdrlen;
 }
