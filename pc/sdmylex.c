@@ -1013,9 +1013,6 @@ buggery:
 static int mylexport[8] = {
 	0x330, 0x334, 0x230, 0x234, 0x130, 0x134, 0x000, 0x000,
 };
-static int mylexirq[8] = {
-	9, 10, 11, 12, 14, 15, 0, 0,
-};
 
 static SDev*
 mylexpnp(void)
