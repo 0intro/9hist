@@ -315,7 +315,6 @@ slotinfo(Ureg*, void*)
 static void
 increfp(PCMslot *pp)
 {
-	slotinfo(nil, nil);
 	if(incref(&pcmcia) == 1){
 		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 1);
 		egpiobits(EGPIO_pcmcia_reset, 0);

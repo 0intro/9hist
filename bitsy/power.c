@@ -5,11 +5,11 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"ureg.h"
-#include	"init.h"
 #include	"pool.h"
 
 /* Power management for the bitsy */
 
+#ifdef NOTDEF
 enum {
 	pmcr_sf		= 0,
 
@@ -65,4 +65,16 @@ sa1100_power_off(void)
 	gpioregs->direction = 0;
 	/* enter sleep mode */
 	powerregs->pmcr = 1<<pmcr_sf;
+}
+
+void
+idlehands(void)
+{
+}
+#endif
+
+void
+idlehands(void)
+{
+	doze();
 }

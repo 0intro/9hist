@@ -425,6 +425,7 @@ penmousetrack(int b, int x, int y)
 			mouse.qfull = 1;
 	}
 	wakeup(&mouse.r);
+	drawactive(1);
 }
 
 int

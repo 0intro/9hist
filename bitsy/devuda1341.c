@@ -922,10 +922,12 @@ audioclose(Chan *c)
 			}
 			qunlock(&audio);
 			poperror();
-			print("total dmas: %lud\n", iostats.totaldma);
-			print("dmas while idle: %lud\n", iostats.idledma);
-			print("dmas while busy: %lud\n", iostats.faildma);
-			print("out of order dma: %lud\n", iostats.samedma);
+			if (debug) {
+				print("total dmas: %lud\n", iostats.totaldma);
+				print("dmas while idle: %lud\n", iostats.idledma);
+				print("dmas while busy: %lud\n", iostats.faildma);
+				print("out of order dma: %lud\n", iostats.samedma);
+			}
 		}
 		break;
 	}

@@ -51,8 +51,10 @@
 #define	REGTOP		0xA8000000		/* ... */
 #define	FLASHZERO	0xB0000000		/* 128 meg for flash */
 #define	FLASHTOP	0xB8000000		/* ... */
-#define	DRAMZERO	0xC0000000		/* 128 meg for memory */
+#define	DRAMZERO	0xC0000000		/* 128 meg for dram */
 #define DRAMTOP		0xC8000000		/* ... */
+#define	UCDRAMZERO	0xC8000000		/* 128 meg for dram (uncached/unbuffered) */
+#define UCDRAMTOP	0xD0000000		/* ... */
 #define	NULLZERO	0xE0000000		/* 128 meg for cache flush zeroes */
 #define NULLTOP		0xE8000000		/* ... */
 #define	USTKTOP		0x2000000		/* byte just beyond user stack */
@@ -143,6 +145,7 @@
  *  Coprocessors
  */
 #define CpMMU		15
+#define CpPWR		15
 
 /*
  *  Internal MMU coprocessor registers

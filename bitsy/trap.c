@@ -22,17 +22,15 @@ struct Intrregs *intrregs;
 
 typedef struct Vctl {
 	Vctl*	next;			/* handlers on this vector */
-
 	char	name[NAMELEN];		/* of driver */
-	int	irq;
-	ulong	irqbit;
-
 	void	(*f)(Ureg*, void*);	/* handler to call */
 	void*	a;			/* argument to call it with */
 } Vctl;
 
-static Lock vctllock;
-static Vctl *vctl;
+static Lock	vctllock;
+static Vctl	*vctl[32];
+static Vctl	*gpiovctl[27];
+static int	gpioirqref[12];
 
 /*
  *   Layout at virtual address 0.
@@ -41,9 +39,15 @@ typedef struct Vpage0 {
 	void	(*vectors[8])(void);
 	ulong	vtable[8];
 
-	ulong	hole[16];
+	/* Doze goes here because it needs to be on a cache-line boundary */
+	ulong	doze[16];
 } Vpage0;
 Vpage0 *vpage0;
+
+void (*doze)(void);
+
+static void	irq(Ureg*);
+static void	gpiointr(Ureg*, void*);
 
 /*
  *  set up for exceptioons
@@ -55,8 +59,13 @@ trapinit(void)
 	vpage0 = (Vpage0*)EVECTORS;
 	memmove(vpage0->vectors, vectors, sizeof(vpage0->vectors));
 	memmove(vpage0->vtable, vtable, sizeof(vpage0->vtable));
-	memset(vpage0->hole, 0, sizeof(vpage0->hole));
+
+	/* Move the twelve instructions of doze() to a cache-line boundary: */
+	memmove(vpage0->doze, _doze, 12*sizeof(long));
 	wbflush();
+		
+	/* Set the doze function pointer to the moved _doze() routine */
+	doze = (void(*)(void))vpage0->doze;
 
 	/* use exception vectors at 0xFFFF0000 */
 	mappedIvecEnable();
@@ -112,18 +121,19 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, char *name)
 {
 	Vctl *v;
 
+	if(irq >= nelem(vctl) || irq < 0)
+		panic("intrenable");
+
 	v = xalloc(sizeof(Vctl));
-	v->irq = irq;
-	v->irqbit = 1<<irq;
 	v->f = f;
 	v->a = a;
 	strncpy(v->name, name, NAMELEN-1);
 	v->name[NAMELEN-1] = 0;
 
 	lock(&vctllock);
-	v->next = vctl;
-	vctl = v;
-	intrregs->icmr |= v->irqbit;
+	v->next = vctl[irq];
+	vctl[irq] = v;
+	intrregs->icmr |= 1<<irq;
 	unlock(&vctllock);
 }
 
@@ -131,38 +141,54 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, char *name)
  *  enable an interrupt on gpio line.  edge is encoded as follows
  */
 void
-gpiointrenable(ulong bit, int edge, void (*f)(Ureg*, void*), void* a, char *name)
+gpiointrenable(ulong mask, int edge, void (*f)(Ureg*, void*), void* a, char *name)
 {
-	int irq;
+	int irq, bit;
+	Vctl *v;
 
-	/* figure out which interrupt */
-	for(irq = 0; irq < 28; irq++)
-		if((1<<irq) & bit)
+	/* figure out which bit */
+	for(bit = 0; bit < 32; bit++)
+		if((1<<bit) == mask)
 			break;
-	if(irq >= 28)
-		panic("gpiointrenable %lux", bit);
-	if(irq > 11)
+
+	irq = bit;
+	if(bit >= nelem(gpiovctl) || bit < 0)
+		panic("gpiointrenable");
+	if(bit > 11)
 		irq = 11;
 
-	/* it had better be input */
-	if(bit & gpioregs->direction)
-		panic("gpiointrenable %lux of output pin", bit);
+	/* the pin had better be configured as input */
+	if((1<<bit) & gpioregs->direction)
+		panic("gpiointrenable of output pin %d", bit);
 
-	/* set edge register */
+	/* create a second level vctl for the gpio edge interrupt */
+	v = xalloc(sizeof(Vctl));
+	v->f = f;
+	v->a = a;
+	strncpy(v->name, name, NAMELEN-1);
+	v->name[NAMELEN-1] = 0;
+
+	lock(&vctllock);
+	v->next = gpiovctl[bit];
+	gpiovctl[bit] = v;
+	unlock(&vctllock);
+
+	/* set edge register to enable interrupt */
 	switch(edge){
 	case GPIOboth:
-		gpioregs->rising |= bit;
-		gpioregs->falling |= bit;
+		gpioregs->rising |= mask;
+		gpioregs->falling |= mask;
 		break;
 	case GPIOfalling:
-		gpioregs->falling |= bit;
+		gpioregs->falling |= mask;
 		break;
 	case GPIOrising:
-		gpioregs->rising |= bit;
+		gpioregs->rising |= mask;
 		break;
 	}
 
-	intrenable(irq, f, a, name);
+	if(gpioirqref[irq]++ == 0)
+		intrenable(irq, gpiointr, nil, "gpio edge");
 }
 
 /*
@@ -214,8 +240,6 @@ void
 trap(Ureg *ureg)
 {
 	ulong inst;
-	int found;
-	Vctl *v;
 	int user, x, rv;
 	ulong va, fsr;
 	char buf[ERRLEN];
@@ -231,27 +255,12 @@ trap(Ureg *ureg)
 	else
 		ureg->pc -= 4;
 
-	if(ureg->type == PsrMirq){
-		found = 0;
-		va = intrregs->icip;
-
-		/* clear any gpio edge interrupt */
-		gpioregs->edgestatus = va & 0xFFF;
-
-		for(v = vctl; v != nil; v = v->next){
-			if(v->irqbit & va){
-				v->f(ureg, v->a);
-				found = 1;
-			}
-		}
-		if(!found)
-			print("unknown interrupt: %lux\n", intrregs->icip);
-		goto out;
-	}
-
 	switch(ureg->type){
 	default:
 		panic("unknown trap");
+		break;
+	case PsrMirq:
+		irq(ureg);
 		break;
 	case PsrMabt:	/* prefetch fault */
 		faultarm(ureg, ureg->pc, user, 1);
@@ -325,10 +334,60 @@ trap(Ureg *ureg)
 		break;
 	}
 
-out:
 	splhi();
 	if(user && (up->procctl || up->nnote))
 		notify(ureg);
+}
+
+/*
+ *  here on irq's
+ */
+static void
+irq(Ureg *ur)
+{
+	ulong va;
+	int i;
+	Vctl *v;
+
+	va = intrregs->icip;
+
+	for(i = 0; i < 32; i++){
+		if(((1<<i) & va) == 0)
+			continue;
+		for(v = vctl[i]; v != nil; v = v->next){
+			v->f(ur, v->a);
+			va &= ~(1<<i);
+		}
+	}
+	if(va)
+		print("unknown interrupt: %lux\n", va);
+}
+
+/*
+ *  here on gpio interrupts
+ */
+static void
+gpiointr(Ureg *ur, void*)
+{
+	ulong va;
+	int i;
+	Vctl *v;
+
+	va = gpioregs->edgestatus;
+	gpioregs->edgestatus = va;
+
+iprint("gpio intr %lux\n", va);
+
+	for(i = 0; i < 27; i++){
+		if(((1<<i) & va) == 0)
+			continue;
+		for(v = gpiovctl[i]; v != nil; v = v->next){
+			v->f(ur, v->a);
+			va &= ~(1<<i);
+		}
+	}
+	if(va)
+		print("unknown gpio interrupt: %lux\n", va);
 }
 
 /*

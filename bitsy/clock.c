@@ -64,6 +64,7 @@ clockintr(Ureg *ureg, void*)
 	/* post interrupt 1/HZ secs from now */
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
 
+	drawactive(0);	/* screen saver */
 	portclock(ureg);
 }
 

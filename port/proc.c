@@ -200,7 +200,6 @@ loop:
 	 */
 	spllo();
 	for(;;){
-		idlehands();
 		if((++(m->fairness) & 0x3) == 0){
 			/*
 			 *  once in a while, run process that's been waiting longest
@@ -240,6 +239,7 @@ loop:
 				}
 			}
 		}
+		idlehands();
 	}
 
 found:

@@ -79,6 +79,11 @@ mmuinit(void)
 			| L1Cached | L1Buffered
 			| ((PHYSDRAM0+o)&L1SectBaseMask);
 
+	/* uncached DRAM */
+	for(o = 0; o < UCDRAMTOP-UCDRAMZERO; o += OneMeg)
+		l1table[(UCDRAMZERO+o)>>20] = L1Section | L1KernelRW| L1Domain0 
+			| ((PHYSDRAM0+o)&L1SectBaseMask);
+
 	/* map zeros area */
 	for(o = 0; o < NULLTOP-NULLZERO; o += OneMeg)
 		l1table[(NULLZERO+o)>>20] = L1Section | L1KernelRW | L1Domain0

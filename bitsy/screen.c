@@ -244,6 +244,8 @@ screeninit(void)
 	out.pos.y = 0;
 	out.bwid = memdefont->info[' '].width;
 
+	blanktime = 3;	/* minutes */
+
 	screenwin();
 }
 
@@ -301,7 +303,12 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 void
 blankscreen(int blank)
 {
-	USED(blank);
+	if (blank) {
+		lcdpower(0);
+	} else {
+		lcdpower(1);
+		lcdinit();
+	}
 }
 
 void

@@ -13,6 +13,8 @@ void	clockinit(void);
 void	delay(int);
 void	µdelay(int);
 void	dmainit(void);
+void	_doze(void);
+void	(*doze)(void);
 void	egpiobits(ulong, int);
 void	evenaddr(ulong);
 void	exppackpower(int);
@@ -27,7 +29,7 @@ void	gpiointrenable(ulong, int, void (*)(Ureg*, void*), void*, char*);
 void	h3650uartsetup(void);
 void	icacheinvalidate(void);
 void	idle(void);
-#define	idlehands()			/* nothing to do in the runproc */
+void	idlehands(void);
 void	intrenable(int, void (*)(Ureg*, void*), void*, char*);
 int	iprint(char*, ...);
 void	irpower(int);
