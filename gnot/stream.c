@@ -905,7 +905,10 @@ streamctlread(Chan *c, void *vbuf, long n)
 static int
 isinput(void *x)
 {
-	return ((Queue *)x)->first != 0;
+	Queue *q;
+
+	q = (Queue *)x;
+	return (q->flag&QHUNGUP) || q->first!=0;
 }
 
 /*

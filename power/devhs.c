@@ -554,6 +554,6 @@ hsvmeintr(int vec)
 		hp->parity++;
 		hsvmerestart(hp);
 		print("hsvme %d: reset, csr = 0x%ux\n",
-			HSVME, csr);
+			vec - Vmevec, csr);
 	}
 }

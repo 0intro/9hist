@@ -653,7 +653,7 @@ output(Urp *up)
 		 */
 		up->rexmit = 0;
 		up->next = up->unacked;
-	} else if(up->unacked!=up->next && NOW>up->timer){
+	} else if(up->unechoed!=up->next && NOW>up->timer){
 		/*
 		 *  if a retransmit time has elapsed since a transmit,
 		 *  send an ENQ
@@ -944,7 +944,7 @@ todo(void *arg)
 
 	return (up->state&INITING)
 	? NOW>up->timer					/* time to INIT1 */
-	: ((up->unacked!=up->next && NOW>up->timer)	/* time to ENQ */
+	: ((up->unechoed!=up->next && NOW>up->timer)	/* time to ENQ */
 	  || WINDOW(up)>0 && up->next!=up->nxb
 	  || (!QFULL(up->rq->next) && up->iseq!=(up->lastecho&7))); /* time to ECHO */
 }

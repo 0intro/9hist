@@ -127,7 +127,7 @@ allocb(ulong size)
 		;
 
 	/*
-	 *  look for a free block, garbage collect if there are none
+	 *  look for a free block
 	 */
 	lock(bcp);
 	while(bcp->first == 0){
@@ -878,12 +878,37 @@ stringread(Chan *c, uchar *buf, long n, char *str)
 }
 
 /*
+ *  return the stream id
+ */
+long
+streamctlread(Chan *c, void *vbuf, long n)
+{
+	uchar *buf = vbuf;
+	char num[32];
+	Stream *s;
+
+	s = c->stream;
+	if(STREAMTYPE(c->qid) == Sctlqid){
+		sprint(num, "%d", s->id);
+		return stringread(c, buf, n, num);
+	} else {
+		if(CHDIR & c->qid)
+			return devdirread(c, vbuf, n, 0, 0, streamgen);
+		else
+			panic("streamctlread");
+	}
+}
+
+/*
  *  return true if there is an output buffer available
  */
 static int
 isinput(void *x)
 {
-	return ((Queue *)x)->first != 0;
+	Queue *q;
+
+	q = (Queue *)x;
+	return (q->flag&QHUNGUP) || q->first!=0;
 }
 
 /*
@@ -895,28 +920,16 @@ streamread(Chan *c, void *vbuf, long n)
 	Block *bp;
 	Stream *s;
 	Queue *q;
-	long rv = 0;
-	int left, i, x;
+	int left, i;
 	uchar *buf = vbuf;
-	char num[32];
 
-	s = c->stream;
-	switch(STREAMTYPE(c->qid)){
-	case Sdataqid:
-		break;
-	case Sctlqid:
-		sprint(num, "%d", s->id);
-		return stringread(c, buf, n, num);
-	default:
-		if(CHDIR & c->qid)
-			return devdirread(c, vbuf, n, 0, 0, streamgen);
-		else
-			panic("streamread");
-	}
+	if(STREAMTYPE(c->qid) != Sdataqid)
+		return streamctlread(c, vbuf, n);
 
 	/*
 	 *  one reader at a time
 	 */
+	s = c->stream;
 	qlock(&s->rdlock);
 	if(waserror()){
 		qunlock(&s->rdlock);
@@ -974,10 +987,15 @@ streamread(Chan *c, void *vbuf, long n)
  *  This routing is entrered with s->wrlock'ed and must unlock.
  */
 static long
-streamctlwrite(Stream *s, void *a, long n)
+streamctlwrite(Chan *c, void *a, long n)
 {
 	Qinfo *qi;
 	Block *bp;
+	Stream *s;
+
+	if(STREAMTYPE(c->qid) != Sctlqid)
+		panic("streamctlwrite %lux", c->qid);
+	s = c->stream;
 
 	/*
 	 *  package
@@ -1038,26 +1056,10 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	s = c->stream;
 
 	/*
-	 *  one writer at a time
-	qlock(&s->wrlock);
-	if(waserror()){
-		qunlock(&s->wrlock);
-		nexterror();
-	}
-	 */
-
-	/*
 	 *  decode the qid
 	 */
-	switch(STREAMTYPE(c->qid)){
-	case Sdataqid:
-		break;
-	case Sctlqid:
-		n = streamctlwrite(s, a, n);
-		goto out;
-	default:
-		panic("bad stream qid\n");
-	}
+	if(STREAMTYPE(c->qid) != Sdataqid)
+		return streamctlwrite(c, a, n);
 
 	/*
 	 *  No writes allowed on hungup channels
@@ -1066,7 +1068,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	if(q->other->flag & QHUNGUP)
 		error(0, Ehungup);
 
-	if((GLOBAL(a) && !docopy) || n==0){
+	if(!docopy && GLOBAL(a)){
 		/*
 		 *  `a' is global to the whole system, just create a
 		 *  pointer to it and pass it on.
@@ -1103,9 +1105,6 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 			}
 		}
 	}
-out:
-/*	qunlock(&s->wrlock);
-	poperror(); /**/
 	return n;
 }
 
