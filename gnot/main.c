@@ -7,7 +7,7 @@
 #include	"ureg.h"
 #include	"init.h"
 
-#include	<libng.h>
+#include	<libg.h>
 #include	<gnot.h>
 
 typedef struct Boot Boot;

@@ -351,7 +351,7 @@ kbdintr0(void)
 		c = kbtabesc1[c];
 		esc1 = 0;
 		if(!keyup)
-			kbdputc(&kbdq, c);
+			goto dochar;
 		return 0;
 	} else if(esc2){
 		esc2--;
@@ -385,6 +385,7 @@ kbdintr0(void)
 	/*
  	 *  normal character
 	 */
+dochar:
 	if(!(c & Spec)){
 		if(ctl)
 			c &= 0x1f;

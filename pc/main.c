@@ -220,7 +220,8 @@ confinit(void)
 	conf.nsrv = 16*mul;			/* was 32 */
 	conf.nbitmap = 512*mul;
 	conf.nbitbyte = conf.nbitmap*1024*screenbits();
-	conf.nsubfont = 10*mul;
+	conf.nfont = 10*mul;
+	conf.nsubfont = 30*mul;
 	conf.nnoifc = 1;
 	conf.nnoconv = 32;
 	conf.nurp = 32;

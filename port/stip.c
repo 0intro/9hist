@@ -175,7 +175,9 @@ ipetheroput(Queue *q, Block *bp)
 
 	if(bp->type != M_DATA){
 		/* Allow one setting of the ip address */
-		if(!Myip && streamparse("setip", bp)) {
+		if(streamparse("setip", bp)) {
+			if(strncmp(eve, u->p->user, sizeof(eve)) != 0)
+				error(Eperm);
 			ptr = bp->rptr;
 			Myip = ipparse((char *)ptr);
 			Netmyip[0] = (Myip>>24)&0xff;
@@ -187,9 +189,6 @@ ipetheroput(Queue *q, Block *bp)
 				ptr++;
 			if(*ptr)
 				Mymask = ipparse((char *)ptr);
-			/*
-			 * Temporary Until we understand real subnets
-			 */
 			Mynetmask = Mymask;
 			freeb(bp);
 		}

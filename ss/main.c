@@ -6,7 +6,7 @@
 #include	"io.h"
 #include	"init.h"
 
-#include	<libng.h>
+#include	<libg.h>
 #include	<gnot.h>
 
 uchar *intrreg;

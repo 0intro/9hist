@@ -7,7 +7,7 @@
 
 #include	"devtab.h"
 
-#include	<libng.h>
+#include	<libg.h>
 #include	<gnot.h>
 #include	"screen.h"
 
@@ -1302,10 +1302,10 @@ bitstring(GBitmap *bp, Point pt, GFont *f, uchar *p, long l, Fcode fc)
 
 	while(l > 0){
 		r = GSHORT(p);
-		if(r >= NFCACHE+NFLOOK)
-			error(Ebadblt);
 		p += 2;
 		l -= 2;
+		if(r >= NFCACHE+NFLOOK)
+			continue;
 		c = &f->cache[r];
 		if(!full){
 			rect.min.y = c->top;

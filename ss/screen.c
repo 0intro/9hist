@@ -6,7 +6,7 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-#include	<libng.h>
+#include	<libg.h>
 #include	<gnot.h>
 #include	"screen.h"
 
