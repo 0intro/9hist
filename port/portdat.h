@@ -268,8 +268,8 @@ struct Note
 enum
 {
 	PG_NOFLUSH	= 0,
-	PG_TXTFLUSH	= 1,		/* flush icache */
-	PG_DATFLUSH	= 2,		/* flush both i & d caches */
+	PG_TXTFLUSH	= 1,		/* flush dcache and invalidate icache */
+	PG_DATFLUSH	= 2,		/* flush both i & d caches (UNUSED) */
 	PG_NEWCOL	= 3,		/* page has been recolored */
 
 	PG_MOD		= 0x01,		/* software modified bit */
