@@ -67,7 +67,6 @@ ulong	tas(ulong*);
 void	touser(ulong);
 void	trap(Ureg*);
 void	trapinit(void);
-#define	screenupdate(a)
 #define	wbflush()	/* mips compatibility */
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define getcallerpc(x)	_getcallerpc()

@@ -947,7 +947,7 @@ static void
 dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 {
  	char dialstr[66];
-	int line;
+	int line, win;
 	char dialtone;
 	int t_val, d_val;
 	Dk *dp;
@@ -1031,7 +1031,10 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 		close(csc);
 		nexterror();
 	}
-	dkmesg(csc, t_val, d_val, line, W_WINDOW(dp->urpwindow,dp->urpwindow,2));
+	for(win = 0; ; win++)
+		if(W_VALUE(win) >= dp->urpwindow || win == 15)
+			break;
+	dkmesg(csc, t_val, d_val, line, W_WINDOW(win, win, 2));
 	poperror();
 	close(csc);
 

@@ -71,7 +71,6 @@ void	vector0(void);
 void	vector80(void);
 void	vmereset(void);
 void	wbflush(void);
-#define	screenupdate(a)
 #define	waserror()	setlabel(&u->errlab[u->nerrlab++])
 #define	kmapperm(x)	kmap(x)
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))

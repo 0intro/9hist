@@ -23,7 +23,6 @@ struct{
 }out;
 
 Lock	screenlock;
-void	screenupdate(void);
 
 GBitmap	gscreen =
 {
@@ -184,4 +183,10 @@ void
 mousectl(char *x)
 {
 	USED(x);
+}
+
+void
+screenupdate(Rectangle r)
+{
+	USED(r);
 }

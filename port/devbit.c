@@ -1,5 +1,7 @@
 #include	"u.h"
 #include	"../port/lib.h"
+#include	<libg.h>
+#include	<gnot.h>
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
@@ -7,8 +9,6 @@
 
 #include	"devtab.h"
 
-#include	<libg.h>
-#include	<gnot.h>
 #include	"screen.h"
 
 /*
@@ -103,7 +103,6 @@ void	arenafree(Arena*);
 void	bitstring(GBitmap*, Point, GFont*, uchar*, long, Fcode);
 void	bitloadchar(GFont*, int, GSubfont*, int);
 extern	GBitmap	gscreen;
-extern	islcd;
 
 Mouseinfo	mouse;
 Cursorinfo	cursor;
@@ -268,6 +267,7 @@ lcdmousep(void *a)
 			continue;
 		}
 		screenupdate(mbb);
+		mbb = Rect(10000, 10000, -10000, -10000);
 		qunlock(&bit);
 		poperror();
 	}
@@ -1591,7 +1591,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				error(Ebadblt);
 			ok = 1;
 			for(i = 0; i < nw; i++){
-				ok &= setcolor(i, BGLONG(p), BGLONG(p+4), BGLONG(p+8));
+				ok &= setcolor(flipping ? ~i : i, BGLONG(p), BGLONG(p+4), BGLONG(p+8));
 				p += 12;
 				m -= 12;
 			}

@@ -23,7 +23,6 @@ struct{
 
 static ulong	rep(ulong, int);
 void		(*kprofp)(ulong);
-void	screenupdate(void);
 
 typedef struct	Video Video;
 struct Video
@@ -546,9 +545,17 @@ rep(ulong v, int n)
 	return rv;
 }
 
-/* only 1 flavor mouse */
+/*
+ *  set/change mouse configuration
+ */
 void
-mousectl(char *x)
+mousectl(char *arg)
 {
-	USED(x);
+	USED(arg);
+}
+
+void
+screenupdate(Rectangle r)
+{
+	USED(r);
 }

@@ -200,6 +200,7 @@ void		sccspecial(int, IOQ*, IOQ*, int);
 void		sched(void);
 void		schedinit(void);
 int		screenbits(void);
+void		screenupdate(Rectangle);
 Scsibuf*	scsialloc(ulong);
 int		scsibread(int, Scsibuf*, long, long, long);
 Scsibuf*	scsibuf(void);
