@@ -390,7 +390,7 @@ mpstartap(Apic* apic)
 	 * the PTE for the Mach structure.
 	 * Xspanalloc will panic if an allocation can't be made.
 	 */
-	p = xspanalloc(3*BY2PG, BY2PG, 0);
+	p = xspanalloc(4*BY2PG, BY2PG, 0);
 	pdb = (ulong*)p;
 	memmove(pdb, mach0->pdb, BY2PG);
 	p += BY2PG;
@@ -399,17 +399,23 @@ mpstartap(Apic* apic)
 		return;
 	memmove(p, KADDR(PPN(*pte)), BY2PG);
 	*pte = PADDR(p)|PTEWRITE|PTEVALID;
+	if(mach0->havepge)
+		*pte |= PTEGLOBAL;
 	p += BY2PG;
 
 	mach = (Mach*)p;
 	if((pte = mmuwalk(pdb, MACHADDR, 2, 0)) == nil)
 		return;
 	*pte = PADDR(mach)|PTEWRITE|PTEVALID;
+	if(mach0->havepge)
+		*pte |= PTEGLOBAL;
+	p += BY2PG;
 
 	machno = apic->machno;
 	MACHP(machno) = mach;
 	mach->machno = machno;
 	mach->pdb = pdb;
+	mach->gdt = (Segdesc*)p;	/* filled by mmuinit */
 
 	/*
 	 * Tell the AP where its kernel vector and pdb are.

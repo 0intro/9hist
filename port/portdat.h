@@ -766,6 +766,8 @@ struct PhysUart
 	long	(*status)(Uart*, void*, long, long);
 	void	(*fifo)(Uart*, int);
 	void	(*power)(Uart*, int);
+	int	(*getc)(Uart*);	/* polling versions, for iprint, rdb */
+	void	(*putc)(Uart*, int);
 };
 
 enum {
@@ -827,6 +829,8 @@ struct Uart
 
 	Rendez	r;
 };
+
+extern	Uart*	consuart;
 
 /*
  * fasttick timer interrupts (Dummy for now)

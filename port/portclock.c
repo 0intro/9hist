@@ -127,7 +127,7 @@ hzclock(Ureg *ur)
 	if(up == 0 || up->state != Running)
 		return;
 
-	// i.e. don't schedule an EDF process here!
+	/* i.e. don't deschedule an EDF process here! */
 	if(anyready() && !isedf(up)){
 		sched();
 		splhi();

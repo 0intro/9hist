@@ -146,8 +146,6 @@ static Uart i8250uart[2] = {
 	.next	= nil, },
 };
 
-static Uart* consuart;
-
 #define csr8r(c, r)	inb((c)->io+(r))
 #define csr8w(c, r, v)	outb((c)->io+(r), (c)->sticky[(r)]|(v))
 
@@ -597,6 +595,31 @@ i8250pnp(void)
 	return i8250uart;
 }
 
+static int
+i8250getc(Uart *uart)
+{
+	Ctlr *ctlr;
+
+	ctlr = uart->regs;
+	while(!(csr8r(ctlr, Lsr)&Dr))
+		delay(1);
+	return csr8r(ctlr, Rbr);
+}
+
+static void
+i8250putc(Uart *uart, int c)
+{
+	int i;
+	Ctlr *ctlr;
+
+	ctlr = uart->regs;
+	for(i = 0; !(csr8r(ctlr, Lsr)&Thre) && i < 128; i++)
+		delay(1);
+	outb(ctlr->io+Thr, c);
+	for(i = 0; !(csr8r(ctlr, Lsr)&Thre) && i < 128; i++)
+		delay(1);
+}
+
 PhysUart i8250physuart = {
 	.name		= "i8250",
 	.pnp		= i8250pnp,
@@ -613,43 +636,9 @@ PhysUart i8250physuart = {
 	.dtr		= i8250dtr,
 	.status		= i8250status,
 	.fifo		= i8250fifo,
+	.getc		= i8250getc,
+	.putc		= i8250putc,
 };
-
-int
-serialgetc(void)
-{
-	return -1;
-}
-
-static void
-i8250putc(Ctlr* ctlr, int c)
-{
-	int i;
-
-	for(i = 0; i < 128; i++){
-		if(csr8r(ctlr, Lsr) & Thre)
-			break;
-		delay(1);
-	}
-	outb(ctlr->io+Thr, c);
-}
-
-static void
-i8250puts(char* s, int n)
-{
-	Ctlr *ctlr;
-	Uart *uart;
-
-	if((uart = consuart) == nil)
-		return;
-
-	ctlr = uart->regs;
-	while(n--){
-		if(*s == '\n')
-			i8250putc(ctlr, '\r');
-		i8250putc(ctlr, *s++);
-	}
-}
 
 void
 i8250console(void)
@@ -680,6 +669,5 @@ i8250console(void)
 	(*uart->phys->enable)(uart, 0);
 
 	consuart = uart;
-	serialputs = i8250puts;
 	uart->console = 1;
 } 

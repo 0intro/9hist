@@ -80,7 +80,6 @@ Uart sa1110uart[2] = {
 	.special	= 0,
 	.next		= nil, },
 };
-static Uart* consuart;
 static Uart* µcuart;
 
 #define R(p) ((Uartregs*)((p)->regs))
@@ -381,6 +380,31 @@ sa1110_pnp(void)
 	return sa1110uart;
 }
 
+static int
+sa1110_getc(Uart *uart)
+{
+	Uartregs *ur;
+
+	ur = uart->regs;
+	while((ur->status[1] & Rnotempty) == 0)
+		;
+	return ur->data;
+}
+
+static void
+sa1110_putc(Uart *uart, int c)
+{
+	Uartregs *ur;
+
+	ur = uart->regs;
+	/* wait for output ready */
+	while((ur->status[1] & Tnotfull) == 0)
+		;
+	ur->data = c;
+	while((ur->status[1] & Tbusy))
+		;
+}
+
 PhysUart sa1110physuart = {
 	.name=		"sa1110",
 	.pnp= 		sa1110_pnp,
@@ -397,28 +421,9 @@ PhysUart sa1110physuart = {
 	.dtr=			sa1110_uartdtr,
 	.status=		sa1110_uartstatus,
 	.power=		sa1110_uartpower,
+	.getc=		sa1110_getc,
+	.putc=		sa1110_putc,
 };
-
-/*
- *  for iprint, just write it
- */
-static void
-sa1110puts(char *str, int n)
-{
-	Uartregs *ur;
-
-	if(consuart == nil)
-		return;
-	ur = consuart->regs;
-	while(n-- > 0){
-		/* wait for output ready */
-		while((ur->status[1] & Tnotfull) == 0)
-			;
-		ur->data = *str++;
-	}
-	while((ur->status[1] & Tbusy))
-		;
-}
 
 /*
  *  for iprint, just write it
@@ -465,10 +470,9 @@ sa1110_uartsetup(int console)
 	/* set eia0 up as a console */
 	if(console){
 		uartctl(p, "b115200 l8 pn s1");
-		consuart = p;
 		(*p->phys->enable)(p, 0);
-		serialputs = sa1110puts;
 		p->console = 1;
+		consuart = p;
 	}
 	intrenable(IRQ, IRQuart3, sa1110_uartintr, p, p->name);
 

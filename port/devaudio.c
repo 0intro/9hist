@@ -745,6 +745,17 @@ audioinit(void)
 		print("#A: bad port 0x%lux\n", sbconf.port);
 		return;
 	}
+
+	if(ioalloc(sbconf.port, 0x10, 0, "audio") < 0){
+		print("#A: cannot ioalloc range %x+0x10\n", sbconf.port);
+		return;
+	}
+	if(ioalloc(sbconf.port+0x100, 1, 0, "audio.mpu401") < 0){
+		iofree(sbconf.port);
+		print("#A: cannot ioalloc range %x+0x01\n", sbconf.port+0x100);
+		return;
+	}
+
 	switch(sbconf.irq){
 	case 2:
 	case 5:
@@ -754,6 +765,8 @@ audioinit(void)
 		break;
 	default:
 		print("#A: bad irq %lud\n", sbconf.irq);
+		iofree(sbconf.port);
+		iofree(sbconf.port+0x100);
 		return;
 	}
 
@@ -783,6 +796,8 @@ audioinit(void)
 	i = sbread();
 	if(i != 0xaa) {
 		print("#A: no response #%.2x\n", i);
+		iofree(sbconf.port);
+		iofree(sbconf.port+0x100);
 		return;
 	}
 
@@ -794,6 +809,8 @@ audioinit(void)
 		if(audio.major != 3 || audio.minor != 1 || ess1688(&sbconf)){
 			print("#A: model 0x%.2x 0x%.2x; not SB 16 compatible\n",
 				audio.major, audio.minor);
+			iofree(sbconf.port);
+			iofree(sbconf.port+0x100);
 			return;
 		}
 		audio.major = 4;
@@ -821,6 +838,7 @@ audioinit(void)
 		(sbconf.irq==9)? 1:
 		(sbconf.irq==10)? 8:
 		0);
+
 	mxcmd(0x81, 1<<blaster.dma);	/* dma */
 
 	x = mxread(0x81);

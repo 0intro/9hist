@@ -64,6 +64,9 @@ extern int	connectlocal(void);
 extern void	configsac(Method*);
 extern int	connectsac(void);
 
+extern void	configpaq(Method*);
+extern int	connectpaq(void);
+
 extern void	configrc(Method*);
 extern int	connectrc(void);
 

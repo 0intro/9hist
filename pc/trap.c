@@ -439,10 +439,15 @@ _dumpstack(Ureg *ureg)
 
 	print("ktrace /kernel/path %.8lux %.8lux\n", ureg->pc, ureg->sp);
 	i = 0;
-	if(up)
+	if(up
+	&& (ulong)&l >= (ulong)up->kstack
+	&& (ulong)&l <= (ulong)up->kstack+KSTACK)
 		estack = (ulong)up->kstack+KSTACK;
-	else
+	else if((ulong)&l >= (ulong)m->stack
+	&& (ulong)&l <= (ulong)m+BY2PG)
 		estack = (ulong)m+MACHSIZE;
+	else
+		return;
 
 	for(l=(ulong)&l; l<estack; l+=4){
 		v = *(ulong*)l;

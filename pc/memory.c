@@ -425,6 +425,14 @@ ramscan(ulong maxmem)
 		mmuflushtlb(PADDR(m->pdb));
 		x += 0x3141526;
 	}
+
+	/*
+	 * If we didn't reach the end of the 4MB chunk, that part won't
+	 * be mapped.  Commit the already initialised space for the page table.
+	 */
+	if(pa % (4*MB))
+		map = 0;
+
 	if(map)
 		mapfree(&rmapram, map, BY2PG);
 	if(pa < maxmem)

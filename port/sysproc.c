@@ -9,9 +9,22 @@
 
 int	shargs(char*, int, char**);
 
+Ref sysr1ref;
+
 long
 sysr1(ulong *arg)
 {
+	int x;
+	long a;
+
+	a = *arg;
+	if(a > 0)
+		return incref(&sysr1ref);
+	if(a < 0)
+		return decref(&sysr1ref);
+	return sysr1ref.ref;
+
+/*
 	extern int chandebug;
 	extern void dumpmount(void);
 
@@ -21,6 +34,7 @@ sysr1(ulong *arg)
 		dumpmount();
 
 	return 0;
+*/
 }
 
 long

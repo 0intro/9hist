@@ -117,6 +117,7 @@ mach0init(void)
 	conf.nmach = 1;
 	MACHP(0) = (Mach*)CPU0MACH;
 	m->pdb = (ulong*)CPU0PDB;
+	m->gdt = (Segdesc*)CPU0GDT;
 
 	machinit();
 
@@ -129,12 +130,15 @@ machinit(void)
 {
 	int machno;
 	ulong *pdb;
+	Segdesc *gdt;
 
 	machno = m->machno;
 	pdb = m->pdb;
+	gdt = m->gdt;
 	memset(m, 0, sizeof(Mach));
 	m->machno = machno;
 	m->pdb = pdb;
+	m->gdt = gdt;
 
 	/*
 	 * For polled uart output at boot, need
@@ -561,7 +565,6 @@ procsave(Proc *p)
 	}
 
 	/*
-	 * Switch to the prototype page tables for this processor.
 	 * While this processor is in the scheduler, the process could run
 	 * on another processor and exit, returning the page tables to
 	 * the free list where they could be reallocated and overwritten.

@@ -36,19 +36,45 @@ taskswitch(ulong pdb, ulong stack)
 	putcr3(pdb);
 }
 
-void
-gdtinit(void)
+/* 
+ * On processors that support it, we set the PTEGLOBAL bit in
+ * page table and page directory entries that map kernel memory.
+ * Doing this tells the processor not to bother flushing them
+ * from the TLB when doing the TLB flush associated with a 
+ * context switch (write to CR3).  Since kernel memory mappings
+ * are never removed, this is safe.  (If we ever remove kernel memory
+ * mappings, we can do a full flush by turning off the PGE bit in CR4,
+ * writing to CR3, and then turning the PGE bit back on.) 
+ *
+ * See also mmukmap below.
+ * 
+ * Processor support for the PTEGLOBAL bit is enabled in devarch.c.
+ */
+static void
+memglobal(void)
 {
-	ulong x;
-	ushort ptr[3];
+	int i, j;
+	ulong *pde, *pte;
 
-	memmove(m->gdt, gdt, sizeof(m->gdt));
+	/* only need to do this once, on bootstrap processor */
+	if(m->machno != 0)
+		return;
 
-	ptr[0] = sizeof(m->gdt)-1;
-	x = (ulong)m->gdt;
-	ptr[1] = x & 0xFFFF;
-	ptr[2] = (x>>16) & 0xFFFF;
-	lgdt(ptr);
+	if(!m->havepge)
+		return;
+
+	pde = m->pdb;
+	for(i=512; i<1024; i++){	/* 512: start at entry for virtual 0x80000000 */
+		if(pde[i] & PTEVALID){
+			pde[i] |= PTEGLOBAL;
+			if(!(pde[i] & PTESIZE)){
+				pte = KADDR(pde[i]&~(BY2PG-1));
+				for(j=0; j<1024; j++)
+					if(pte[j] & PTEVALID)
+						pte[j] |= PTEGLOBAL;
+			}
+		}
+	}			
 }
 
 void
@@ -57,15 +83,27 @@ mmuinit(void)
 	ulong x, *p;
 	ushort ptr[3];
 
+	memglobal();
+
 	m->tss = malloc(sizeof(Tss));
 	memset(m->tss, 0, sizeof(Tss));
 
-	memmove(m->gdt, gdt, sizeof(m->gdt));
+	/*
+	 * We used to keep the GDT in the Mach structure, but it
+	 * turns out that that slows down access to the rest of the
+	 * page.  Since the Mach structure is accessed quite often,
+	 * it pays off anywhere from a factor of 1.25 to 2 on real
+	 * hardware to separate them (the AMDs are more sensitive
+	 * than Intels in this regard).  Under VMware it pays off
+	 * a factor of about 10 to 100.
+	 */
+
+	memmove(m->gdt, gdt, sizeof gdt);
 	x = (ulong)m->tss;
 	m->gdt[TSSSEG].d0 = (x<<16)|sizeof(Tss);
 	m->gdt[TSSSEG].d1 = (x&0xFF000000)|((x>>16)&0xFF)|SEGTSS|SEGPL(0)|SEGP;
 
-	ptr[0] = sizeof(m->gdt)-1;
+	ptr[0] = sizeof(gdt)-1;
 	x = (ulong)m->gdt;
 	ptr[1] = x & 0xFFFF;
 	ptr[2] = (x>>16) & 0xFFFF;
@@ -395,14 +433,24 @@ mmukmap(ulong pa, ulong va, int size)
 		 * starts on a 4MB boundary, size >= 4MB and processor can do it.
 		 * If not a big page, walk the walk, talk the talk.
 		 * Sync is set.
+		 *
+		 * If we're creating a kernel mapping, we know that it will never
+		 * expire and thus we can set the PTEGLOBAL bit to make the entry
+	 	 * persist in the TLB across flushes.  If we do add support later for
+		 * unmapping kernel addresses, see devarch.c for instructions on
+		 * how to do a full TLB flush.
 		 */
 		if(pse && (pa % (4*MB)) == 0 && (pae >= pa+4*MB)){
 			*table = pa|PTESIZE|PTEWRITE|PTEUNCACHED|PTEVALID;
+			if((va&KZERO) && m->havepge)
+				*table |= PTEGLOBAL;
 			pgsz = 4*MB;
 		}
 		else{
 			pte = mmuwalk(mach0->pdb, va, 2, 1);
 			*pte = pa|PTEWRITE|PTEUNCACHED|PTEVALID;
+			if((va&KZERO) && m->havepge)
+				*pte |= PTEGLOBAL;
 			pgsz = BY2PG;
 		}
 		pa += pgsz;

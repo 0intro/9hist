@@ -286,12 +286,12 @@ idlehands(void)
 	char *msga = "doze returns with splhi\n";
 
 	if(!islo()){
-		serialputs(msga, strlen(msga));
+		uartputs(msga, strlen(msga));
 		spllo();
 	}
 	doze();
 	if(!islo()){
-		serialputs(msgb, strlen(msgb));
+		uartputs(msgb, strlen(msgb));
 		spllo();
 	}
 }

@@ -9,7 +9,6 @@
 
 void	(*consdebug)(void) = nil;
 void	(*screenputs)(char*, int) = nil;
-void	(*serialputs)(char*, int) = nil;
 
 Queue*	kbdq;			/* unprocessed console input */
 Queue*	lineq;			/* processed console input */
@@ -121,8 +120,7 @@ putstrn0(char *str, int n, int usewrite)
 		screenputs(str, n);
 
 	if(serialoq == nil){
-		if(serialputs != nil)
-			serialputs(str, n);
+		uartputs(str, n);
 		return;
 	}
 
@@ -188,8 +186,7 @@ iprint(char *fmt, ...)
 	va_end(arg);
 	if(screenputs != nil && iprintscreenputs)
 		screenputs(buf, n);
-	if(serialputs != nil)
-		serialputs(buf, n);
+	uartputs(buf, n);
 	splx(s);
 
 	return n;
@@ -215,10 +212,9 @@ panic(char *fmt, ...)
 	n = vseprint(buf+strlen(buf), buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 	buf[n] = '\n';
-	if(serialputs != nil)
-		serialputs(buf, n+1);
+	uartputs(buf, n+1);
 	if(consdebug)
-		consdebug();
+		(*consdebug)();
 	spllo();
 	prflush();
 	putstrn(buf, n+1);

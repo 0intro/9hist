@@ -30,7 +30,7 @@ getline(void)
 	int i, c;
 
 	for(;;){
-		for(i=0; i<nelem(buf) && (c=serialgetc()) != '\n'; i++){
+		for(i=0; i<nelem(buf) && (c=uartgetc()) != '\n'; i++){
 			DBG("%c...", c);
 			buf[i] = c;
 		}

@@ -147,12 +147,12 @@ struct Segdesc
 
 struct Mach
 {
-	int	machno;			/* physical id of processor */
+	int	machno;			/* physical id of processor (KNOWN TO ASSEMBLY) */
 	ulong	splpc;			/* pc of last caller to splhi */
 
 	ulong*	pdb;			/* page directory base for this processor (va) */
 	Tss*	tss;			/* tss for this processor */
-	Segdesc	gdt[NGDT];			/* gdt for this processor */
+	Segdesc	*gdt;			/* gdt for this processor */
 
 	Proc*	proc;			/* current process on this processor */
 	Proc*	externup;		/* extern register Proc *up */
@@ -191,6 +191,7 @@ struct Mach
 	char	cpuidid[16];
 	char*	cpuidtype;
 	int	havetsc;
+	int	havepge;
 
 	vlong	mtrrcap;
 	vlong	mtrrdef;

@@ -623,26 +623,26 @@ cpuidentify(void)
 {
 	char *p;
 	int family, model, nomce;
-	X86type *t;
+	X86type *t, *tab;
 	ulong cr4;
 	vlong mca, mct;
 
 	cpuid(m->cpuidid, &m->cpuidax, &m->cpuiddx);
 	if(strncmp(m->cpuidid, "AuthenticAMD", 12) == 0)
-		t = x86amd;
+		tab = x86amd;
 	else if(strncmp(m->cpuidid, "CentaurHauls", 12) == 0)
-		t = x86winchip;
+		tab = x86winchip;
 	else
-		t = x86intel;
+		tab = x86intel;
+	
 	family = X86FAMILY(m->cpuidax);
 	model = X86MODEL(m->cpuidax);
-	while(t->name){
+	for(t=tab; t->name; t++)
 		if((t->family == family && t->model == model)
 		|| (t->family == family && t->model == -1)
 		|| (t->family == -1))
 			break;
-		t++;
-	}
+
 	m->cpuidtype = t->name;
 
 	/*
@@ -682,10 +682,31 @@ cpuidentify(void)
 			rdmsr(0x01, &mct);
 	}
 
-	if(t->family >= 6){
+	/*
+	 * Detect whether the chip supports the global bit
+	 * in page directory and page table entries.  When set
+	 * in a particular entry, it means ``don't bother removing
+	 * this from the TLB when CR3 changes.''  
+	 * 
+	 * We flag all kernel pages with this bit.  Doing so lessens the
+	 * overhead of switching processes on bare hardware,
+	 * even more so on VMware.  See mmu.c:/^memglobal.
+	 *
+	 * This feature exists on Intel Pentium Pro and later
+	 * processors.  Presumably the AMD processors have
+	 * a similar notion, but I can't find it in the meager
+	 * documentation I've tried.
+	 *
+	 * For future reference, should we ever need to do a
+	 * full TLB flush, it can be accomplished by clearing
+	 * the PGE bit in CR4, writing to CR3, and then
+	 * restoring the PGE bit.
+	 */
+	if(tab==x86intel && t->family >= 6){
 		cr4 = getcr4();
 		cr4 |= 0x80;		/* page global enable bit */
 		putcr4(cr4);
+		m->havepge = 1;
 	}
 
 	cputype = t;
@@ -702,6 +723,35 @@ cputyperead(Chan*, void *a, long n, vlong offset)
 
 	snprint(str, sizeof(str), "%s %lud\n", cputype->name, mhz);
 	return readstr(offset, a, n, str);
+}
+
+static long
+pgewrite(Chan*, void *a, long n, vlong)
+{
+	if(!m->havepge)
+		error("processor does not support pge");
+
+	if(n==3 && memcmp(a, "off", 3)==0){
+		putcr4(getcr4() & ~0x80);
+		return n;
+	}
+	if(n==2 && memcmp(a, "on", 2)==0){
+		putcr4(getcr4() | 0x80);
+		return n;
+	}
+	error("invalid control message");
+	return -1;
+}
+
+static long
+pgeread(Chan*, void *a, long n, vlong offset)
+{
+	if(n < 16)
+		error("need more room");
+	if(offset)
+		return 0;
+	n = snprint(a, n, "%s pge; %s", m->havepge ? "have" : "no", getcr4()&0x80 ? "on" : "off");
+	return n;
 }
 
 void
@@ -742,6 +792,7 @@ archinit(void)
 		conf.copymode = 1;
 
 	addarchfile("cputype", 0444, cputyperead, nil);
+	addarchfile("pge", 0664, pgeread, pgewrite);
 }
 
 /*
