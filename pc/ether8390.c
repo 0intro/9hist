@@ -8,11 +8,11 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
-#include "../port/error.h"
 #include "io.h"
-#include "devtab.h"
+#include "../port/error.h"
+#include "../port/netif.h"
 
-#include "ether.h"
+#include "etherif.h"
 
 enum {
 	Cr		= 0x00,		/* command register, all pages */
@@ -147,12 +147,12 @@ typedef struct {
 } Hdr;
 
 static void
-dp8390disable(Ctlr *ctlr)
+dp8390disable(Ether *ether)
 {
 	ulong dp8390;
 	int timo;
 
-	dp8390 = ctlr->card.dp8390;
+	dp8390 = ether->dp8390;
 	/*
 	 * Stop the chip. Set the Stp bit and wait for the chip
 	 * to finish whatever was on its tiny mind before it sets
@@ -169,96 +169,30 @@ dp8390disable(Ctlr *ctlr)
 }
 
 static void
-dp8390ring(Ctlr *ctlr)
+dp8390ring(Ether *ether)
 {
 	ulong dp8390;
 
-	dp8390 = ctlr->card.dp8390;
-	dp8390outb(dp8390+Pstart, ctlr->card.pstart);
-	dp8390outb(dp8390+Pstop, ctlr->card.pstop);
-	dp8390outb(dp8390+Bnry, ctlr->card.pstop-1);
+	dp8390 = ether->dp8390;
+	dp8390outb(dp8390+Pstart, ether->pstart);
+	dp8390outb(dp8390+Pstop, ether->pstop);
+	dp8390outb(dp8390+Bnry, ether->pstop-1);
 
 	dp8390outb(dp8390+Cr, Page1|RDMAabort|Stp);
-	dp8390outb(dp8390+Curr, ctlr->card.pstart);
+	dp8390outb(dp8390+Curr, ether->pstart);
 	dp8390outb(dp8390+Cr, Page0|RDMAabort|Stp);
 
-	ctlr->card.nxtpkt = ctlr->card.pstart;
+	ether->nxtpkt = ether->pstart;
 }
 
 void
-dp8390reset(Ctlr *ctlr)
-{
-	ulong dp8390;
-
-	dp8390 = ctlr->card.dp8390;
-	/*
-	 * This is the initialisation procedure described
-	 * as 'mandatory' in the datasheet, with references
-	 * to the 3Com503 technical reference manual.
-	 */ 
-	dp8390disable(ctlr);
-	if(ctlr->card.bit16)
-		dp8390outb(dp8390+Dcr, Ft4|Ls|Wts);
-	else
-		dp8390outb(dp8390+Dcr, Ft4|Ls);
-
-	dp8390outb(dp8390+Rbcr0, 0);
-	dp8390outb(dp8390+Rbcr1, 0);
-
-	dp8390outb(dp8390+Tcr, 0);
-	dp8390outb(dp8390+Rcr, Mon);
-
-	/*
-	 * Init the ring hardware and software ring pointers.
-	 * Can't initialise ethernet address as we may not know
-	 * it yet.
-	 */
-	dp8390ring(ctlr);
-	dp8390outb(dp8390+Tpsr, ctlr->card.tstart);
-
-	dp8390outb(dp8390+Isr, 0xFF);
-	dp8390outb(dp8390+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
-
-	/*
-	 * Leave the chip initialised,
-	 * but in monitor mode.
-	 */
-	dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
-}
-
-void
-dp8390attach(Ctlr *ctlr)
-{
-	/*
-	 * Enable the chip for transmit/receive.
-	 * The init routine leaves the chip in monitor
-	 * mode. Clear the missed-packet counter, it
-	 * increments while in monitor mode.
-	 */
-	dp8390outb(ctlr->card.dp8390+Rcr, Ab);
-	dp8390inb(ctlr->card.dp8390+Cntr2);
-}
-
-void
-dp8390mode(Ctlr *ctlr, int on)
-{
-	/*
-	 * Set/reset promiscuous mode.
-	 */
-	if(on)
-		dp8390outb(ctlr->card.dp8390+Rcr, Pro|Ab);
-	else
-		dp8390outb(ctlr->card.dp8390+Rcr, Ab);
-}
-
-void
-dp8390setea(Ctlr *ctlr)
+dp8390setea(Ether *ether)
 {
 	ulong dp8390;
 	uchar cr;
 	int i;
 
-	dp8390 = ctlr->card.dp8390;
+	dp8390 = ether->dp8390;
 	/*
 	 * Set the ethernet address into the chip.
 	 * Take care to restore the command register
@@ -268,21 +202,21 @@ dp8390setea(Ctlr *ctlr)
 	 */
 	cr = dp8390inb(dp8390+Cr) & ~Txp;
 	dp8390outb(dp8390+Cr, Page1|(~(Ps1|Ps0) & cr));
-	for(i = 0; i < sizeof(ctlr->ea); i++)
-		dp8390outb(dp8390+Par0+i, ctlr->ea[i]);
+	for(i = 0; i < sizeof(ether->ea); i++)
+		dp8390outb(dp8390+Par0+i, ether->ea[i]);
 	dp8390outb(dp8390+Cr, cr);
 }
 
 void
-dp8390getea(Ctlr *ctlr)
+dp8390getea(Ether *ether)
 {
 	ulong dp8390;
 	uchar cr;
 	int i;
 
-	dp8390 = ctlr->card.dp8390;
+	dp8390 = ether->dp8390;
 	/*
-	 * Set the ethernet address into the chip.
+	 * Get the ethernet address from the chip.
 	 * Take care to restore the command register
 	 * afterwards. We don't care about multicast
 	 * addresses as we never set the multicast
@@ -290,19 +224,19 @@ dp8390getea(Ctlr *ctlr)
 	 */
 	cr = dp8390inb(dp8390+Cr) & ~Txp;
 	dp8390outb(dp8390+Cr, Page1|(~(Ps1|Ps0) & cr));
-	for(i = 0; i < sizeof(ctlr->ea); i++)
-		ctlr->ea[i] = dp8390inb(dp8390+Par0+i);
+	for(i = 0; i < sizeof(ether->ea); i++)
+		ether->ea[i] = dp8390inb(dp8390+Par0+i);
 	dp8390outb(dp8390+Cr, cr);
 }
 
-void*
-dp8390read(Ctlr *ctlr, void *to, ulong from, ulong len)
+static void*
+dp8390read(Ether *ether, void *to, ulong from, ulong len)
 {
 	ulong dp8390;
 	uchar cr;
 	int timo;
 
-	dp8390 = ctlr->card.dp8390;
+	dp8390 = ether->dp8390;
 	/*
 	 * Read some data at offset 'from' in the card's memory
 	 * using the DP8390 remote DMA facility, and place it at
@@ -315,7 +249,7 @@ dp8390read(Ctlr *ctlr, void *to, ulong from, ulong len)
 	/*
 	 * Set up the remote DMA address and count.
 	 */
-	if(ctlr->card.bit16)
+	if(ether->bit16)
 		len = ROUNDUP(len, 2);
 	dp8390outb(dp8390+Rbcr0, len & 0xFF);
 	dp8390outb(dp8390+Rbcr1, (len>>8) & 0xFF);
@@ -327,10 +261,10 @@ dp8390read(Ctlr *ctlr, void *to, ulong from, ulong len)
 	 * out of the I/O port.
 	 */
 	dp8390outb(dp8390+Cr, Page0|RDMAread|Sta);
-	if(ctlr->card.bit16)
-		inss(ctlr->card.data, to, len/2);
+	if(ether->bit16)
+		inss(ether->data, to, len/2);
 	else
-		insb(ctlr->card.data, to, len);
+		insb(ether->data, to, len);
 
 	/*
 	 * Wait for the remote DMA to complete. The timeout
@@ -347,13 +281,13 @@ dp8390read(Ctlr *ctlr, void *to, ulong from, ulong len)
 	return to;
 }
 
-void*
-dp8390write(Ctlr *ctlr, ulong to, void *from, ulong len)
+static void*
+dp8390write(Ether *ether, ulong to, void *from, ulong len)
 {
 	ulong dp8390, crda;
 	uchar cr;
 
-	dp8390 = ctlr->card.dp8390;
+	dp8390 = ether->dp8390;
 	/*
 	 * Write some data to offset 'to' in the card's memory
 	 * using the DP8390 remote DMA facility, reading it at
@@ -363,7 +297,7 @@ dp8390write(Ctlr *ctlr, ulong to, void *from, ulong len)
 	dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
 	dp8390outb(dp8390+Isr, Rdc);
 
-	if(ctlr->card.bit16)
+	if(ether->bit16)
 		len = ROUNDUP(len, 2);
 
 	/*
@@ -371,9 +305,9 @@ dp8390write(Ctlr *ctlr, ulong to, void *from, ulong len)
 	 * This is straight from the DP8390[12D] datasheet, hence
 	 * the initial set up for read.
 	 */
-	crda = to-1-ctlr->card.bit16;
-	dp8390outb(dp8390+Rbcr0, (len+1+ctlr->card.bit16) & 0xFF);
-	dp8390outb(dp8390+Rbcr1, ((len+1+ctlr->card.bit16)>>8) & 0xFF);
+	crda = to-1-ether->bit16;
+	dp8390outb(dp8390+Rbcr0, (len+1+ether->bit16) & 0xFF);
+	dp8390outb(dp8390+Rbcr1, ((len+1+ether->bit16)>>8) & 0xFF);
 	dp8390outb(dp8390+Rsar0, crda & 0xFF);
 	dp8390outb(dp8390+Rsar1, (crda>>8) & 0xFF);
 	dp8390outb(dp8390+Cr, Page0|RDMAread|Sta);
@@ -400,10 +334,10 @@ dp8390write(Ctlr *ctlr, ulong to, void *from, ulong len)
 	/*
 	 * Pump the data into the I/O port.
 	 */
-	if(ctlr->card.bit16)
-		outss(ctlr->card.data, from, len/2);
+	if(ether->bit16)
+		outss(ether->data, from, len/2);
 	else
-		outsb(ctlr->card.data, from, len);
+		outsb(ether->data, from, len);
 
 	/*
 	 * Wait for the remote DMA to finish. We'll need
@@ -431,57 +365,30 @@ getcurr(ulong dp8390)
 }
 
 static void
-cldaquiet(ulong dp8390)
+receive(Ether *ether)
 {
-	uchar a, b, c;
-
-	/*
-	 * Hack to keep away from the card's memory while it is receiving
-	 * a packet. This is only a problem on the NCR 3170 Safari.
-	 *
-	 * We peek at the current local DMA registers and, if they are
-	 * changing, wait.
-	 */
-	
-	for(;;delay(10)){
-		a = dp8390inb(dp8390+Clda0);
-		b = dp8390inb(dp8390+Clda0);
-		if(a != b)
-			continue;
-		c = dp8390inb(dp8390+Clda0);
-		if(c != b)
-			continue;
-		break;
-	}
-}
-
-void
-dp8390receive(Ctlr *ctlr)
-{
-	RingBuf *ring;
 	uchar curr, len1, *pkt;
 	Hdr hdr;
 	ulong dp8390, data, len;
+	ushort type;
+	Netfile *f, **fp, **ep;
 
-	dp8390 = ctlr->card.dp8390;
-	for(curr = getcurr(dp8390); ctlr->card.nxtpkt != curr; curr = getcurr(dp8390)){
-		if(strcmp(arch->id, "NCRD.0") == 0)
-			cldaquiet(dp8390);
+	dp8390 = ether->dp8390;
+	for(curr = getcurr(dp8390); ether->nxtpkt != curr; curr = getcurr(dp8390)){
+		ether->inpackets++;
 
-		ctlr->inpackets++;
-
-		data = ctlr->card.nxtpkt*Dp8390BufSz;
-		(*ctlr->card.read)(ctlr, &hdr, data, sizeof(Hdr));
+		data = ether->nxtpkt*Dp8390BufSz;
+		(*ether->read)(ctlr, &hdr, data, sizeof(Hdr));
 
 		/*
 		 * Don't believe the upper byte count, work it
 		 * out from the software next-page pointer and
 		 * the current next-page pointer.
 		 */
-		if(hdr.next > ctlr->card.nxtpkt)
-			len1 = hdr.next - ctlr->card.nxtpkt - 1;
+		if(hdr.next > ether->nxtpkt)
+			len1 = hdr.next - ether->nxtpkt - 1;
 		else
-			len1 = (ctlr->card.pstop-ctlr->card.nxtpkt) + (hdr.next-ctlr->card.pstart) - 1;
+			len1 = (ether->pstop-ether->nxtpkt) + (hdr.next-ether->pstart) - 1;
 		if(hdr.len0 > (Dp8390BufSz-sizeof(Hdr)))
 			len1--;
 
@@ -490,52 +397,57 @@ dp8390receive(Ctlr *ctlr)
 		/*
 		 * Chip is badly scrogged, reinitialise the ring.
 		 */
-		if(hdr.next < ctlr->card.pstart || hdr.next >= ctlr->card.pstop
+		if(hdr.next < ether->pstart || hdr.next >= ether->pstop
 		  || len < 60 || len > sizeof(Etherpkt)){
 			print("H#%2.2ux#%2.2ux#%2.2ux#%2.2ux,%d|",
 				hdr.status, hdr.next, hdr.len0, hdr.len1, len);
 			dp8390outb(dp8390+Cr, Page0|RDMAabort|Stp);
-			dp8390ring(ctlr);
+			dp8390ring(ether);
 			dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
 			return;
 		}
 
 		/*
-		 * If it's a good packet and we have a place to put it,
-		 * read it in to the software ring.
-		 * If the packet wraps round the hardware ring, read it
-		 * in two pieces.
+		 * If it's a good packet read it in to the software buffer.
+		 * If the packet wraps round the hardware ring, read it in two pieces.
 		 */
-		ring = &ctlr->rb[ctlr->ri];
-		if((hdr.status & (Fo|Fae|Crce|Prxok)) == Prxok && ring->owner == Interface){
-			pkt = ring->pkt;
+		if((hdr.status & (Fo|Fae|Crce|Prxok)) == Prxok){
+			pkt = ether->rpkt;
 			data += sizeof(Hdr);
 			ring->len = len;
 
-			if((data+len) >= ctlr->card.pstop*Dp8390BufSz){
-				ulong count = ctlr->card.pstop*Dp8390BufSz - data;
+			if((data+len) >= ether->pstop*Dp8390BufSz){
+				ulong count = ether->pstop*Dp8390BufSz - data;
 
-				(*ctlr->card.read)(ctlr, pkt, data, count);
+				(*ether->read)(ctlr, pkt, data, count);
 				pkt += count;
-				data = ctlr->card.pstart*Dp8390BufSz;
+				data = ether->pstart*Dp8390BufSz;
 				len -= count;
 			}
 			if(len)
-				(*ctlr->card.read)(ctlr, pkt, data, len);
+				(*ether->read)(ctlr, pkt, data, len);
 
-			ring->owner = Host;
-			ctlr->ri = NEXT(ctlr->ri, ctlr->nrb);
+			/*
+			 * Copy the packet to whoever wants it.
+			 */
+			type = (ether->rpkt.type[0]<<8)|ether->rpkt.type[1];
+			ep = &ether->f[Ntypes];
+			for(fp = ether->f; fp < ep; fp++) {
+				f = *fp;
+				if(f && (f->type == type || f->type < 0))
+					qproduce(f->in, &ether->rpkt, len);
+			}
 		}
 
 		/*
 		 * Finished woth this packet, update the
 		 * hardware and software ring pointers.
 		 */
-		ctlr->card.nxtpkt = hdr.next;
+		ether->nxtpkt = hdr.next;
 
 		hdr.next--;
-		if(hdr.next < ctlr->card.pstart)
-			hdr.next = ctlr->card.pstop-1;
+		if(hdr.next < ether->pstart)
+			hdr.next = ether->pstop-1;
 		dp8390outb(dp8390+Bnry, hdr.next);
 	}
 }
@@ -544,18 +456,18 @@ dp8390receive(Ctlr *ctlr)
  * Initiate a transmission. Must be called splhi().
  */
 void
-dp8390transmit(Ctlr *ctlr)
+dp8390transmit(Ether *ether)
 {
 	ulong dp8390;
 	RingBuf *ring;
 
-	dp8390 = ctlr->card.dp8390;
-	ring = &ctlr->tb[ctlr->ti];
-	if(ctlr->tbusy == 0 && ring->owner == Interface){
+	dp8390 = ether->dp8390;
+	ring = &ether->tb[ether->ti];
+	if(ether->tbusy == 0 && ring->owner == Interface){
 
-		ctlr->tbusy = 1;
+		ether->tbusy = 1;
 
-		(*ctlr->card.write)(ctlr, ctlr->card.tstart*Dp8390BufSz, ring->pkt, ring->len);
+		(*ether->write)(ctlr, ether->tstart*Dp8390BufSz, ring->pkt, ring->len);
 
 		dp8390outb(dp8390+Tbcr0, ring->len & 0xFF);
 		dp8390outb(dp8390+Tbcr1, (ring->len>>8) & 0xFF);
@@ -563,14 +475,14 @@ dp8390transmit(Ctlr *ctlr)
 	}
 }
 
-void
-dp8390overflow(Ctlr *ctlr)
+static void
+overflow(Ether *ether)
 {
 	ulong dp8390;
 	uchar txp;
 	int resend;
 
-	dp8390 = ctlr->card.dp8390;
+	dp8390 = ether->dp8390;
 	/*
 	 * The following procedure is taken from the DP8390[12D] datasheet,
 	 * it seems pretty adamant that this is what has to be done.
@@ -587,41 +499,22 @@ dp8390overflow(Ctlr *ctlr)
 
 	dp8390outb(dp8390+Tcr, Lb);
 	dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
-	(*ctlr->card.receive)(ctlr);
+	(*ether->receive)(ether);
 	dp8390outb(dp8390+Isr, Ovw);
-	wakeup(&ctlr->rr);
+	wakeup(&ether->rr);
 	dp8390outb(dp8390+Tcr, 0);
 
 	if(resend)
 		dp8390outb(dp8390+Cr, Page0|RDMAabort|Txp|Sta);
 }
 
-void
-dp8390watch(Ctlr *ctlr)
-{
-	int s;
-
-	/*
-	 * Stub watchdog routine.
-	 * Whine if a transmit takes too long.
-	 */
-	s = splhi();
-	if(ctlr->tbusy){
-		ctlr->tbusy++;
-		if(ctlr->tbusy > 1 && ctlr->debug)
-			print("TB%d|", ctlr->tbusy);
-	}
-	splx(s);
-}
-
-void
-dp8390intr(Ctlr *ctlr)
+static void
+interrupt(Ether *ether)
 {
 	ulong dp8390;
-	RingBuf *ring;
 	uchar isr, r;
 
-	dp8390 = ctlr->card.dp8390;
+	dp8390 = ether->dp8390;
 	/*
 	 * While there is something of interest,
 	 * clear all the interrupts and process.
@@ -630,21 +523,18 @@ dp8390intr(Ctlr *ctlr)
 	while(isr = dp8390inb(dp8390+Isr)){
 
 		if(isr & Ovw){
-			if(ctlr->card.overflow)
-				(*ctlr->card.overflow)(ctlr);
+			overflow(ether);
 			dp8390outb(dp8390+Isr, Ovw);
-			ctlr->overflows++;
+			ether->overflows++;
 		}
 
 		/*
 		 * We have received packets.
-		 * Take a spin round the ring and
-		 * wakeup the kproc.
+		 * Take a spin round the ring. and
 		 */
 		if(isr & (Rxe|Prx)){
-			(*ctlr->card.receive)(ctlr);
+			receive(ether);
 			dp8390outb(dp8390+Isr, Rxe|Prx);
-			wakeup(&ctlr->rr);
 		}
 
 		/*
@@ -655,30 +545,102 @@ dp8390intr(Ctlr *ctlr)
 		if(isr & (Txe|Ptx)){
 			r = dp8390inb(dp8390+Tsr);
 			if(isr & Txe){
-				if((r & (Cdh|Fu|Crs|Abt)) && ctlr->debug)
+				if((r & (Cdh|Fu|Crs|Abt)) && ether->debug)
 					print("Tsr#%2.2ux|", r);
-				ctlr->oerrs++;
+				ether->oerrs++;
 			}
 
 			dp8390outb(dp8390+Isr, Txe|Ptx);
 
 			if(isr & Ptx)
-				ctlr->outpackets++;
-
-			ring = &ctlr->tb[ctlr->ti];
-			ring->owner = Host;
-			ctlr->tbusy = 0;
-			ctlr->ti = NEXT(ctlr->ti, ctlr->ntb);
-			(*ctlr->card.transmit)(ctlr);
-			wakeup(&ctlr->tr);
+				ether->outpackets++;
+			wakeup(&ether->tr);
 		}
 
 		if(isr & Cnt){
-			ctlr->frames += dp8390inb(dp8390+Cntr0);
-			ctlr->crcs += dp8390inb(dp8390+Cntr1);
-			ctlr->buffs += dp8390inb(dp8390+Cntr2);
+			ether->frames += dp8390inb(dp8390+Cntr0);
+			ether->crcs += dp8390inb(dp8390+Cntr1);
+			ether->buffs += dp8390inb(dp8390+Cntr2);
 			dp8390outb(dp8390+Isr, Cnt);
 		}
 	}
 	dp8390outb(dp8390+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
+}
+
+static void
+promiscuous(Ether *ether, int on)
+{
+	/*
+	 * Set/reset promiscuous mode.
+	 */
+	if(on)
+		dp8390outb(ether->dp8390+Rcr, Pro|Ab);
+	else
+		dp8390outb(ether->dp8390+Rcr, Ab);
+}
+
+void
+dp8390attach(Ether *ether)
+{
+	/*
+	 * Enable the chip for transmit/receive.
+	 * The init routine leaves the chip in monitor
+	 * mode. Clear the missed-packet counter, it
+	 * increments while in monitor mode.
+	 */
+	dp8390outb(ether->dp8390+Rcr, Ab);
+	dp8390inb(ether->dp8390+Cntr2);
+}
+
+static int
+dp8390reset(Ether *ether)
+{
+	ulong dp8390;
+
+	dp8390 = ether->dp8390;
+	/*
+	 * This is the initialisation procedure described
+	 * as 'mandatory' in the datasheet, with references
+	 * to the 3Com503 technical reference manual.
+	 */ 
+	dp8390disable(ether);
+	if(ether->bit16)
+		dp8390outb(dp8390+Dcr, Ft4|Ls|Wts);
+	else
+		dp8390outb(dp8390+Dcr, Ft4|Ls);
+
+	dp8390outb(dp8390+Rbcr0, 0);
+	dp8390outb(dp8390+Rbcr1, 0);
+
+	dp8390outb(dp8390+Tcr, 0);
+	dp8390outb(dp8390+Rcr, Mon);
+
+	/*
+	 * Init the ring hardware and software ring pointers.
+	 * Can't initialise ethernet address as we may not know
+	 * it yet.
+	 */
+	dp8390ring(ether);
+	dp8390outb(dp8390+Tpsr, ether->tstart);
+
+	dp8390outb(dp8390+Isr, 0xFF);
+	dp8390outb(dp8390+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
+
+	/*
+	 * Leave the chip initialised,
+	 * but in monitor mode.
+	 */
+	dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
+
+	/*
+	 * Set up the software configuration.
+	 */
+	ether->attach = attach;
+	ether->write = write;
+	ether->interrupt = interrupt;
+
+	ether->promiscuous = promiscuous;
+	ether->arg = ether;
+
+	return 0;
 }

@@ -554,6 +554,11 @@ TEXT	splx(SB),$0
 	POPFL
 	RET
 
+TEXT	getstatus(SB),$0
+	PUSHFL
+	POPL	AX
+	RET
+
 /*
  *  do nothing whatsoever till interrupt happens
  */
@@ -608,7 +613,6 @@ TEXT	config(SB),$0
 	OUTB
 	RET
 
-#ifdef notdef
 /*
  *  copy bitmap changes to screen memory for ldepth 0 screen.
  *  reverse the bits since the screen is big-endian
@@ -719,7 +723,6 @@ l20:
 	MOVB	BX,-1(DI)(CX*1)
 	LOOP	l20
 	RET
-#endif /* notdef */
 
 /*
  * The DP8390 ethernet chip needs some time between

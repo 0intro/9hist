@@ -8,42 +8,70 @@
 
 #include	<libg.h>
 #include	<gnot.h>
-#include	"screen.h"
-#include	"vga.h"
 
-#define	MINX	8
-
-struct{
-	Point	pos;
-	int	bwid;
-}out;
+enum
+{
+	EMISCR=		0x3CC,		/* control sync polarity */
+	EMISCW=		0x3C2,
+	EFCW=		0x3DA,		/* feature control */
+	EFCR=		0x3CA,
+	GRX=		0x3CE,		/* index to graphics registers */
+	GR=		0x3CF,		/* graphics registers */
+	 Grms=		 0x04,		/*  read map select register */
+	SRX=		0x3C4,		/* index to sequence registers */
+	SR=		0x3C5,		/* sequence registers */
+	 Smmask=	 0x02,		/*  map mask */
+	CRX=		0x3D4,		/* index to crt registers */
+	CR=		0x3D5,		/* crt registers */
+	 Cvre=		 0x11,		/*  vertical retrace end */
+	ARW=		0x3C0,		/* attribute registers (writing) */
+	ARR=		0x3C1,		/* attribute registers (reading) */
+	CMRX=		0x3C7,		/* color map read index */
+	CMWX=		0x3C8,		/* color map write index */
+	CM=		0x3C9,		/* color map data reg */
+};
 
 /* imported */
 extern	GSubfont defont0;
-extern	Cursor arrow;
-extern	GBitmap cursorback;
 
 /* exported */
 GSubfont *defont;
-int islittle = 1;		/* little endian bit ordering in bytes */
 GBitmap	gscreen;
 
-/* local */
-static	Lock vgalock;
+/* vga screen */
+static	Lock	screenlock;
 static	GBitmap	vgascreen;
-static	ulong colormap[256][3];
-static	int cga = 1;		/* true if in cga mode */
+static	ulong	colormap[256][3];
+static	Rectangle mbb;
+static	Rectangle NULLMBB = {10000, 10000, -10000, -10000};
+
+/* cga screen */
+static	int	cga = 1;		/* true if in cga mode */
+
+/* system window */
+static	int	isscroll;
+static	Rectangle window;
+static	int	h, w;
+static	Point	cursor;
 
 /*
  *  screen dimensions
  */
+#define	MINX	8
 #define MAXX	640
 #define MAXY	480
+#define	CGAWIDTH	160
+#define	CGAHEIGHT	24
 
 /*
- *  'soft' screen bitmap
+ *  screen memory addresses
  */
+#define SCREENMEM	(0xA0000 | KZERO)
+#define CGASCREEN	((uchar*)(0xB8000 | KZERO))
 
+/*
+ *  VGA modes
+ */
 typedef struct VGAmode	VGAmode;
 struct VGAmode
 {
@@ -100,12 +128,6 @@ VGAmode mode13 =
 	0x41, 0x10, 0x0f, 0x00, 0x00,
 };
 
-static	Rectangle mbb;
-static	Rectangle NULLMBB = {10000, 10000, -10000, -10000};
-static	void nopage(int), tsengpage(int), tridentpage(int), parapage(int);
-static	void atipage(int), cirruspage(int);
-static	void vgaupdate(void);
-
 /*
  *  definitions of known cards
  */
@@ -113,7 +135,7 @@ typedef struct Vgacard	Vgacard;
 struct Vgacard
 {
 	char	*name;
-	void	(*setpage)(int);
+	void	(*setpage)(int);	/* routine to page though display memory */
 };
 
 enum
@@ -125,6 +147,9 @@ enum
 	Cirrus,		/* Cirrus CLGD542X */
 	Generic,
 };
+
+static void	nopage(int), tsengpage(int), tridentpage(int), parapage(int);
+static void	atipage(int), cirruspage(int);
 
 Vgacard vgachips[] =
 {
@@ -139,8 +164,29 @@ Vgacard vgachips[] =
 
 Vgacard	*vgacard;	/* current vga card */
 
+/* predefined for the stupid compiler */
+static void	setscreen(int, int, int);
+static uchar	srin(int);
+static void	genout(int, int);
+static void	srout(int, int);
+static void	grout(int, int);
+static void	arout(int, int);
+static void	crout(int, int);
+static void	setmode(VGAmode*);
+static void	getmode(VGAmode*);
+static void	printmode(VGAmode*);
+static void	cgascreenputc(int);
+static void	cgascreenputs(char*, int);
+static void	screenputc(char*);
+static void	scroll(void);
+static ulong	x3to32(uchar);
+static ulong	x6to32(uchar);
+void	screenupdate(void);
+void	pixreverse(uchar*, int, int);
+void	mbbrect(Rectangle);
+
 /*
- *  vga device directory
+ *  vga device
  */
 enum
 {
@@ -148,12 +194,14 @@ enum
 	Qvgasize=	1,
 	Qvgatype=	2,
 	Qvgaport=	3,
-	Nvga=		3,
+	Qvgaportw=	4,
+	Nvga=		4,
 };
 Dirtab vgadir[]={
 	"vgasize",	{Qvgasize},	0,		0666,
 	"vgatype",	{Qvgatype},	0,		0666,
 	"vgaport",	{Qvgaport},	0,		0666,
+	"vgaportw",	{Qvgaportw},	0,		0666,
 };
 
 void
@@ -214,8 +262,9 @@ long
 vgaread(Chan *c, void *buf, long n, ulong offset)
 {
 	int port;
-	uchar *cp = buf;
+	uchar *cp;
 	char cbuf[64];
+	ushort *sp;
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
@@ -227,13 +276,16 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	case Qvgatype:
 		return readstr(offset, buf, n, vgacard->name);
 	case Qvgaport:
-		/* at the moment, I need freedom for the ATI card - ches
-		if (offset + n >= 0x8000 || offset < 0x300)
-			error(Ebadarg);
-		*/
-		for (port=offset; port<offset+n; port++)
+		for (cp = buf, port=offset; port<offset+n; port++)
 			*cp++ = inb(port);
 		return n;
+	case Qvgaportw:
+		if((n & 01) || (offset & 01))
+			error(Ebadarg);
+		n /= 2;
+		for (sp = buf, port=offset; port<offset+n; port+=2)
+			*sp++ = ins(port);
+		return n*2;
 	}
 	error(Eperm);
 	return 0;
@@ -245,6 +297,7 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 	char cbuf[64], *cp;
 	Vgacard *vp;
 	int port, maxx, maxy, ldepth;
+	ushort *sp;
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
@@ -294,20 +347,19 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		|| maxx > 1280 || maxy > 1024
 		|| ldepth > 3 || ldepth < 0)
 			error(Ebadarg);
-		cursoroff(1);
 		setscreen(maxx, maxy, ldepth);
-		cursoron(1);
 		return n;
 	case Qvgaport:
-		cp = buf;
-		/*
-		if (offset + n >= 0x8000 || offset < 0x300)
-			error(Ebadarg);
-		*/
-		for (port=offset; port<offset+n; port++) {
+		for (cp = buf, port=offset; port<offset+n; port++)
 			outb(port, *cp++);
-		}
 		return n;
+	case Qvgaportw:
+		if((n & 01) || (offset & 01))
+			error(Ebadarg);
+		n /= 2;
+		for (sp = buf, port=offset; port<offset+n; port+=2)
+			outs(port, *sp++);
+		return n*2;
 	}
 	error(Eperm);
 	return 0;
@@ -327,160 +379,38 @@ vgawstat(Chan *c, char *dp)
 	error(Eperm);
 }
 
-uchar
-srin(int i) {
-	outb(SRX, i);
-	return inb(SR);
-}
+/*
+ *  start the screen in CGA mode.  Create the fonts for VGA.
+ */
 void
-genout(int reg, int val)
-{
-	if(reg == 0)
-		outb(EMISCW, val);
-	else if (reg == 1)
-		outb(EFCW, val);
-}
-void
-srout(int reg, int val)
-{
-	outb(SRX, reg);
-	outb(SR, val);
-}
-void
-grout(int reg, int val)
-{
-	outb(GRX, reg);
-	outb(GR, val);
-}
-void
-arout(int reg, int val)
-{
-	inb(0x3DA);
-	if (reg <= 0xf) {
-		outb(ARW, reg | 0x0);
-		outb(ARW, val);
-		inb(0x3DA);
-		outb(ARW, reg | 0x20);
-	} else {
-		outb(ARW, reg | 0x20);
-		outb(ARW, val);
-	}
-}
-
-void
-crout(int reg, int val)
-{
-	outb(CRX, reg);
-	outb(CR, val);
-}
-
-void
-setmode(VGAmode *v)
+screeninit(void)
 {
 	int i;
+	ulong *l;
 
-	/* turn screen off (to avoid damage) */
-	srout(1, 0x21);
+	/*
+	 *  swizzle the font longs.  we do both byte and bit swizzling
+	 *  since the font is initialized with big endian longs.
+	 */
+	defont = &defont0;
+	l = defont->bits->base;
+	for(i = defont->bits->width*Dy(defont->bits->r); i > 0; i--, l++)
+		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
+	pixreverse((uchar*)defont->bits->base,
+		defont->bits->width*BY2WD*Dy(defont->bits->r), 0);
 
-	for(i = 0; i < sizeof(v->general); i++)
-		genout(i, v->general[i]);
-
-	for(i = 0; i < sizeof(v->sequencer); i++)
-		if(i == 1)
-			srout(i, v->sequencer[i]|0x20);		/* avoid enabling screen */
-		else
-			srout(i, v->sequencer[i]);
-
-	crout(Cvre, 0);	/* allow writes to CRT registers 0-7 */
-	for(i = 0; i < sizeof(v->crt); i++)
-		crout(i, v->crt[i]);
-
-	for(i = 0; i < sizeof(v->graphics); i++)
-		grout(i, v->graphics[i]);
-
-	for(i = 0; i < sizeof(v->attribute); i++)
-		arout(i, v->attribute[i]);
-
-	/* turn screen on */
-	srout(1, v->sequencer[1]);
-}
-
-void
-getmode(VGAmode *v) {
-	int i;
-	v->general[0] = inb(0x3cc);
-	v->general[1] = inb(0x3ca);
-	for(i = 0; i < sizeof(v->sequencer); i++) {
-		outb(SRX, i);
-		v->sequencer[i] = inb(SR);
-	}
-	for(i = 0; i < sizeof(v->crt); i++) {
-		outb(CRX, i);
-		v->crt[i] = inb(CR);
-	}
-	for(i = 0; i < sizeof(v->graphics); i++) {
-		outb(GRX, i);
-		v->graphics[i] = inb(GR);
-	}
-	for(i = 0; i < sizeof(v->attribute); i++) {
-		inb(0x3DA);
-		outb(ARW, i | 0x20);
-		v->attribute[i] = inb(ARR);
-	}
-}
-
-void
-printmode(VGAmode *v) {
-	int i;
-	print("g %2.2x %2x\n",
-		v->general[0], v->general[1]);
-
-	print("s ");
-	for(i = 0; i < sizeof(v->sequencer); i++) {
-		print(" %2.2x", v->sequencer[i]);
-	}
-
-	print("\nc ");
-	for(i = 0; i < sizeof(v->crt); i++) {
-		print(" %2.2x", v->crt[i]);
-	}
-
-	print("\ng ");
-	for(i = 0; i < sizeof(v->graphics); i++) {
-		print(" %2.2x", v->graphics[i]);
-	}
-
-	print("\na ");
-	for(i = 0; i < sizeof(v->attribute); i++) {
-		print(" %2.2x", v->attribute[i]);
-	}
-	print("\n");
+	/*
+	 *  start in CGA mode
+	 */
+	cga = 1;
+	crout(0x0a, 0xff);		/* turn off cursor */
+	memset(CGASCREEN, 0, CGAWIDTH*CGAHEIGHT);
 }
 
 /*
- *  expand 3 and 6 bits of color to 32
+ *  reconfigure screen shape
  */
-static ulong
-x3to32(uchar x)
-{
-	ulong y;
-
-	x = x&7;
-	x= (x<<3)|x;
-	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
-	return y;
-}
-static ulong
-x6to32(uchar x)
-{
-	ulong y;
-
-	x = x&0x3f;
-	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
-	return y;
-}
-
-void
+static void
 setscreen(int maxx, int maxy, int ldepth)
 {
 	int len, vgamaxy, width, i, x, s;
@@ -533,18 +463,6 @@ setscreen(int maxx, int maxy, int ldepth)
 		xfree(oldp);
 
 	/*
-	 *  set depth of cursor backup area
-	 */
-	bitdepth();
-
-	/*
-	 *  set string pointer to upper left
-	 */
-	out.pos.x = MINX;
-	out.pos.y = 0;
-	out.bwid = defont0.info[' '].width;
-
-	/*
 	 *  default color map
 	 */
 	switch(ldepth){
@@ -563,127 +481,108 @@ setscreen(int maxx, int maxy, int ldepth)
 		gscreen.ldepth = ldepth;
 		break;
 	}
-	bbinit();
 	cga = 0;
 
 	/*
-	 * clear screen
+	 * display white window
 	 */
 	mbb = gscreen.r;
-	vgaupdate();
-}
-
-void
-screeninit(void)
-{
-	int i;
-	ulong *l;
+	screenupdate();
 
 	/*
-	 *  arrow is defined as a big endian
+	 *  set up inset system window
 	 */
-	pixreverse(arrow.set, 2*16, 0);
-	pixreverse(arrow.clr, 2*16, 0);
+	h = defont0.height;
+	w = defont0.info[' '].width;
 
-	/*
-	 *  swizzle the font longs.  we do both byte and bit swizzling
-	 *  since the font is initialized with big endian longs.
-	 */
-	defont = &defont0;
-	l = defont->bits->base;
-	for(i = defont->bits->width*Dy(defont->bits->r); i > 0; i--, l++)
-		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
-	pixreverse((uchar*)defont->bits->base,
-		defont->bits->width*BY2WD*Dy(defont->bits->r), 0);
+	window.min = Pt(50, 50);
+	window.max = add(window.min, Pt(10+w*64, 10+h*24));
 
-	cga = 1;
-	crout(0x0a, 0xff);		/* turn off cursor */
-	memset(CGASCREEN, 0, CGAWIDTH*CGAHEIGHT);
+	gbitblt(&gscreen, window.min, &gscreen, window, Zero);
+	window = inset(window, 5);
+	cursor = window.min;
+	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
+	hwcurs = 0;
+
+	mbb = gscreen.r;
+	screenupdate();
 }
 
 /*
- *  collect changes to the 'soft' screen
+ * paste tile into soft screen.
+ * tile is at location r, first pixel in *data.  tl is length of scan line to insert,
+ * l is amount to advance data after each scan line.
  */
 void
-mbbrect(Rectangle r)
+screenload(Rectangle r, uchar *data, int tl, int l)
 {
-	if (r.min.x < mbb.min.x)
-		mbb.min.x = r.min.x;
-	if (r.min.y < mbb.min.y)
-		mbb.min.y = r.min.y;
-	if (r.max.x > mbb.max.x)
-		mbb.max.x = r.max.x;
-	if (r.max.y > mbb.max.y)
-		mbb.max.y = r.max.y;
-	mousescreenupdate();
-}
+	int y, lpart, rpart, mx, m, mr;
+	uchar *q;
+	extern void cursorlock(Rectangle);
+	extern void cursorunlock(void);
 
-void
-mbbpt(Point p)
-{
-	if (p.x < mbb.min.x)
-		mbb.min.x = p.x;
-	if (p.y < mbb.min.y)
-		mbb.min.y = p.y;
-	if (p.x >= mbb.max.x)
-		mbb.max.x = p.x+1;
-	if (p.y >= mbb.max.y)
-		mbb.max.y = p.y+1;
-}
-
-/*
- *  paging routines for different cards
- */
-static void
-nopage(int page)
-{
-	USED(page);
-}
-/*
- * The following code is unproven: we haven't got the
- * ATI stuff to work yet.
- */
-static void
-atipage(int page)
-{
-	/* the ext register is in the ATI ROM at a fixed address */
-	ushort extreg = *((ushort *)0x800C0010);
-	uchar v;
-
-	outb(extreg, 0xb2);
-	v = (inb(extreg+1) & 0xe1) | (page<<1);
-	outb(extreg, 0xb2);
-	outb(extreg+1, v);
-}
-/*
- * The following assumes that the new mode registers have been selected.
- */
-static void
-tridentpage(int page)
-{
-	srout(0xe, (srin(0xe)&0xf0) | page^0x2);
-}
-static void
-tsengpage(int page)
-{
-	outb(0x3cd, (page<<4)|page);
-}
-static void
-cirruspage(int page)
-{
-	grout(0x9, page<<4);
-}
-static void
-parapage(int page)
-{
-	grout(0x9, page<<4);
+	if(!rectclip(&r, gscreen.r) || tl<=0)
+		return;
+	lock(&screenlock);
+	cursorlock(r);
+	screenupdate();
+	q = gbaddr(&gscreen, r.min);
+	mx = 7>>gscreen.ldepth;
+	lpart = (r.min.x & mx) << gscreen.ldepth;
+	rpart = (r.max.x & mx) << gscreen.ldepth;
+	m = 0xFF >> lpart;
+	mr = 0xFF ^ (0xFF >> rpart);
+	/* may need to do bit insertion on edges */
+	if(l == 1){	/* all in one byte */
+		if(rpart)
+			m ^= 0xFF >> rpart;
+		for(y=r.min.y; y<r.max.y; y++){
+			*q ^= (*data^*q) & m;
+			q += gscreen.width*sizeof(ulong);
+			data += l;
+		}
+	}else if(lpart==0 && rpart==0){	/* easy case */
+		for(y=r.min.y; y<r.max.y; y++){
+			memmove(q, data, tl);
+			q += gscreen.width*sizeof(ulong);
+			data += l;
+		}
+	}else if(rpart==0){
+		for(y=r.min.y; y<r.max.y; y++){
+			*q ^= (*data^*q) & m;
+			if(tl > 1)
+				memmove(q+1, data+1, tl-1);
+			q += gscreen.width*sizeof(ulong);
+			data += l;
+		}
+	}else if(lpart == 0){
+		for(y=r.min.y; y<r.max.y; y++){
+			if(tl > 1)
+				memmove(q, data, tl-1);
+			q[tl-1] ^= (data[tl-1]^q[tl-1]) & mr;
+			q += gscreen.width*sizeof(ulong);
+			data += l;
+		}
+	}else for(y=r.min.y; y<r.max.y; y++){
+			*q ^= (*data^*q) & m;
+			if(l > 2)
+				memmove(q+1, data+1, tl-2);
+			q[tl-1] ^= (data[tl-1]^q[l-1]) & mr;
+			q += gscreen.width*sizeof(ulong);
+			data += l;
+		}
+	mbbrect(r);
+	screenupdate();
+	cursorunlock();
+	screenupdate();
+	unlock(&screenlock);
 }
 
 /*
  *  copy litte endian soft screen to big endian hard screen
  */
-static void
-vgaupdate(void)
+void
+screenupdate(void)
 {
 	uchar *sp, *hp, *edisp;
 	int y, len, incs, inch, off, page;
@@ -772,20 +671,311 @@ vgaupdate(void)
 }
 
 void
-screenupdate(void)
+screenputs(char *s, int n)
 {
-	lock(&vgalock);
-	vgaupdate();
-	unlock(&vgalock);
+	int i;
+	Rune r;
+	char buf[4];
+
+	if(cga) {
+		cgascreenputs(s, n);
+		return;
+	}
+
+	if((getstatus() & IFLAG) == 0) {
+		/* don't deadlock trying to print in interrupt */
+		if(!canlock(&screenlock))
+			return;	
+	} else
+		lock(&screenlock);
+
+	while(n > 0) {
+		i = chartorune(&r, s);
+		if(i == 0){
+			s++;
+			--n;
+			continue;
+		}
+		memmove(buf, s, i);
+		buf[i] = 0;
+		n -= i;
+		s += i;
+		screenputc(buf);
+	}
+	if(isscroll) {
+		mbb = window;
+		isscroll = 0;
+	}
+
+	screenupdate();
+	unlock(&screenlock);
+}
+
+/*
+ *  accessing registers
+ */
+static uchar
+srin(int i) {
+	outb(SRX, i);
+	return inb(SR);
+}
+static void
+genout(int reg, int val)
+{
+	if(reg == 0)
+		outb(EMISCW, val);
+	else if (reg == 1)
+		outb(EFCW, val);
+}
+static void
+srout(int reg, int val)
+{
+	outb(SRX, reg);
+	outb(SR, val);
+}
+static void
+grout(int reg, int val)
+{
+	outb(GRX, reg);
+	outb(GR, val);
+}
+static void
+arout(int reg, int val)
+{
+	inb(0x3DA);
+	if (reg <= 0xf) {
+		outb(ARW, reg | 0x0);
+		outb(ARW, val);
+		inb(0x3DA);
+		outb(ARW, reg | 0x20);
+	} else {
+		outb(ARW, reg | 0x20);
+		outb(ARW, val);
+	}
+}
+static void
+crout(int reg, int val)
+{
+	outb(CRX, reg);
+	outb(CR, val);
+}
+
+static void
+setmode(VGAmode *v)
+{
+	int i;
+
+	/* turn screen off (to avoid damage) */
+	srout(1, 0x21);
+
+	for(i = 0; i < sizeof(v->general); i++)
+		genout(i, v->general[i]);
+
+	for(i = 0; i < sizeof(v->sequencer); i++)
+		if(i == 1)
+			srout(i, v->sequencer[i]|0x20);		/* avoid enabling screen */
+		else
+			srout(i, v->sequencer[i]);
+
+	crout(Cvre, 0);	/* allow writes to CRT registers 0-7 */
+	for(i = 0; i < sizeof(v->crt); i++)
+		crout(i, v->crt[i]);
+
+	for(i = 0; i < sizeof(v->graphics); i++)
+		grout(i, v->graphics[i]);
+
+	for(i = 0; i < sizeof(v->attribute); i++)
+		arout(i, v->attribute[i]);
+
+	/* turn screen on */
+	srout(1, v->sequencer[1]);
+}
+
+static void
+getmode(VGAmode *v)
+{
+	int i;
+	v->general[0] = inb(0x3cc);
+	v->general[1] = inb(0x3ca);
+	for(i = 0; i < sizeof(v->sequencer); i++) {
+		outb(SRX, i);
+		v->sequencer[i] = inb(SR);
+	}
+	for(i = 0; i < sizeof(v->crt); i++) {
+		outb(CRX, i);
+		v->crt[i] = inb(CR);
+	}
+	for(i = 0; i < sizeof(v->graphics); i++) {
+		outb(GRX, i);
+		v->graphics[i] = inb(GR);
+	}
+	for(i = 0; i < sizeof(v->attribute); i++) {
+		inb(0x3DA);
+		outb(ARW, i | 0x20);
+		v->attribute[i] = inb(ARR);
+	}
+}
+
+static void
+printmode(VGAmode *v)
+{
+	int i;
+	print("g %2.2x %2x\n",
+		v->general[0], v->general[1]);
+
+	print("s ");
+	for(i = 0; i < sizeof(v->sequencer); i++) {
+		print(" %2.2x", v->sequencer[i]);
+	}
+
+	print("\nc ");
+	for(i = 0; i < sizeof(v->crt); i++) {
+		print(" %2.2x", v->crt[i]);
+	}
+
+	print("\ng ");
+	for(i = 0; i < sizeof(v->graphics); i++) {
+		print(" %2.2x", v->graphics[i]);
+	}
+
+	print("\na ");
+	for(i = 0; i < sizeof(v->attribute); i++) {
+		print(" %2.2x", v->attribute[i]);
+	}
+	print("\n");
+}
+
+/*
+ *  expand 3 and 6 bits of color to 32
+ */
+static ulong
+x3to32(uchar x)
+{
+	ulong y;
+
+	x = x&7;
+	x= (x<<3)|x;
+	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
+	return y;
+}
+static ulong
+x6to32(uchar x)
+{
+	ulong y;
+
+	x = x&0x3f;
+	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
+	return y;
+}
+
+/*
+ *  just in case we have one
+ */
+void
+hwcursset(ulong *s, ulong *c, int ox, int oy)
+{
+	USED(s, c, ox, oy);
+}
+
+void
+hwcursmove(int x, int y)
+{
+	USED(x, y);
+}
+
+/*
+ *  collect changes to the 'soft' screen
+ */
+void
+mbbrect(Rectangle r)
+{
+	if (r.min.x < mbb.min.x)
+		mbb.min.x = r.min.x;
+	if (r.min.y < mbb.min.y)
+		mbb.min.y = r.min.y;
+	if (r.max.x > mbb.max.x)
+		mbb.max.x = r.max.x;
+	if (r.max.y > mbb.max.y)
+		mbb.max.y = r.max.y;
+}
+
+void
+mbbpt(Point p)
+{
+	if (p.x < mbb.min.x)
+		mbb.min.x = p.x;
+	if (p.y < mbb.min.y)
+		mbb.min.y = p.y;
+	if (p.x >= mbb.max.x)
+		mbb.max.x = p.x+1;
+	if (p.y >= mbb.max.y)
+		mbb.max.y = p.y+1;
+}
+
+/*
+ *  paging routines for different cards
+ */
+static void
+nopage(int page)
+{
+	USED(page);
+}
+
+/*
+ * Extended registers can be read with inb(), but must be
+ * written with outs(). The index must be written each time
+ * before the register is accessed.
+ * The page bits are spread across registers 0xAE and 0xB2.
+ * This can go away when we use the memory aperture.
+ */
+static void
+atipage(int page)
+{
+	/* the ext register is in the ATI ROM at a fixed address */
+	ushort extreg = *((ushort *)0x800C0010);
+	uchar v;
+
+	outb(extreg, 0xAE);
+	v = (inb(extreg+1) & 0xFC)|((page>>4) & 0x03);
+	outs(extreg, (v<<8)|0xAE);
+
+	outb(extreg, 0xB2);
+	v = (inb(extreg+1) & 0xE1)|((page & 0x0F)<<1);
+	outs(extreg, (v<<8)|0xB2);
+}
+
+/*
+ * The following assumes that the new mode registers have been selected.
+ */
+static void
+tridentpage(int page)
+{
+	srout(0xe, (srin(0xe)&0xf0) | page^0x2);
+}
+static void
+tsengpage(int page)
+{
+	outb(0x3cd, (page<<4)|page);
+}
+static void
+cirruspage(int page)
+{
+	grout(0x9, page<<4);
+}
+static void
+parapage(int page)
+{
+	grout(0x9, page<<4);
 }
 
 void
 mousescreenupdate(void)
 {
-	if(canlock(&vgalock)){
-		vgaupdate();
-		unlock(&vgalock);
-	}
+	if(canlock(&screenlock) == 0)
+		return;
+
+	screenupdate();
+	unlock(&screenlock);
 }
 
 static void
@@ -818,78 +1008,60 @@ cgascreenputc(int c)
 	}
 }
 
-void
+static void
 cgascreenputs(char *s, int n)
 {
 	while(n-- > 0)
 		cgascreenputc(*s++);
 }
 
-void
-screenputnl(void)
+static void
+scroll(void)
 {
+	int o;
 	Rectangle r;
 
-	out.pos.x = MINX;
-	out.pos.y += defont0.height;
-	if(out.pos.y > gscreen.r.max.y-defont0.height){
-		vgaupdate();
-		out.pos.y = gscreen.r.min.y;
-	}
-	r = Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height);
-	gbitblt(&gscreen, r.min, &gscreen, r, flipD[0]);
-	mbbrect(r);
-	vgaupdate();
+	o = 5*h;
+	r = Rpt(Pt(window.min.x, window.min.y+o), window.max);
+	gbitblt(&gscreen, window.min, &gscreen, r, S);
+	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
+	gbitblt(&gscreen, r.min, &gscreen, r, Zero);
+	cursor.y -= o;
+	isscroll = 1;
 }
 
-void
-screenputs(char *s, int n)
+static void
+screenputc(char *buf)
 {
-	Rune r;
-	int i;
-	char buf[4];
-	Rectangle rect;
+	int pos;
 
-	if(cga) {
-		cgascreenputs(s, n);
-		return;
-	}
+	mbbpt(cursor);
+	switch(buf[0]) {
+	case '\n':
+		if(cursor.y+h >= window.max.y)
+			scroll();
+		cursor.y += h;
+		screenputc("\r");
+		break;
+	case '\r':
+		cursor.x = window.min.x;
+		break;
+	case '\t':
+		pos = (cursor.x-window.min.x)/w;
+		pos = 8-(pos%8);
+		cursor.x += pos*w;
+		break;
+	case '\b':
+		if(cursor.x-w >= window.min.x)
+			cursor.x -= w;
+		break;
+	default:
+		if(cursor.x >= window.max.x-w)
+			screenputc("\n");
 
-	while(n > 0){
-		i = chartorune(&r, s);
-		if(i == 0){
-			s++;
-			--n;
-			continue;
-		}
-		memmove(buf, s, i);
-		buf[i] = 0;
-		n -= i;
-		s += i;
-		if(r == '\n')
-			screenputnl();
-		else if(r == '\t'){
-			out.pos.x += (8-((out.pos.x-MINX)/out.bwid&7))*out.bwid;
-			if(out.pos.x >= gscreen.r.max.x)
-				screenputnl();
-		}else if(r == '\b'){
-			if(out.pos.x >= out.bwid+MINX){
-				out.pos.x -= out.bwid;
-				gsubfstring(&gscreen, out.pos, defont, " ", flipD[S]);
-			}
-			rect.min = Pt(out.pos.x, out.pos.y);
-			rect.max = Pt(out.pos.x+out.bwid, out.pos.y+defont0.height);
-			mbbrect(rect);
-		}else{
-			if(out.pos.x >= gscreen.r.max.x-out.bwid)
-				screenputnl();
-			rect.min = Pt(out.pos.x, out.pos.y);
-			rect.max = Pt(out.pos.x+out.bwid, out.pos.y+defont0.height);
-			out.pos = gsubfstring(&gscreen, out.pos, defont, buf, flipD[S]);
-			mbbrect(rect);
-		}
+		cursor = gsubfstring(&gscreen, cursor, &defont0, buf, S);
 	}
-	vgaupdate();
+	mbbpt(Pt(cursor.x, cursor.y+h));
 }
 
 int
@@ -902,18 +1074,18 @@ void
 getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 {
 	p &= (1<<(1<<gscreen.ldepth))-1;
-	lock(&vgalock);
+	lock(&screenlock);
 	*pr = colormap[p][0];
 	*pg = colormap[p][1];
 	*pb = colormap[p][2];
-	unlock(&vgalock);
+	unlock(&screenlock);
 }
 
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
 	p &= (1<<(1<<gscreen.ldepth))-1;
-	lock(&vgalock);
+	lock(&screenlock);
 	colormap[p][0] = r;
 	colormap[p][1] = g;
 	colormap[p][2] = b;
@@ -921,47 +1093,8 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	outb(CM, r>>(32-6));
 	outb(CM, g>>(32-6));
 	outb(CM, b>>(32-6));
-	unlock(&vgalock);
+	unlock(&screenlock);
 	return ~0;
-}
-
-void
-hwcursset(ulong *s, ulong *c, int ox, int oy)
-{
-	USED(s, c, ox, oy);
-}
-
-void
-hwcursmove(int x, int y)
-{
-	USED(x, y);
-}
-
-/*
- *  a fatter than usual cursor for the safari
- */
-Cursor fatarrow = {
-	{ -1, -1 },
-	{
-		0xff, 0xff, 0x80, 0x01, 0x80, 0x02, 0x80, 0x0c, 
-		0x80, 0x10, 0x80, 0x10, 0x80, 0x08, 0x80, 0x04, 
-		0x80, 0x02, 0x80, 0x01, 0x80, 0x02, 0x8c, 0x04, 
-		0x92, 0x08, 0x91, 0x10, 0xa0, 0xa0, 0xc0, 0x40, 
-	},
-	{
-		0x00, 0x00, 0x7f, 0xfe, 0x7f, 0xfc, 0x7f, 0xf0, 
-		0x7f, 0xe0, 0x7f, 0xe0, 0x7f, 0xf0, 0x7f, 0xf8, 
-		0x7f, 0xfc, 0x7f, 0xfe, 0x7f, 0xfc, 0x73, 0xf8, 
-		0x61, 0xf0, 0x60, 0xe0, 0x40, 0x40, 0x00, 0x00, 
-	},
-};
-
-void
-bigcursor(void)
-{
-	memmove(&arrow, &fatarrow, sizeof(fatarrow));
-	pixreverse(arrow.set, 2*16, 0);
-	pixreverse(arrow.clr, 2*16, 0);
 }
 
 /*
@@ -1063,3 +1196,133 @@ ulong l2revsep[] = {
  0x1010101, 0x1010103, 0x1010301, 0x1010303, 0x1030101, 0x1030103, 0x1030301, 0x1030303,
  0x3010101, 0x3010103, 0x3010301, 0x3010303, 0x3030101, 0x3030103, 0x3030301, 0x3030303,
 };
+
+/*
+ *  reverse pixels into little endian order
+ */
+uchar revtab0[] = {
+ 0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,
+ 0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0,
+ 0x08, 0x88, 0x48, 0xc8, 0x28, 0xa8, 0x68, 0xe8,
+ 0x18, 0x98, 0x58, 0xd8, 0x38, 0xb8, 0x78, 0xf8,
+ 0x04, 0x84, 0x44, 0xc4, 0x24, 0xa4, 0x64, 0xe4,
+ 0x14, 0x94, 0x54, 0xd4, 0x34, 0xb4, 0x74, 0xf4,
+ 0x0c, 0x8c, 0x4c, 0xcc, 0x2c, 0xac, 0x6c, 0xec,
+ 0x1c, 0x9c, 0x5c, 0xdc, 0x3c, 0xbc, 0x7c, 0xfc,
+ 0x02, 0x82, 0x42, 0xc2, 0x22, 0xa2, 0x62, 0xe2,
+ 0x12, 0x92, 0x52, 0xd2, 0x32, 0xb2, 0x72, 0xf2,
+ 0x0a, 0x8a, 0x4a, 0xca, 0x2a, 0xaa, 0x6a, 0xea,
+ 0x1a, 0x9a, 0x5a, 0xda, 0x3a, 0xba, 0x7a, 0xfa,
+ 0x06, 0x86, 0x46, 0xc6, 0x26, 0xa6, 0x66, 0xe6,
+ 0x16, 0x96, 0x56, 0xd6, 0x36, 0xb6, 0x76, 0xf6,
+ 0x0e, 0x8e, 0x4e, 0xce, 0x2e, 0xae, 0x6e, 0xee,
+ 0x1e, 0x9e, 0x5e, 0xde, 0x3e, 0xbe, 0x7e, 0xfe,
+ 0x01, 0x81, 0x41, 0xc1, 0x21, 0xa1, 0x61, 0xe1,
+ 0x11, 0x91, 0x51, 0xd1, 0x31, 0xb1, 0x71, 0xf1,
+ 0x09, 0x89, 0x49, 0xc9, 0x29, 0xa9, 0x69, 0xe9,
+ 0x19, 0x99, 0x59, 0xd9, 0x39, 0xb9, 0x79, 0xf9,
+ 0x05, 0x85, 0x45, 0xc5, 0x25, 0xa5, 0x65, 0xe5,
+ 0x15, 0x95, 0x55, 0xd5, 0x35, 0xb5, 0x75, 0xf5,
+ 0x0d, 0x8d, 0x4d, 0xcd, 0x2d, 0xad, 0x6d, 0xed,
+ 0x1d, 0x9d, 0x5d, 0xdd, 0x3d, 0xbd, 0x7d, 0xfd,
+ 0x03, 0x83, 0x43, 0xc3, 0x23, 0xa3, 0x63, 0xe3,
+ 0x13, 0x93, 0x53, 0xd3, 0x33, 0xb3, 0x73, 0xf3,
+ 0x0b, 0x8b, 0x4b, 0xcb, 0x2b, 0xab, 0x6b, 0xeb,
+ 0x1b, 0x9b, 0x5b, 0xdb, 0x3b, 0xbb, 0x7b, 0xfb,
+ 0x07, 0x87, 0x47, 0xc7, 0x27, 0xa7, 0x67, 0xe7,
+ 0x17, 0x97, 0x57, 0xd7, 0x37, 0xb7, 0x77, 0xf7,
+ 0x0f, 0x8f, 0x4f, 0xcf, 0x2f, 0xaf, 0x6f, 0xef,
+ 0x1f, 0x9f, 0x5f, 0xdf, 0x3f, 0xbf, 0x7f, 0xff,
+};
+uchar revtab1[] = {
+ 0x00, 0x40, 0x80, 0xc0, 0x10, 0x50, 0x90, 0xd0,
+ 0x20, 0x60, 0xa0, 0xe0, 0x30, 0x70, 0xb0, 0xf0,
+ 0x04, 0x44, 0x84, 0xc4, 0x14, 0x54, 0x94, 0xd4,
+ 0x24, 0x64, 0xa4, 0xe4, 0x34, 0x74, 0xb4, 0xf4,
+ 0x08, 0x48, 0x88, 0xc8, 0x18, 0x58, 0x98, 0xd8,
+ 0x28, 0x68, 0xa8, 0xe8, 0x38, 0x78, 0xb8, 0xf8,
+ 0x0c, 0x4c, 0x8c, 0xcc, 0x1c, 0x5c, 0x9c, 0xdc,
+ 0x2c, 0x6c, 0xac, 0xec, 0x3c, 0x7c, 0xbc, 0xfc,
+ 0x01, 0x41, 0x81, 0xc1, 0x11, 0x51, 0x91, 0xd1,
+ 0x21, 0x61, 0xa1, 0xe1, 0x31, 0x71, 0xb1, 0xf1,
+ 0x05, 0x45, 0x85, 0xc5, 0x15, 0x55, 0x95, 0xd5,
+ 0x25, 0x65, 0xa5, 0xe5, 0x35, 0x75, 0xb5, 0xf5,
+ 0x09, 0x49, 0x89, 0xc9, 0x19, 0x59, 0x99, 0xd9,
+ 0x29, 0x69, 0xa9, 0xe9, 0x39, 0x79, 0xb9, 0xf9,
+ 0x0d, 0x4d, 0x8d, 0xcd, 0x1d, 0x5d, 0x9d, 0xdd,
+ 0x2d, 0x6d, 0xad, 0xed, 0x3d, 0x7d, 0xbd, 0xfd,
+ 0x02, 0x42, 0x82, 0xc2, 0x12, 0x52, 0x92, 0xd2,
+ 0x22, 0x62, 0xa2, 0xe2, 0x32, 0x72, 0xb2, 0xf2,
+ 0x06, 0x46, 0x86, 0xc6, 0x16, 0x56, 0x96, 0xd6,
+ 0x26, 0x66, 0xa6, 0xe6, 0x36, 0x76, 0xb6, 0xf6,
+ 0x0a, 0x4a, 0x8a, 0xca, 0x1a, 0x5a, 0x9a, 0xda,
+ 0x2a, 0x6a, 0xaa, 0xea, 0x3a, 0x7a, 0xba, 0xfa,
+ 0x0e, 0x4e, 0x8e, 0xce, 0x1e, 0x5e, 0x9e, 0xde,
+ 0x2e, 0x6e, 0xae, 0xee, 0x3e, 0x7e, 0xbe, 0xfe,
+ 0x03, 0x43, 0x83, 0xc3, 0x13, 0x53, 0x93, 0xd3,
+ 0x23, 0x63, 0xa3, 0xe3, 0x33, 0x73, 0xb3, 0xf3,
+ 0x07, 0x47, 0x87, 0xc7, 0x17, 0x57, 0x97, 0xd7,
+ 0x27, 0x67, 0xa7, 0xe7, 0x37, 0x77, 0xb7, 0xf7,
+ 0x0b, 0x4b, 0x8b, 0xcb, 0x1b, 0x5b, 0x9b, 0xdb,
+ 0x2b, 0x6b, 0xab, 0xeb, 0x3b, 0x7b, 0xbb, 0xfb,
+ 0x0f, 0x4f, 0x8f, 0xcf, 0x1f, 0x5f, 0x9f, 0xdf,
+ 0x2f, 0x6f, 0xaf, 0xef, 0x3f, 0x7f, 0xbf, 0xff,
+};
+uchar revtab2[] = {
+ 0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
+ 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0,
+ 0x01, 0x11, 0x21, 0x31, 0x41, 0x51, 0x61, 0x71,
+ 0x81, 0x91, 0xa1, 0xb1, 0xc1, 0xd1, 0xe1, 0xf1,
+ 0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72,
+ 0x82, 0x92, 0xa2, 0xb2, 0xc2, 0xd2, 0xe2, 0xf2,
+ 0x03, 0x13, 0x23, 0x33, 0x43, 0x53, 0x63, 0x73,
+ 0x83, 0x93, 0xa3, 0xb3, 0xc3, 0xd3, 0xe3, 0xf3,
+ 0x04, 0x14, 0x24, 0x34, 0x44, 0x54, 0x64, 0x74,
+ 0x84, 0x94, 0xa4, 0xb4, 0xc4, 0xd4, 0xe4, 0xf4,
+ 0x05, 0x15, 0x25, 0x35, 0x45, 0x55, 0x65, 0x75,
+ 0x85, 0x95, 0xa5, 0xb5, 0xc5, 0xd5, 0xe5, 0xf5,
+ 0x06, 0x16, 0x26, 0x36, 0x46, 0x56, 0x66, 0x76,
+ 0x86, 0x96, 0xa6, 0xb6, 0xc6, 0xd6, 0xe6, 0xf6,
+ 0x07, 0x17, 0x27, 0x37, 0x47, 0x57, 0x67, 0x77,
+ 0x87, 0x97, 0xa7, 0xb7, 0xc7, 0xd7, 0xe7, 0xf7,
+ 0x08, 0x18, 0x28, 0x38, 0x48, 0x58, 0x68, 0x78,
+ 0x88, 0x98, 0xa8, 0xb8, 0xc8, 0xd8, 0xe8, 0xf8,
+ 0x09, 0x19, 0x29, 0x39, 0x49, 0x59, 0x69, 0x79,
+ 0x89, 0x99, 0xa9, 0xb9, 0xc9, 0xd9, 0xe9, 0xf9,
+ 0x0a, 0x1a, 0x2a, 0x3a, 0x4a, 0x5a, 0x6a, 0x7a,
+ 0x8a, 0x9a, 0xaa, 0xba, 0xca, 0xda, 0xea, 0xfa,
+ 0x0b, 0x1b, 0x2b, 0x3b, 0x4b, 0x5b, 0x6b, 0x7b,
+ 0x8b, 0x9b, 0xab, 0xbb, 0xcb, 0xdb, 0xeb, 0xfb,
+ 0x0c, 0x1c, 0x2c, 0x3c, 0x4c, 0x5c, 0x6c, 0x7c,
+ 0x8c, 0x9c, 0xac, 0xbc, 0xcc, 0xdc, 0xec, 0xfc,
+ 0x0d, 0x1d, 0x2d, 0x3d, 0x4d, 0x5d, 0x6d, 0x7d,
+ 0x8d, 0x9d, 0xad, 0xbd, 0xcd, 0xdd, 0xed, 0xfd,
+ 0x0e, 0x1e, 0x2e, 0x3e, 0x4e, 0x5e, 0x6e, 0x7e,
+ 0x8e, 0x9e, 0xae, 0xbe, 0xce, 0xde, 0xee, 0xfe,
+ 0x0f, 0x1f, 0x2f, 0x3f, 0x4f, 0x5f, 0x6f, 0x7f,
+ 0x8f, 0x9f, 0xaf, 0xbf, 0xcf, 0xdf, 0xef, 0xff,
+};
+
+void
+pixreverse(uchar *p, int len, int ldepth)
+{
+	uchar *e;
+	uchar *tab;
+
+	switch(ldepth){
+	case 0:
+		tab = revtab0;
+		break;
+	case 1:
+		tab = revtab1;
+		break;
+	case 2:
+		tab = revtab2;
+		break;
+	default:
+		return;
+	}
+
+	for(e = p + len; p < e; p++)
+		*p = tab[*p];
+}

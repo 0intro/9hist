@@ -22,6 +22,18 @@ struct Ether {
 	Netif;
 };
 
+typedef struct {
+	uchar	bit16;			/* true if a 16 bit interface */
+	uchar	ram;			/* true if card has shared memory */
+
+	ulong	dp8390;			/* I/O address of 8390 */
+	ulong	data;			/* I/O data port if no shared memory */
+	uchar	nxtpkt;			/* software bndry */
+	uchar	tstart;			/* 8390 ring addresses */
+	uchar	pstart;
+	uchar	pstop;
+} Dp8390;
+
 #define NEXT(x, l)	(((x)+1)%(l))
 #define	HOWMANY(x, y)	(((x)+((y)-1))/(y))
 #define ROUNDUP(x, y)	(HOWMANY((x), (y))*(y))

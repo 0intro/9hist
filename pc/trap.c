@@ -234,12 +234,19 @@ trap(Ureg *ur)
 	int c;
 	char buf[ERRLEN];
 	Handler *h;
+	static int iret_traps;
 
 	v = ur->trap;
 
 	user = (ur->cs&0xffff) == UESEL;
 	if(user)
 		up->dbgreg = ur;
+	else if(ur->pc <= (ulong)end && *(uchar*)ur->pc == 0xCF) {
+		if(iret_traps++ > 10)
+			panic("iret trap");
+		return;
+	}
+	iret_traps = 0;
 
 	/*
 	 *  tell the 8259 that we're done with the

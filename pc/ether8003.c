@@ -3,11 +3,11 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
-#include "../port/error.h"
 #include "io.h"
-#include "devtab.h"
+#include "../port/error.h"
+#include "../port/netif.h"
 
-#include "ether.h"
+#include "etherif.h"
 
 /*
  * Western Digital/Standard Microsystems Corporation cards (WD80[01]3).
@@ -244,5 +244,5 @@ wd8003reset(Ctlr *ctlr)
 void
 ether8003link(void)
 {
-	addethercard("WD8003", wd8003reset);
+	addethercard("WD8003", reset);
 }

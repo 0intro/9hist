@@ -219,7 +219,6 @@ write(Ether *ether, void *buf, long n)
 	ushort len;
 	ulong port;
 
-print("W|");
 	port = ether->port;
 	ether->tlen = n;
 	len = ROUNDUP(ether->tlen, 4);
@@ -267,7 +266,6 @@ interrupt(Ether *ether)
 	port = ether->port;
 	status = ins(port+Status);
 
-print("I%2.2ux|", status);
 	if(status & Failure){
 		/*
 		 * Adapter failure, try to find out why.

@@ -8,7 +8,6 @@
 
 #include	<libg.h>
 #include	<gnot.h>
-#include	"screen.h"
 
 enum {
 	Data=		0x60,	/* data port */
@@ -245,7 +244,6 @@ kbdinit(void)
 	kbdq = qopen(4*1024, 0, 0, 0);
 
 	setvec(Kbdvec, kbdintr);
-	bigcursor();
 
 	/* wait for a quiescent controller */
 	while((c = inb(Status)) & (Outbusy | Inready))
