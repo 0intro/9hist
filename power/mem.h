@@ -20,9 +20,9 @@
 /*
  * Time
  */
-#define HZ		20
-#define	MS2HZ		50			/* millisec per clock tick */
-#define	TK2SEC(t)	((t)/20)		/* ticks to seconds */
+#define HZ		100
+#define	MS2HZ		(1000/HZ)		/* millisec per clock tick */
+#define	TK2SEC(t)	((t)/HZ)		/* ticks to seconds */
 #define	TK2MS(t)	((t)*MS2HZ)		/* ticks to milliseconds */
 #define	MS2TK(t)	((t)/MS2HZ)		/* milliseconds to ticks */
 
