@@ -454,6 +454,7 @@ extern Medium	tripmedium;
 extern Medium*	ipfindmedium(char *name);
 extern void	addipmedium(Medium *med);
 extern int	ipforme(Fs*, uchar *addr);
+extern int	ipisbm(uchar *);
 extern int	ipismulticast(uchar *);
 extern Ipifc*	findipifc(Fs*, uchar *remote, int type);
 extern void	findlocalip(Fs*, uchar *local, uchar *remote);

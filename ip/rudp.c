@@ -1,4 +1,7 @@
-
+/*
+ *  This protocol is compatible with UDP's packet format.
+ *  It could be done over UDP if need be.
+ */
 #include	"u.h"
 #include	"../port/lib.h"
 #include	"mem.h"
@@ -13,13 +16,13 @@
 
 enum
 {
-	RUDP_PHDRSIZE	= 12,
-	RUDP_HDRSIZE	= 36,
-	RUDP_RHDRSIZE	= 16,
-	RUDP_IPHDR	= 8,
-	IP_RUDPPROTO	= 254,
-	RUDP_USEAD6	= 36,
-	RUDP_USEAD4	= 12,
+	UDP_HDRSIZE	= 20,	/* pseudo header + udp header */
+	UDP_PHDRSIZE	= 12,	/* pseudo header */
+	UDP_RHDRSIZE	= 36,	/* pseudo header + udp header + rudp header */
+	UDP_IPHDR	= 8,	/* ip header */
+	IP_UDPPROTO	= 254,
+	UDP_USEAD6	= 36,
+	UDP_USEAD4	= 12,
 
 	Rudprxms	= 200,
 	Rudptickms	= 100,
@@ -27,16 +30,28 @@ enum
 
 };
 
-/*
- *  reliable header
- */
-typedef struct Relhdr Relhdr;
-struct Relhdr
+typedef struct Udphdr Udphdr;
+struct Udphdr
 {
-	uchar	relseq[4];	/* id of this packet (or 0) */
-	uchar	relsgen[4];	/* generation/time stamp */
-	uchar	relack[4];	/* packet being acked (or 0) */
-	uchar	relagen[4];	/* generation/time stamp */
+	/* ip header */
+	uchar	vihl;		/* Version and header length */
+	uchar	tos;		/* Type of service */
+	uchar	length[2];	/* packet length */
+	uchar	id[2];		/* Identification */
+	uchar	frag[2];	/* Fragment information */
+
+	/* pseudo header starts here */
+	uchar	Unused;
+	uchar	udpproto;	/* Protocol */
+	uchar	udpplen[2];	/* Header plus data length */
+	uchar	udpsrc[4];	/* Ip source */
+	uchar	udpdst[4];	/* Ip destination */
+
+	/* udp header */
+	uchar	udpsport[2];	/* Source port */
+	uchar	udpdport[2];	/* Destination port */
+	uchar	udplen[2];	/* data length */
+	uchar	udpcksum[2];	/* Checksum */
 };
 
 typedef struct Rudphdr Rudphdr;
@@ -48,18 +63,25 @@ struct Rudphdr
 	uchar	length[2];	/* packet length */
 	uchar	id[2];		/* Identification */
 	uchar	frag[2];	/* Fragment information */
-	uchar	Unused;	
-	uchar	rudpproto;	/* Protocol */
-	uchar	rudpplen[2];	/* Header plus data length */
-	uchar	rudpsrc[4];	/* Ip source */
-	uchar	rudpdst[4];	/* Ip destination */
+
+	/* pseudo header starts here */
+	uchar	Unused;
+	uchar	udpproto;	/* Protocol */
+	uchar	udpplen[2];	/* Header plus data length */
+	uchar	udpsrc[4];	/* Ip source */
+	uchar	udpdst[4];	/* Ip destination */
+
+	/* udp header */
+	uchar	udpsport[2];	/* Source port */
+	uchar	udpdport[2];	/* Destination port */
+	uchar	udplen[2];	/* data length (includes rudp header) */
+	uchar	udpcksum[2];	/* Checksum */
 
 	/* rudp header */
-	uchar	rudpsport[2];	/* Source port */
-	uchar	rudpdport[2];	/* Destination port */
-	Relhdr	rhdr;		/* reliable header */
-	uchar	rudplen[2];	/* data length */
-	uchar	rudpcksum[2];	/* Checksum */
+	uchar	relseq[4];	/* id of this packet (or 0) */
+	uchar	relsgen[4];	/* generation/time stamp */
+	uchar	relack[4];	/* packet being acked (or 0) */
+	uchar	relagen[4];	/* generation/time stamp */
 };
 
 
@@ -73,7 +95,6 @@ struct Reliable
 
 	uchar addr[IPaddrlen];	/* always V6 when put here */
 	ushort	port;
-
 
 	Block	*unacked;	/* unacked msg list */
 	Block	*unackedtail;	/*  and its tail */
@@ -141,13 +162,13 @@ struct Rudpcb
 /*
  * local functions 
  */
-void	relsendack( Conv *, Reliable * );
-int	reliput( Conv *, Block *, uchar *, ushort );
-Reliable *relstate( Rudpcb *, uchar *, ushort, char *from );
-void	relackproc( void * );
-void	relackq( Reliable *, Block * );
-void	relhangup( Conv *, Reliable * );
-void	relrexmit( Conv *, Reliable * );
+void	relsendack(Conv *, Reliable *);
+int	reliput(Conv *, Block *, uchar *, ushort);
+Reliable *relstate(Rudpcb *, uchar *, ushort, char *from);
+void	relackproc(void *);
+void	relackq(Reliable *, Block *);
+void	relhangup(Conv *, Reliable *);
+void	relrexmit(Conv *, Reliable *);
 
 static char*
 rudpconnect(Conv *c, char **argv, int argc)
@@ -204,15 +225,15 @@ rudpclose(Conv *c)
 
 	ucb = (Rudpcb*)c->ptcl;
 	ucb->headers = 0;
-	qlock( ucb );
-	for( r = ucb->r; r; r = nr ){
+	qlock(ucb);
+	for(r = ucb->r; r; r = nr){
 		nr = r->next;
-		relhangup( c, r );
-		free( r );
+		relhangup(c, r);
+		free(r);
 	}
 	ucb->r = 0;
 
-	qunlock( ucb );
+	qunlock(ucb);
 
 	unlock(c);
 }
@@ -220,12 +241,12 @@ rudpclose(Conv *c)
 void
 rudpkick(Conv *c, int)
 {
-	Rudphdr *uh;
+	Udphdr *uh;
 	ushort rport;
 	uchar laddr[IPaddrlen], raddr[IPaddrlen];
 	Block *bp;
 	Rudpcb *ucb;
-	Relhdr *rh;
+	Rudphdr *rh;
 	Reliable *r;
 	int dlen, ptcllen;
 	Rudppriv *upriv;
@@ -243,7 +264,7 @@ rudpkick(Conv *c, int)
 	switch(ucb->headers) {
 	case 6:
 		/* get user specified addresses */
-		bp = pullupblock(bp, RUDP_USEAD6);
+		bp = pullupblock(bp, UDP_USEAD6);
 		if(bp == nil)
 			return;
 		ipmove(raddr, bp->rp);
@@ -258,7 +279,7 @@ rudpkick(Conv *c, int)
 		bp->rp += 4;			/* Igonore local port */
 		break;
 	case 4:
-		bp = pullupblock(bp, RUDP_USEAD4);
+		bp = pullupblock(bp, UDP_USEAD4);
 		if(bp == nil)
 			return;
 		v4tov6(raddr, bp->rp);
@@ -272,8 +293,8 @@ rudpkick(Conv *c, int)
 		bp->rp += 4;			/* Igonore local port */
 		break;
 	default:
-		ipmove( raddr, c->raddr );
-		ipmove( laddr, c->laddr );
+		ipmove(raddr, c->raddr);
+		ipmove(laddr, c->laddr);
 		rport = c->rport;
 
 		break;
@@ -282,65 +303,61 @@ rudpkick(Conv *c, int)
 	dlen = blocklen(bp);
 
 	/* Make space to fit rudp & ip header */
-	bp = padblock(bp, RUDP_IPHDR+RUDP_HDRSIZE);
+	bp = padblock(bp, UDP_IPHDR+UDP_RHDRSIZE);
 	if(bp == nil)
 		return;
 
-	uh = (Rudphdr *)(bp->rp);
+	uh = (Udphdr *)(bp->rp);
 
-	rh = &(uh->rhdr);
+	rh = (Rudphdr*)uh;
 
-
-	ptcllen = dlen + (RUDP_HDRSIZE-RUDP_PHDRSIZE);
+	ptcllen = dlen + (UDP_RHDRSIZE-UDP_PHDRSIZE);
 	uh->Unused = 0;
-	uh->rudpproto = IP_RUDPPROTO;
+	uh->udpproto = IP_UDPPROTO;
 	uh->frag[0] = 0;
 	uh->frag[1] = 0;
-	hnputs(uh->rudpplen, ptcllen);
+	hnputs(uh->udpplen, ptcllen);
 	switch(ucb->headers){
 	case 4:
 	case 6:
-		v6tov4(uh->rudpdst, raddr);
-		hnputs(uh->rudpdport, rport);
-		v6tov4(uh->rudpsrc, laddr);
+		v6tov4(uh->udpdst, raddr);
+		hnputs(uh->udpdport, rport);
+		v6tov4(uh->udpsrc, laddr);
 		break;
 	default:
-		v6tov4(uh->rudpdst, c->raddr);
-		hnputs(uh->rudpdport, c->rport);
+		v6tov4(uh->udpdst, c->raddr);
+		hnputs(uh->udpdport, c->rport);
 		if(ipcmp(c->laddr, IPnoaddr) == 0)
 			findlocalip(f, c->laddr, c->raddr);
-		v6tov4(uh->rudpsrc, c->laddr);
+		v6tov4(uh->udpsrc, c->laddr);
 		break;
 	}
-	hnputs(uh->rudpsport, c->lport);
-	hnputs(uh->rudplen, ptcllen);
-	uh->rudpcksum[0] = 0;
-	uh->rudpcksum[1] = 0;
+	hnputs(uh->udpsport, c->lport);
+	hnputs(uh->udplen, ptcllen);
+	uh->udpcksum[0] = 0;
+	uh->udpcksum[1] = 0;
 
-
-	qlock( ucb );
-	r = relstate( ucb, raddr, rport, "kick" );
+	qlock(ucb);
+	r = relstate(ucb, raddr, rport, "kick");
 	r->sndseq++;
-	hnputl( rh->relseq, r->sndseq );
-	hnputl( rh->relsgen, r->sndgen );
+	hnputl(rh->relseq, r->sndseq);
+	hnputl(rh->relsgen, r->sndgen);
 
-	hnputl( rh->relack, r->rcvseq );  /* ACK last rcvd packet */
-	hnputl( rh->relagen, r->rcvgen );
+	hnputl(rh->relack, r->rcvseq);  /* ACK last rcvd packet */
+	hnputl(rh->relagen, r->rcvgen);
 
 	if(r->rcvseq < r->acksent)
 		r->acksent = r->rcvseq;
 
-	hnputs(uh->rudpcksum, ptclcsum(bp, RUDP_IPHDR, dlen+RUDP_HDRSIZE));
+	hnputs(uh->udpcksum, ptclcsum(bp, UDP_IPHDR, dlen+UDP_RHDRSIZE));
 
-	relackq( r, bp );
-	qunlock( ucb );
+	relackq(r, bp);
+	qunlock(ucb);
 
 	upriv->ustats.rudpOutDatagrams++;
 
-
-
-	DPRINT( "sent: %d/%d, %d/%d, r->sndgen = %d\n", 
-		r->sndseq, r->sndgen, r->rcvseq, r->rcvgen, r->sndgen );
+	DPRINT("sent: %d/%d, %d/%d, r->sndgen = %d\n", 
+		r->sndseq, r->sndgen, r->rcvseq, r->rcvgen, r->sndgen);
 
 	ipoput(f, bp, 0, c->ttl);
 }
@@ -349,7 +366,7 @@ void
 rudpiput(Proto *rudp, uchar *ia, Block *bp)
 {
 	int len, olen, ottl;
-	Rudphdr *uh;
+	Udphdr *uh;
 	Conv *c, **p;
 	Rudpcb *ucb;
 	uchar raddr[IPaddrlen], laddr[IPaddrlen];
@@ -362,26 +379,24 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 
 	upriv->ustats.rudpInDatagrams++;
 
-	uh = (Rudphdr*)(bp->rp);
+	uh = (Udphdr*)(bp->rp);
 
 	/* Put back pseudo header for checksum 
 	 * (remember old values for icmpnoconv()) 
 	 */
 	ottl = uh->Unused;
 	uh->Unused = 0;
-	len = nhgets(uh->rudplen);
-	olen = nhgets(uh->rudpplen);
-	hnputs(uh->rudpplen, len);
+	len = nhgets(uh->udplen);
+	olen = nhgets(uh->udpplen);
+	hnputs(uh->udpplen, len);
 
-	v4tov6(raddr, uh->rudpsrc);
-	v4tov6(laddr, uh->rudpdst);
-	lport = nhgets(uh->rudpdport);
-	rport = nhgets(uh->rudpsport);
+	v4tov6(raddr, uh->udpsrc);
+	v4tov6(laddr, uh->udpdst);
+	lport = nhgets(uh->udpdport);
+	rport = nhgets(uh->udpsport);
 
-
-
-	if(nhgets(uh->rudpcksum)) {
-		if(ptclcsum(bp, RUDP_IPHDR, len+RUDP_PHDRSIZE)) {
+	if(nhgets(uh->udpcksum)) {
+		if(ptclcsum(bp, UDP_IPHDR, len+UDP_PHDRSIZE)) {
 			upriv->ustats.rudpInErrors++;
 			upriv->csumerr++;
 			netlog(f, Logrudp, "rudp: checksum error %I\n", raddr);
@@ -397,18 +412,29 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 		c = *p;
 		if(c->inuse == 0)
 			continue;
-		if(c->lport == lport && (c->rport == 0 || c->rport == rport))
-			break;
+		if(c->lport == lport){
+			ucb = (Rudpcb*)c->ptcl;
+
+			/* with headers turned on, descriminate only on local port */
+			if(ucb->headers)
+				break;
+
+			/* otherwise discriminate on lport, rport, and raddr */
+			if(c->rport == 0 || c->rport == rport)
+			if(ipisbm(c->raddr) || ipcmp(c->raddr, IPnoaddr) == 0
+			   || ipcmp(c->raddr, raddr) == 0)
+				break;
+		}
 	}
 
 	if(*p == nil) {
 		upriv->ustats.rudpNoPorts++;
 		netlog(f, Logrudp, "rudp: no conv %I!%d -> %I!%d\n", raddr, rport,
 			laddr, lport);
-		DPRINT( "rudp: no conv %I!%d -> %I!%d\n", raddr, rport,
+		DPRINT("rudp: no conv %I!%d -> %I!%d\n", raddr, rport,
 			laddr, lport);
 		uh->Unused = ottl;
-		hnputs(uh->rudpplen, olen);
+		hnputs(uh->udpplen, olen);
 		icmpnoconv(f, bp);
 		freeblist(bp);
 		return;
@@ -416,10 +442,10 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 
 	ucb = (Rudpcb*)c->ptcl;
 
-	qlock( ucb );
-	if( reliput( c, bp, raddr, rport ) < 0 ){
-		qunlock( ucb );
-		freeb( bp );
+	qlock(ucb);
+	if(reliput(c, bp, raddr, rport) < 0){
+		qunlock(ucb);
+		freeb(bp);
 		return;
 	}
 
@@ -427,12 +453,12 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 	 * Trim the packet down to data size
 	 */
 
-	len -= (RUDP_HDRSIZE-RUDP_PHDRSIZE);
-	bp = trimblock(bp, RUDP_IPHDR+RUDP_HDRSIZE, len);
+	len -= (UDP_RHDRSIZE-UDP_PHDRSIZE);
+	bp = trimblock(bp, UDP_IPHDR+UDP_RHDRSIZE, len);
 	if(bp == nil){
 		netlog(f, Logrudp, "rudp: len err %I.%d -> %I.%d\n", 
 			raddr, rport, laddr, lport);
-		DPRINT( "rudp: len err %I.%d -> %I.%d\n", 
+		DPRINT("rudp: len err %I.%d -> %I.%d\n", 
 			raddr, rport, laddr, lport);
 		upriv->lenerr++;
 		return;
@@ -441,12 +467,10 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 	netlog(f, Logrudpmsg, "rudp: %I.%d -> %I.%d l %d\n", 
 		raddr, rport, laddr, lport, len);
 
-
-
 	switch(ucb->headers){
 	case 6:
 		/* pass the src address */
-		bp = padblock(bp, RUDP_USEAD6);
+		bp = padblock(bp, UDP_USEAD6);
 		ipmove(bp->rp, raddr);
 		if(ipforme(f, laddr) == Runi)
 			ipmove(bp->rp+IPaddrlen, laddr);
@@ -457,7 +481,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 		break;
 	case 4:
 		/* pass the src address */
-		bp = padblock(bp, RUDP_USEAD4);
+		bp = padblock(bp, UDP_USEAD4);
 		v6tov4(bp->rp, raddr);
 		if(ipforme(f, laddr) == Runi)
 			v6tov4(bp->rp+IPv4addrlen, laddr);
@@ -492,7 +516,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 	else
 		qpass(c->rq, bp);
 	
-	qunlock( ucb );
+	qunlock(ucb);
 }
 
 char*
@@ -516,17 +540,17 @@ rudpctl(Conv *c, char **f, int n)
 void
 rudpadvise(Proto *rudp, Block *bp, char *msg)
 {
-	Rudphdr *h;
+	Udphdr *h;
 	uchar source[IPaddrlen], dest[IPaddrlen];
 	ushort psource, pdest;
 	Conv *s, **p;
 
-	h = (Rudphdr*)(bp->rp);
+	h = (Udphdr*)(bp->rp);
 
-	v4tov6(dest, h->rudpdst);
-	v4tov6(source, h->rudpsrc);
-	psource = nhgets(h->rudpsport);
-	pdest = nhgets(h->rudpdport);
+	v4tov6(dest, h->udpdst);
+	v4tov6(source, h->udpsrc);
+	psource = nhgets(h->udpsport);
+	pdest = nhgets(h->udpdport);
 
 	/* Look for a connection */
 	for(p = rudp->conv; *p; p++) {
@@ -577,7 +601,7 @@ rudpinit(Fs *fs)
 	rudp->rcv = rudpiput;
 	rudp->advise = rudpadvise;
 	rudp->stats = rudpstats;
-	rudp->ipproto = IP_RUDPPROTO;
+	rudp->ipproto = IP_UDPPROTO;
 	rudp->nc = 16;
 	rudp->ptclsize = sizeof(Rudpcb);
 
@@ -652,15 +676,13 @@ loop:
  *  get the state record for a conversation
  */
 Reliable*
-relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from )
+relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from)
 {
 	Reliable *r, **l;
 
-
-
 	l = &ucb->r;
 	for(r = *l; r; r = *l){
-		if( memcmp( addr, r->addr, IPaddrlen) == 0 && 
+		if(memcmp(addr, r->addr, IPaddrlen) == 0 && 
 		    port == r->port)
 			break;
 		l = &r->next;
@@ -670,11 +692,11 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from )
 	if(r == nil){
 		if(generation == 0)
 			generation = TK2SEC(MACHP(0)->ticks);
-		DPRINT( "from %s new state %d for %I!%d\n", 
-		        from, generation, addr, port );
-		r = smalloc( sizeof( Reliable ) );
+		DPRINT("from %s new state %d for %I!%d\n", 
+		        from, generation, addr, port);
+		r = smalloc(sizeof(Reliable));
 		*l = r;
-		memmove( r->addr, addr, IPaddrlen);
+		memmove(r->addr, addr, IPaddrlen);
 		r->port = port;
 		r->unacked = 0;
 		r->sndgen = generation++;
@@ -701,16 +723,16 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 	Block *nbp;
 	Rudpcb *ucb;
 	Rudppriv *upriv;
-	Rudphdr *uh;
+	Udphdr *uh;
 	Reliable *r;
-	Relhdr *rh;
+	Rudphdr *rh;
 	ulong seq, ack, sgen, agen, ackreal;
 
 
 
 	/* get fields */
-	uh = (Rudphdr *)(bp->rp);
-	rh = &(uh->rhdr);
+	uh = (Udphdr*)(bp->rp);
+	rh = (Rudphdr*)uh;
 	seq = nhgetl(rh->relseq);
 	sgen = nhgetl(rh->relsgen);
 	ack = nhgetl(rh->relack);
@@ -719,7 +741,7 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 
 	upriv = c->p->priv;
 	ucb = (Rudpcb*)c->ptcl;
-	r = relstate(ucb, addr, port, "input" );
+	r = relstate(ucb, addr, port, "input");
 	
 
 	DPRINT("rcvd %d/%d, %d/%d, r->sndgen = %d\n", 
@@ -770,8 +792,8 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 	if(seq == 0)
 		return -1;
 
-	if( DEBUG && ++drop == drop_rate ){
-		DPRINT( "drop pkt on purpose\n" );
+	if(DEBUG && ++drop == drop_rate){
+		DPRINT("drop pkt on purpose\n");
 		drop = 0;
 		return -1;
 	}
@@ -790,38 +812,34 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 void
 relsendack(Conv *c, Reliable *r)
 {
-	Rudphdr *uh;
+	Udphdr *uh;
 	Block *bp;
-	Relhdr *rh;
+	Rudphdr *rh;
 	int ptcllen;
 	Fs *f;
 
-	bp = allocb(RUDP_IPHDR + RUDP_HDRSIZE);
+	bp = allocb(UDP_IPHDR + UDP_RHDRSIZE);
 	if(bp == nil)
 		return;
-	bp->wp += RUDP_IPHDR + RUDP_HDRSIZE;
+	bp->wp += UDP_IPHDR + UDP_RHDRSIZE;
 	f = c->p->f;
-	uh = (Rudphdr *)(bp->rp);
-	rh = &(uh->rhdr);
+	uh = (Udphdr *)(bp->rp);
+	rh = (Rudphdr*)uh;
 
-	ptcllen = (RUDP_HDRSIZE-RUDP_PHDRSIZE);
+	ptcllen = (UDP_RHDRSIZE-UDP_PHDRSIZE);
 	uh->Unused = 0;
-	uh->rudpproto = IP_RUDPPROTO;
+	uh->udpproto = IP_UDPPROTO;
 	uh->frag[0] = 0;
 	uh->frag[1] = 0;
-	hnputs(uh->rudpplen, ptcllen);
+	hnputs(uh->udpplen, ptcllen);
 
-
-
-	v6tov4( uh->rudpdst, r->addr );
-	hnputs(uh->rudpdport, r->port);
-	hnputs(uh->rudpsport, c->lport);
+	v6tov4(uh->udpdst, r->addr);
+	hnputs(uh->udpdport, r->port);
+	hnputs(uh->udpsport, c->lport);
 	if(ipcmp(c->laddr, IPnoaddr) == 0)
 		findlocalip(f, c->laddr, c->raddr);
-	v6tov4(uh->rudpsrc, c->laddr);
-	hnputs(uh->rudplen, ptcllen);
-
-
+	v6tov4(uh->udpsrc, c->laddr);
+	hnputs(uh->udplen, ptcllen);
 
 	hnputl(rh->relsgen, r->sndgen);
 	hnputl(rh->relseq, 0);
@@ -831,11 +849,11 @@ relsendack(Conv *c, Reliable *r)
 	if(r->acksent < r->rcvseq)
 		r->acksent = r->rcvseq;
 
-	uh->rudpcksum[0] = 0;
-	uh->rudpcksum[1] = 0;
-	hnputs(uh->rudpcksum, ptclcsum(bp, RUDP_IPHDR, RUDP_HDRSIZE));
+	uh->udpcksum[0] = 0;
+	uh->udpcksum[1] = 0;
+	hnputs(uh->udpcksum, ptclcsum(bp, UDP_IPHDR, UDP_RHDRSIZE));
 
-	DPRINT( "sendack: %d/%d, %d/%d\n", 0, r->sndgen, r->rcvseq, r->rcvgen );
+	DPRINT("sendack: %d/%d, %d/%d\n", 0, r->sndgen, r->rcvseq, r->rcvgen);
 	ipoput(f, bp, 0, c->ttl);
 }
 
@@ -843,7 +861,7 @@ relsendack(Conv *c, Reliable *r)
  *  called with ucb locked (and c locked if user initiated close)
  */
 void
-relhangup( Conv *, Reliable *r )
+relhangup(Conv *, Reliable *r)
 {
 	Block *bp;
 

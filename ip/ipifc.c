@@ -1096,6 +1096,21 @@ ipismulticast(uchar *ip)
 	}
 	return 0;
 }
+int
+ipisbm(uchar *ip)
+{
+	if(isv4(ip)){
+		if(ip[IPv4off] >= 0xe0 && ip[IPv4off] < 0xf0)
+			return V4;
+		if(ipcmp(ip, IPv4bcast) == 0)
+			return V4;
+	} else {
+		if(ip[0] == 0xff)
+			return V6;
+	}
+	return 0;
+}
+
 
 /*
  *  add a multicast address to an interface, called with c->car locked

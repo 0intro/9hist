@@ -277,8 +277,19 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		c = *p;
 		if(c->inuse == 0)
 			continue;
-		if(c->lport == lport && (c->rport == 0 || c->rport == rport))
-			break;
+		if(c->lport == lport){
+			ucb = (Udpcb*)c->ptcl;
+
+			/* with headers turned on, descriminate only on local port */
+			if(ucb->headers)
+				break;
+
+			/* otherwise discriminate on lport, rport, and raddr */
+			if(c->rport == 0 || c->rport == rport)
+			if(ipisbm(c->raddr) || ipcmp(c->raddr, IPnoaddr) == 0
+			   || ipcmp(c->raddr, raddr) == 0)
+				break;
+		}
 	}
 
 	if(*p == nil) {
