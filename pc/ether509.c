@@ -7,15 +7,7 @@
 #include "io.h"
 #include "devtab.h"
 
-#define NEXT(x, l)	(((x)+1)%(l))
-#define OFFSETOF(t, m)	((unsigned)&(((t*)0)->m))
-#define	HOWMANY(x, y)	(((x)+((y)-1))/(y))
-#define ROUNDUP(x, y)	(HOWMANY((x), (y))*(y))
-
-enum {
-	Nrb		= 16,		/* software receive buffers */
-	Ntb		= 4,		/* software transmit buffers */
-};
+#include "ether.h"
 
 enum {
 	IDport		= 0x0100,	/* anywhere between 0x0100 and 0x01F0 */
@@ -81,14 +73,14 @@ enum {
 	RxEmpty		= 0x8000,	/* Incomplete or FIFO empty */
 };
 
-#define COMMAND(hw, cmd, a)	outs(hw->addr+Command, ((cmd)<<11)|(a))
+#define COMMAND(board, cmd, a)	outs(board->io+Command, ((cmd)<<11)|(a))
 
 /*
- *  Write two 0 bytes to identify the IDport and them reset the
- *  ID sequence.  Then send the ID sequenced to the card to get
- *  the card it into command state.
+ * Write two 0 bytes to identify the IDport and then reset the
+ * ID sequence. Then send the ID sequence to the card to get
+ * the card into command state.
  */
-void
+static void
 idseq(void)
 {
 	int i;
@@ -108,26 +100,21 @@ idseq(void)
 }
 
 /*
- * get configuration parameters
+ * Get configuration parameters.
  */
 static int
-reset(EtherCtlr *cp)
+reset(Ctlr *ctlr)
 {
-	EtherHw *hw = cp->hw;
+	Board *board = ctlr->board;
 	int i, ea;
 	ushort x, acr;
-
-	cp->rb = xspanalloc(sizeof(EtherBuf)*Nrb, BY2PG, 0);
-	cp->nrb = Nrb;
-	cp->tb = xspanalloc(sizeof(EtherBuf)*Ntb, BY2PG, 0);
-	cp->ntb = Ntb;
 
 	/*
 	 * Do the little configuration dance. We only look
 	 * at the first board that responds, if we ever have more
 	 * than one we'll need to modify this sequence.
 	 *
-	 * 2. get to cammand state, reset, then return to command state
+	 * 2. get to command state, reset, then return to command state
 	 */
 	idseq();
 	outb(IDport, 0xC1);
@@ -174,8 +161,8 @@ reset(EtherCtlr *cp)
 	 *
 	 *    Enable the adapter. 
 	 */
-	hw->addr = (acr & 0x1F)*0x10 + 0x200;
-	outb(hw->addr+ConfigControl, 0x01);
+	board->io = (acr & 0x1F)*0x10 + 0x200;
+	outb(board->io+ConfigControl, 0x01);
 
 	/*
 	 * Read the IRQ from the Resource Configuration Register
@@ -183,16 +170,16 @@ reset(EtherCtlr *cp)
 	 * The EEPROM command is 8bits, the lower 6 bits being
 	 * the address offset.
 	 */
-	hw->irq = (ins(hw->addr+ResourceConfig)>>12) & 0x0F;
+	board->irq = (ins(board->io+ResourceConfig)>>12) & 0x0F;
 	for(ea = 0, i = 0; i < 3; i++, ea += 2){
-		while(ins(hw->addr+EEPROMcmd) & 0x8000)
+		while(ins(board->io+EEPROMcmd) & 0x8000)
 			;
-		outs(hw->addr+EEPROMcmd, (2<<6)|i);
-		while(ins(hw->addr+EEPROMcmd) & 0x8000)
+		outs(board->io+EEPROMcmd, (2<<6)|i);
+		while(ins(board->io+EEPROMcmd) & 0x8000)
 			;
-		x = ins(hw->addr+EEPROMdata);
-		cp->ea[ea] = (x>>8) & 0xFF;
-		cp->ea[ea+1] = x & 0xFF;
+		x = ins(board->io+EEPROMdata);
+		ctlr->ea[ea] = (x>>8) & 0xFF;
+		ctlr->ea[ea+1] = x & 0xFF;
 	}
 
 	/*
@@ -201,58 +188,38 @@ reset(EtherCtlr *cp)
 	 * Commands have the format 'CCCCCAAAAAAAAAAA' where C
 	 * is a bit in the command and A is a bit in the argument.
 	 */
-	COMMAND(hw, SelectWindow, 2);
+	COMMAND(board, SelectWindow, 2);
 	for(i = 0; i < 6; i++)
-		outb(hw->addr+i, cp->ea[i]);
+		outb(board->io+i, ctlr->ea[i]);
 
 	/*
 	 * Finished with window 2.
 	 * Set window 1 for normal operation.
 	 */
-	COMMAND(hw, SelectWindow, 1);
+	COMMAND(board, SelectWindow, 1);
 
 	/*
 	 * If we have a 10BASE2 transceiver, start the DC-DC
 	 * converter. Wait > 800 microseconds.
 	 */
 	if(((acr>>14) & 0x03) == 0x03){
-		COMMAND(hw, StartCoax, 0);
+		COMMAND(board, StartCoax, 0);
 		delay(1);
 	}
 
-	print("3C509 I/O addr %lux irq %d:", hw->addr, hw->irq);
-	for(i = 0; i < sizeof(cp->ea); i++)
-		print(" %2.2ux", cp->ea[i]);
+	print("3C509 I/O addr %lux irq %d:", board->io, board->irq);
+	for(i = 0; i < sizeof(ctlr->ea); i++)
+		print(" %2.2ux", ctlr->ea[i]);
 	print("\n");
 
 	return 0;
 }
 
 static void
-mode(EtherCtlr *cp, int on)
+attach(Ctlr *ctlr)
 {
-	EtherHw *hw = cp->hw;
+	Board *board = ctlr->board;
 
-	qlock(cp);
-	if(on){
-		cp->prom++;
-		if(cp->prom == 1)
-			COMMAND(hw, SetRxFilter, Promiscuous|Broadcast|MyEtherAddr);
-	}
-	else{
-		cp->prom--;
-		if(cp->prom == 0)
-			COMMAND(hw, SetRxFilter, Broadcast|MyEtherAddr);
-	}
-	qunlock(cp);
-}
-
-static void
-online(EtherCtlr *cp, int on)
-{
-	EtherHw *hw = cp->hw;
-
-	USED(on);					/* BUG */
 	/*
 	 * Set the receiver packet filter for our own and
 	 * and broadcast addresses, set the interrupt masks
@@ -261,35 +228,44 @@ online(EtherCtlr *cp, int on)
 	 * is the receiver interrupt. If the transmit FIFO fills up,
 	 * we will also see TxAvailable interrupts.
 	 */
-	COMMAND(hw, SetRxFilter, Broadcast|MyEtherAddr);
-	COMMAND(hw, SetReadZeroMask, AllIntr|Latch);
-	COMMAND(hw, SetIntrMask, AllIntr|Latch);
-	COMMAND(hw, RxEnable, 0);
-	COMMAND(hw, TxEnable, 0);
+	COMMAND(board, SetRxFilter, Broadcast|MyEtherAddr);
+	COMMAND(board, SetReadZeroMask, AllIntr|Latch);
+	COMMAND(board, SetIntrMask, AllIntr|Latch);
+	COMMAND(board, RxEnable, 0);
+	COMMAND(board, TxEnable, 0);
 }
 
+static void
+mode(Ctlr *ctlr, int on)
+{
+	Board *board = ctlr->board;
+
+	if(on)
+		COMMAND(board, SetRxFilter, Promiscuous|Broadcast|MyEtherAddr);
+	else
+		COMMAND(board, SetRxFilter, Broadcast|MyEtherAddr);
+}
 
 static int
-getdiag(EtherHw *hw)
+getdiag(Board *board)
 {
 	int bytes;
 
-	COMMAND(hw, SelectWindow, 4);
-	bytes = ins(hw->addr+0x04);
-	COMMAND(hw, SelectWindow, 1);
+	COMMAND(board, SelectWindow, 4);
+	bytes = ins(board->io+0x04);
+	COMMAND(board, SelectWindow, 1);
 	return bytes & 0xFFFF;
 }
 
 static void
-receive(EtherCtlr *cp)
+receive(Ctlr *ctlr)
 {
-	EtherHw *hw = cp->hw;
+	Board *board = ctlr->board;
 	ushort status;
-	EtherBuf *rb;
+	RingBuf *rb;
 	int len;
 
-	while(((status = ins(hw->addr+RxStatus)) & RxEmpty) == 0){
-
+	while(((status = ins(board->io+RxStatus)) & RxEmpty) == 0){
 		/*
 		 * If we had an error, log it and continue
 		 * without updating the ring.
@@ -298,19 +274,19 @@ receive(EtherCtlr *cp)
 			switch(status & RxErrMask){
 
 			case RxErrOverrun:	/* Overrrun */
-				cp->overflows++;
+				ctlr->overflows++;
 				break;
 
 			case RxErrOversize:	/* Oversize Packet (>1514) */
 			case RxErrRunt:		/* Runt Packet */
-				cp->buffs++;
+				ctlr->buffs++;
 				break;
 			case RxErrFraming:	/* Alignment (Framing) */
-				cp->frames++;
+				ctlr->frames++;
 				break;
 
 			case RxErrCRC:		/* CRC */
-				cp->crcs++;
+				ctlr->crcs++;
 				break;
 			}
 		}
@@ -320,7 +296,7 @@ receive(EtherCtlr *cp)
 			 * free ring buffer, if any.
 			 * The CRC is already stripped off.
 			 */
-			rb = &cp->rb[cp->ri];
+			rb = &ctlr->rb[ctlr->ri];
 			if(rb->owner == Interface){
 				len = (status & RxByteMask);
 				rb->len = len;
@@ -330,44 +306,44 @@ receive(EtherCtlr *cp)
 				 * doubleword. We can pick them out 16-bits
 				 * at a time (can try 32-bits at a time
 				 * later).
-				insl(hw->addr+Fifo, rb->pkt, HOWMANY(len, 4));
+				insl(board->io+Fifo, rb->pkt, HOWMANY(len, 4));
 				 */
-				inss(hw->addr+Fifo, rb->pkt, HOWMANY(len, 2));
+				inss(board->io+Fifo, rb->pkt, HOWMANY(len, 2));
 
 				/*
 				 * Update the ring.
 				 */
 				rb->owner = Host;
-				cp->ri = NEXT(cp->ri, cp->nrb);
+				ctlr->ri = NEXT(ctlr->ri, ctlr->nrb);
 			}
 		}
+
 		/*
 		 * Discard the packet as we're done with it.
 		 * Wait for discard to complete.
 		 */
-		COMMAND(hw, RxDiscard, 0);
-		while(ins(hw->addr+Status) & CmdInProgress)
+		COMMAND(board, RxDiscard, 0);
+		while(ins(board->io+Status) & CmdInProgress)
 			;
 	}
 }
 
 static void
-transmit(EtherCtlr *cp)
+transmit(Ctlr *ctlr)
 {
-	EtherHw *hw = cp->hw;
-	EtherBuf *tb;
+	Board *board = ctlr->board;
+	RingBuf *tb;
 	int s;
 	ushort len;
 
 	s = splhi();
-	for(tb = &cp->tb[cp->ti]; tb->owner == Interface; tb = &cp->tb[cp->ti]){
-
+	for(tb = &ctlr->tb[ctlr->ti]; tb->owner == Interface; tb = &ctlr->tb[ctlr->ti]){
 		/*
 		 * If there's no room in the FIFO for this packet,
 		 * set up an interrupt for when space becomes available.
 		 */
-		if(tb->len > ins(hw->addr+TxFreeBytes)){
-			COMMAND(hw, SetTxAvailable, tb->len);
+		if(tb->len > ins(board->io+TxFreeBytes)){
+			COMMAND(board, SetTxAvailable, tb->len);
 			break;
 		}
 
@@ -377,27 +353,27 @@ transmit(EtherCtlr *cp)
 		 * Output packet must be a multiple of 4 in length.
 		 */
 		len = ROUNDUP(tb->len, 4)/2;
-		outs(hw->addr+Fifo, tb->len);
-		outs(hw->addr+Fifo, 0);
-		outss(hw->addr+Fifo, tb->pkt, len);
+		outs(board->io+Fifo, tb->len);
+		outs(board->io+Fifo, 0);
+		outss(board->io+Fifo, tb->pkt, len);
 		tb->owner = Host;
-		cp->ti = NEXT(cp->ti, cp->ntb);
+		ctlr->ti = NEXT(ctlr->ti, ctlr->ntb);
 	}
 	splx(s);
 }
 
 static void
-interrupt(EtherCtlr *cp)
+interrupt(Ctlr *ctlr)
 {
-	EtherHw *hw = cp->hw;
+	Board *board = ctlr->board;
 	ushort status;
 	uchar txstatus, x;
 
-	status = ins(hw->addr+Status);
+	status = ins(board->io+Status);
 
 	if(status & RxComplete){
-		(*cp->hw->receive)(cp);
-		wakeup(&cp->rr);
+		receive(ctlr);
+		wakeup(&ctlr->rr);
 		status &= ~RxComplete;
 	}
 
@@ -410,14 +386,15 @@ interrupt(EtherCtlr *cp)
 		 */
 		txstatus = 0;
 		do{
-			if(x = inb(hw->addr+TxStatus))
-				outb(hw->addr+TxStatus, 0);
+			if(x = inb(board->io+TxStatus))
+				outb(board->io+TxStatus, 0);
 			txstatus |= x;
-		}while(ins(hw->addr+Status) & TxComplete);
+		}while(ins(board->io+Status) & TxComplete);
+
 		if(txstatus & (TxJabber|TxUnderrun))
-			COMMAND(hw, TxReset, 0);
-		COMMAND(hw, TxEnable, 0);
-		cp->oerrs++;
+			COMMAND(board, TxReset, 0);
+		COMMAND(board, TxEnable, 0);
+		ctlr->oerrs++;
 	}
 
 	if(status & (TxAvailable|TxComplete)){
@@ -425,33 +402,30 @@ interrupt(EtherCtlr *cp)
 		 * Reset the Tx FIFO threshold.
 		 */
 		if(status & TxAvailable)
-			COMMAND(hw, AckIntr, TxAvailable);
-		(*cp->hw->transmit)(cp);
-		wakeup(&cp->tr);
+			COMMAND(board, AckIntr, TxAvailable);
+		transmit(ctlr);
+		wakeup(&ctlr->tr);
 		status &= ~(TxAvailable|TxComplete);
 	}
 
 	/*
 	 * Panic if there are any interrupt bits on we haven't
 	 * dealt with other than Latch.
+	 * Otherwise, acknowledge the interrupt.
 	 */
 	if(status & AllIntr)
-		panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(hw));
+		panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(board));
 
-	/*
-	 * Acknowledge the interrupt.
-	 */
-	COMMAND(hw, AckIntr, Latch);
+	COMMAND(board, AckIntr, Latch);
 }
 
-EtherHw ether509 = {
+Board ether509 = {
 	reset,
-	0,					/* init */
+	0,			/* init */
+	attach,
 	mode,
-	online,
-	receive,
+	0,			/* receive */
 	transmit,
 	interrupt,
-	0,					/* tweak */
-	0,					/* I/O base address */
+	0,			/* watch */
 };
