@@ -98,7 +98,6 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		goto common;
 
 	case SG_DATA:
-	case SG_SHDATA:
 	common:			/* Demand load/pagein/copy on write */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);

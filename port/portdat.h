@@ -342,7 +342,6 @@ enum
 	SG_STACK	= 03,
 	SG_SHARED	= 04,
 	SG_PHYSICAL	= 05,
-	SG_SHDATA	= 06,
 
 	SG_RONLY	= 0040,		/* Segment is read only */
 	SG_CEXEC	= 0100,		/* Detach at exec */

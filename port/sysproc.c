@@ -665,21 +665,21 @@ long
 syssegfree(ulong *arg)
 {
 	Segment *s;
-	ulong from, pages;
+	ulong from, to;
 
-	from = PGROUND(arg[0]);
+	from = arg[0];
 	s = seg(up, from, 1);
-	if(s == 0)
+	if(s == nil)
 		error(Ebadarg);
+	to = (from + arg[1]) & ~(BY2PG-1);
+	from = PGROUND(from);
 
-	pages = (arg[1]+BY2PG-1)/BY2PG;
-
-	if(from+pages*BY2PG > s->top) {
+	if(to > s->top) {
 		qunlock(&s->lk);
 		error(Ebadarg);
 	}
 
-	mfreeseg(s, from, pages);
+	mfreeseg(s, from, (to - from) / BY2PG);
 	qunlock(&s->lk);
 	flushmmu();
 

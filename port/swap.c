@@ -147,7 +147,6 @@ loop:
 					case SG_BSS:
 					case SG_STACK:
 					case SG_SHARED:
-					case SG_SHDATA:
 						up->psstate = "Pageout";
 						pageout(p, s);
 						if(ioptr != 0) {
@@ -280,7 +279,6 @@ pagepte(int type, Page **pg)
 	case SG_BSS:
 	case SG_STACK:
 	case SG_SHARED:
-	case SG_SHDATA:
 		/*
 		 *  get a new swap address and clear any pages
 		 *  referring to it from the cache
