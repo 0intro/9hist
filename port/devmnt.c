@@ -471,8 +471,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 
 	if(r->reply.type != r->request.type+1) {
 		print("devmnt: mismatched reply 0x%lux T%d R%d tags req %d fls %d rep %d\n",
-			r, r->request.type, r->reply.type,
-			r->request.tag, r->flushtag, r->reply.tag);
+		r, r->request.type, r->reply.type, r->request.tag, r->flushtag, r->reply.tag);
 		errors("protocol error");
 	}
 }

@@ -125,13 +125,13 @@ init0(void)
 		(*devtab[c->type].write)(c, bootuser, strlen(bootuser), 0);
 		close(c);
 		c = namec("#e/bootline", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootline, 64, 0);
+		(*devtab[c->type].write)(c, bootline, strlen(bootline), 0);
 		close(c);
 		c = namec("#e/bootserver", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootserver, strlen(bootuser), 0);
+		(*devtab[c->type].write)(c, bootserver, strlen(bootserver), 0);
 		close(c);
 		c = namec("#e/bootdevice", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootdevice, 2, 0);
+		(*devtab[c->type].write)(c, bootdevice, strlen(bootdevice), 0);
 		close(c);
 	}
 	poperror();

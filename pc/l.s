@@ -302,6 +302,10 @@ TEXT	fpinit(SB),$0		/* turn on & init the floating point */
 	FPON
 	FINIT
 	WAIT
+	PUSHW	$0x0330
+	FLDCW	0(SP)		/* ignore underflow/precision, signal others */
+	POPW	AX
+	WAIT
 	RET
 
 TEXT	fpsave(SB),$0		/* save floating point state and turn off */

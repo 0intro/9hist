@@ -226,8 +226,20 @@ confinit(void)
  *  math coprocessor error
  */
 void
-matherror(Ureg *ur)
+matherror1(Ureg *ur)
 {
+print("matherror1\n");
+	pexit("Math error", 0);
+}
+
+/*
+ *  math coprocessor error
+ */
+void
+matherror2(Ureg *ur)
+{
+	outb(0xF0, 0xFF);	/* bad craziness */
+print("matherror2\n");
 	pexit("Math error", 0);
 }
 
@@ -247,7 +259,6 @@ mathemu(Ureg *ur)
 		u->p->fpstate = FPactive;
 		break;
 	case FPactive:
-print("emu actv 0x%lux\n", getcr0());
 		pexit("Math emu", 0);
 		break;
 	}
@@ -259,13 +270,15 @@ print("emu actv 0x%lux\n", getcr0());
 void
 mathover(Ureg *ur)
 {
+print("mathover\n");
 	pexit("Math overrun", 0);
 }
 
 void
 mathinit(void)
 {
-	setvec(Matherrorvec, matherror);
+	setvec(Matherr1vec, matherror1);
+	setvec(Matherr2vec, matherror2);
 	setvec(Mathemuvec, mathemu);
 	setvec(Mathovervec, mathover);
 }

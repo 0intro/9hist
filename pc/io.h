@@ -5,7 +5,7 @@ enum
 {
 	Mathemuvec=	7,		/* math coprocessor emulation interrupt */
 	Mathovervec=	9,		/* math coprocessor overrun interrupt */
-	Matherrorvec=	9,		/* math coprocessor error interrupt */
+	Matherr1vec=	16,		/* math coprocessor error interrupt */
 	Faultvec=	14,		/* page fault */
 
 	Int0vec=	24,		/* first 8259 */
@@ -16,6 +16,7 @@ enum
 	 Floppyvec=	Int0vec+6,	/*  floppy interrupts */
 	Int1vec=	Int0vec+8,	/* second 8259 */
 	 Mousevec=	Int1vec+4,	/*  mouse interrupt */
+	 Matherr2vec=	Int1vec+5,	/*  math coprocessor */
 	 Hardvec=	Int1vec+6,	/*  hard disk */
 
 	Syscallvec=	64,

@@ -119,7 +119,7 @@ trapinit(void)
 	sethvec(34, intr34, SEGIG, 0);
 	sethvec(35, intr35, SEGIG, 0);
 	sethvec(36, intr36, SEGIG, 0);
-	sethvec(37, intr37, SEGIG, 0);
+	sethvec(37, intr37, SEGTG, 0);
 	sethvec(38, intr38, SEGIG, 0);
 	sethvec(39, intr39, SEGIG, 0);
 
@@ -194,6 +194,7 @@ trap(Ureg *ur)
 			uartintr0(ur);
 	}
 
+if(v==16) print("vec thru 16\n");
 	(*ivec[v])(ur);
 
 	if(((ur->cs)&0xffff)!=KESEL && u->nnote && v!=Syscallvec)

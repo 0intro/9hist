@@ -168,12 +168,12 @@ bootparams(void)
 	}
 	f = open("#e/bootuser", OREAD);
 	if(f >= 0){
-		read(f, &bootuser, sizeof(bootuser));
+		read(f, &bootuser, sizeof(bootuser)-1);
 		close(f);
 	}
 	f = open("#e/bootserver", OREAD);
 	if(f >= 0){
-		read(f, sys, sizeof(sys));
+		read(f, sys, sizeof(sys)-1);
 		close(f);
 	} else
 		strcpy(sys, DEFSYS);
@@ -215,7 +215,8 @@ setuser(char *name)
 	 */
 	fd = open("#c/user", OWRITE|OTRUNC);
 	if(fd >= 0){
-		write(fd, username, strlen(username));
+		if(write(fd, username, strlen(username)) <= 0)
+			print("error writing %s to /dev/user\n", username);
 		close(fd);
 	}
 }

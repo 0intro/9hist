@@ -443,6 +443,7 @@ createdir(Chan *c)
 	mc = mnt->c;
 	incref(mc);
 	unlock(pg);
+	poperror();
 	if(waserror()){
 		close(mc);
 		nexterror();
