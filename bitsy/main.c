@@ -22,11 +22,19 @@ main(void)
 	iprint("%d pages %lux(%lud) %lux(%lud)\n", conf.npage, conf.base0, conf.npage0, conf.base1, conf.npage1);
 	xinit();
 	iprint("after xinit\n");
+	iprint("testing 2 second delay\n");
+	delay(2000);
+	iprint("done\n");
 	mmuinit();
+	uartsetup();
 	iprint("after mmuinit\n");
+	clockinit();
+	iprint("after clockinit\n");
 	trapinit();
 	iprint("after trapinit\n");
-	delay(100000);
+	spllo();
+	iprint("after spllo\n");
+	delay(1000000);
 	exit(1);
 }
 

@@ -7,6 +7,25 @@
 #include	"ureg.h"
 #include	"../port/error.h"
 
+typedef struct OSTimer
+{
+	ulong	osmr[4];	/* match registers */
+	ulong	oscr;		/* counter register */
+	ulong	ossr;		/* status register */
+	ulong	ower;		/* watchdog enable register */
+	ulong	oier;		/* timer interrupt enable register */
+} OSTimer;
+
+static OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
+
+enum
+{
+	/* hardware counter frequency */
+	ClockFreq=	3686400,
+};
+
+static void	clockintr(Ureg*, void*);
+
 typedef struct Clock0link Clock0link;
 typedef struct Clock0link {
 	void		(*clock)(void);
@@ -32,24 +51,55 @@ addclock0link(void (*clock)(void))
 	iunlock(&clock0lock);
 }
 
+void
+clockinit(void)
+{
+	/* map the clock registers */
+	timerregs = mapspecial(OSTIMERREGS, 32);
+
+	/* enable interrupts on match register 0, turn off all others */
+	timerregs->oier = 1<<0;
+	intrenable(IRQtimer0, clockintr, nil, "clock");
+
+	/* post interrupt 1/HZ secs from now */
+	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
+}
 
 vlong
 fastticks(uvlong *hz)
 {
-	USED(hz);
-
-	return m->ticks;
+	if(hz != nil)
+		*hz = ClockFreq;
+	return timerregs->oscr;
 }
 
-void
+static void
 clockintr(Ureg*, void*)
 {
+	/* reset previous interrupt */
+	timerregs->ossr |= 1<<0;
+
+	/* post interrupt 1/HZ secs from now */
+	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
+	iprint("timer interrupt\n");
+
+	m->ticks++;
+	if(m->ticks >= 100)
+		exit(0);
 }
 
 void
 delay(int ms)
 {
-	ms *= 1000;
-	while(ms-->0)
-		;
+	ulong cnt, old;
+
+	while(ms-- > 0){
+		cnt = ClockFreq/1000;
+		while(cnt-- > 0){
+			old = timerregs->oscr;
+			while(old == timerregs->oscr)
+				;
+		}
+	}
+		
 }

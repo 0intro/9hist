@@ -101,6 +101,10 @@ ps2mouse(void)
 	mousetype = MousePS2;
 }
 
+static int intellimouse;
+static int resolution;
+static int accelerated;
+
 static void
 setaccelerated(int x)
 {

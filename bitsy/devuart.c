@@ -137,12 +137,13 @@ static void	uartflow(void *v);
 static void	uartkick0(void *v);
 static void	uartkick(void *v);
 static void	uartrts(Uart *p, int on);
+static void	uartintr(Ureg*, void*);
 
 /*
  *  define a Uart.
  */
 static void
-uartsetup(Uartregs *regs, ulong freq, char *name)
+uartsetup0(Uartregs *regs, ulong freq, char *name)
 {
 	Uart *p;
 
@@ -182,6 +183,17 @@ uartsetup(Uartregs *regs, ulong freq, char *name)
 }
 
 /*
+ *  setup all uarts (called early by main() to allow debugging output to
+ *  a serial port)
+ */
+void
+uartsetup(void)
+{
+	uart3regs = mapspecial(UART3REGS, 64);
+	uartsetup0(uart3regs, 36864000, "serialport3");
+}
+
+/*
  *  enable a port's interrupts.  set DTR and RTS
  */
 static void
@@ -189,6 +201,7 @@ uartenable(Uart *p)
 {
 	p->sticky[3] |= Rintena|Tintena;
 	p->regs->ctl[3] = p->sticky[3];
+	intrenable(IRQuart3, uartintr, p, p->name);
 }
 
 /*
@@ -253,7 +266,6 @@ uartreset(void)
 		dp->perm = 0444;
 		dp++;
 	}
-
 }
 
 
@@ -545,7 +557,7 @@ uartsetbaud(Uart *p, int rate)
  *  turn on/off rts
  */
 static void
-uartrts(Uart *p, int on)
+uartrts(Uart*, int)
 {
 }
 
@@ -603,6 +615,14 @@ uartkick(void *v)
 	ilock(&p->tlock);
 	uartkick0(p);
 	iunlock(&p->tlock);
+}
+
+static void
+uartintr(Ureg*, void *x)
+{
+	Uart *p;
+
+	p = x;
 }
 
 void

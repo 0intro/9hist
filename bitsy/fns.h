@@ -3,8 +3,7 @@
 int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
 #define	clearmmucache()				/* x86 doesn't have one */
-void	clockintr(Ureg*, void*);
-void	clockintrsched(void);
+void	clockinit(void);
 #define	coherence()
 void	delay(int);
 void	evenaddr(ulong);
@@ -14,6 +13,7 @@ ulong	getfsr(void);
 #define	getpgcolor(a)	0
 void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
+void	intrenable(int, void (*)(Ureg*, void*), void*, char*);
 int	iprint(char*, ...);
 void*	mapspecial(ulong, int);
 void	meminit(void);
@@ -35,6 +35,7 @@ void	(*screenputs)(char*, int);
 void	touser(void*);
 void	trapinit(void);
 int	tas(void*);
+void	uartsetup(void);
 void	wbflush(void);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))

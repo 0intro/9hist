@@ -87,6 +87,11 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, char *name)
 void
 trap(Ureg *ureg)
 {
+	int i;
+	Vctl *v;
+
+	iprint("trap %lux pc %lux psr %lux\n", ureg->type, ureg->pc, ureg->psr);
+
 	switch(ureg->type){
 	default:
 		panic("unknown trap");
@@ -98,6 +103,12 @@ trap(Ureg *ureg)
 		panic("undefined instruction");
 		break;
 	case PsrMirq:	/* device interrupt */
+		for(i = 0; i < 32; i++)
+			if((1<<i) & intrregs->icip){
+				iprint("irq: %d\n", i);
+				for(v = vctl[i]; v != nil; v = v->next)
+					v->f(ureg, v->a);
+			}
 		break;
 	}
 }

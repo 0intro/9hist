@@ -260,20 +260,13 @@ slotena(Slot *pp)
 	if(pp->enabled)
 		return;
 
-print("-enabling<");
 	/* power up and unreset, wait's are empirical (???) */
 	wrreg(pp, Rpc, Fautopower|Foutena|Fcardena);
-print(">");
 	delay(300);
-print("<");
 	wrreg(pp, Rigc, 0);
-print(">");
 	delay(100);
-print("<");
 	wrreg(pp, Rigc, Fnotreset);
-print(">");
 	delay(500);
-print("...");
 
 	/* get configuration */
 	slotinfo(pp);
@@ -282,7 +275,6 @@ print("...");
 		pp->enabled = 1;
 	} else
 		wrreg(pp, Rpc, Fautopower);
-print("done-");
 }
 
 /*
@@ -446,26 +438,27 @@ pcmspecial(char *idstr, ISAConf *isa)
 {
 	Slot *pp;
 	extern char *strstr(char*, char*);
+	static int resetdone;
 
-	i82365reset();
-print("Looking for %s ...", idstr);
+	if (! resetdone) {
+		i82365reset();
+		resetdone++;
+	}
 	for(pp = slot; pp < lastslot; pp++){
 		if(pp->special)
 			continue;	/* already taken */
 		increfp(pp);
 
 		if(pp->occupied) {
-print("[%s] ", pp->verstr);
 			if(strstr(pp->verstr, idstr))
 			if(isa == 0 || pcmio(pp->slotno, isa) == 0){
 				pp->special = 1;
-print("done\n");
 				return pp->slotno;
 			}
-		}
+		} else
+			pp->special = 1;
 		decrefp(pp);
 	}
-print("not found\n");
 	return -1;
 }
 
@@ -620,7 +613,6 @@ i82365probe(int x, int d, int dev)
 		if(nslot > 0 && nslot <= 2)
 			cp->nslot = nslot;
 	}
-print("%uX/%d: nslot = %d\n", x, dev, cp->nslot);
 
 	controller[ncontroller++] = cp;
 	return cp;

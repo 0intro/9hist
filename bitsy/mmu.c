@@ -97,13 +97,8 @@ mmuinit(void)
 	iprint("setting tlb map %lux\n", (ulong)l1table);
 	putttb((ulong)l1table);
 
-	/* map the uart so that we can continue using iprint */
-	uart3regs = mapspecial(UART3REGS, 64);
-
 	/* enable mmu, and make 0xFFFF0000 the virtual address of the exception vecs */
 	mmuenable();
-
-	iprint("uart3regs now at %lux\n", uart3regs);
 }
 
 /*

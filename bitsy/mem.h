@@ -21,7 +21,7 @@
 /*
  * Time
  */
-#define	HZ		(100)				/* clock frequency */
+#define	HZ		(10)				/* clock frequency */
 #define	MS2HZ		(1000/HZ)			/* millisec per clock tick */
 #define	TK2SEC(t)	((t)/HZ)			/* ticks to seconds */
 #define	TK2MS(t)	((((ulong)(t))*1000)/HZ)	/* ticks to milliseconds */
@@ -92,6 +92,7 @@
 #define PPCREGS		0x90060000	/* peripheral pin controller */
 #define GPIOREGS	0x90040000	/* 28 general purpose IO pins */
 #define INTRREGS	0x90050000	/* interrupt registers */
+#define OSTIMERREGS	0x90000000	/* operating system timer registers */
 
 /*
  *  Program Status Registers
