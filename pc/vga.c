@@ -168,9 +168,6 @@ vga1(void)
 	arout(Acpe, 0x0f);	/* enable 4 planes for output */
 }
 
-/*
- *  Set up for 4 separately addressed bit planes.  Each plane is 
- */
 void
 screeninit(void)
 {
@@ -179,6 +176,7 @@ screeninit(void)
 	ulong *l;
 
 	vga1();
+
 	/*
 	 *  swizzle the font longs.
 	 *  we do it here since the font is initialized with big
@@ -189,14 +187,7 @@ screeninit(void)
 	for(i = defont->bits->width*Dy(defont->bits->r); i > 0; i--, l++)
 		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
 
-	/*
-	 *  zero out display
-	 */
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
-
-	/*
-	 *  start printing at the top of screen
-	 */
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
