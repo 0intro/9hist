@@ -670,6 +670,119 @@ TEXT sa1100_power_resume(SB), $-4
 loop:
 	B		loop
 
+TEXT sa1100_power_down(SB), $-4
+
+	/* disable clock switching */
+	MCR   	CpPWR, 0, R0, C(CpTest), C(0x2), 2
+
+	/* save address of sleep_param in r4 */
+	mov	r0, r4
+
+        @ Adjust memory timing before lowering CPU clock
+	/* Clock speed ajdustment without changing memory timing makes */
+	/* CPU hang in some cases */
+        ldr     r0, =MDREFR
+        ldr     r1, [r0]
+        orr     r1, r1, #MDREFR_K1DB2
+        str     r1, [r0]
+	
+	/* delay 90us and set CPU PLL to lowest speed */
+	/* fixes resume problem on high speed SA1110 */
+	mov	r0, #90
+	bl	SYMBOL_NAME(udelay)
+	ldr	r0, =PPCR
+	mov	r1, #0
+	str	r1, [r0]
+	mov	r0, #90
+	bl	SYMBOL_NAME(udelay)
+
+
+/* setup up register contents for jump to page containing SA1110 SDRAM controller bug fix suspend code
+ *
+ * r0 points to MSC0 register
+ * r1 points to MSC1 register
+ * r2 points to MSC2 register
+ * r3 is MSC0 value
+ * r4 is MSC1 value
+ * r5 is MSC2 value
+ * r6 points to MDREFR register
+ * r7 is first MDREFR value
+ * r8 is second MDREFR value
+ * r9 is pointer to MDCNFG register
+ * r10 is MDCNFG value
+ * r11 is third MDREFR value
+ * r12 is pointer to PMCR register
+ * r13 is PMCR value (1)
+ *
+ */
+
+	ldr	r0, =MSC0
+	ldr	r1, =MSC1
+	ldr	r2, =MSC2
+
+        ldr     r3, [r0]
+        bic     r3, r3, #FMsk(MSC_RT)
+        bic     r3, r3, #FMsk(MSC_RT)<<16
+
+        ldr     r4, [r1]
+        bic     r4, r4, #FMsk(MSC_RT)
+        bic     r4, r4, #FMsk(MSC_RT)<<16
+
+        ldr     r5, [r2]
+        bic     r5, r5, #FMsk(MSC_RT)
+        bic     r5, r5, #FMsk(MSC_RT)<<16
+
+        ldr     r6, =MDREFR
+
+        ldr     r7, [r6]
+        bic     r7, r7, #0x0000FF00
+        bic     r7, r7, #0x000000F0
+        orr     r8, r7, #MDREFR_SLFRSH
+
+        ldr     r9, =MDCNFG
+        ldr     r10, [r9]
+        bic     r10, r10, #(MDCNFG_DE0+MDCNFG_DE1)
+        bic     r10, r10, #(MDCNFG_DE2+MDCNFG_DE3)  
+
+        bic     r11, r8, #MDREFR_SLFRSH
+        bic     r11, r11, #MDREFR_E1PIN
+
+        ldr     r12, =PMCR
+
+        mov     r13, #PMCR_SF
+
+	b	sa1110_sdram_controller_fix
+
+	.align 5
+sa1110_sdram_controller_fix:
+
+	/* Step 1 clear RT field of all MSCx registers */
+	str 	r3, [r0]
+	str	r4, [r1]
+	str	r5, [r2]
+
+	/* Step 2 clear DRI field in MDREFR */
+	str	r7, [r6]
+
+	/* Step 3 set SLFRSH bit in MDREFR */
+	str	r8, [r6]
+
+	/* Step 4 clear DE bis in MDCNFG */
+	str	r10, [r9]
+
+	/* Step 5 clear DRAM refresh control register */
+	str	r11, [r6]
+
+	/* Wow, now the hardware suspend request pins can be used, that makes them functional for  */
+	/* about 7 ns out of the	entire time that the CPU is running! */
+
+	/* Step 6 set force sleep bit in PMCR */
+
+	str	r13, [r12]
+	
+20:
+	b	20b			/* loop waiting for sleep */
+
 /* The first MCR instruction of this function needs to be on a cache-line
  * boundary; to make this happen, it will be copied (in trap.c).
  *

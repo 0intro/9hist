@@ -147,7 +147,7 @@ static void
 sa1100_power_off(void)
 {
 	/* Set KAPD and EAPD bits */
-	memconfregs->mdrefr |= 0x30000000;
+//	memconfregs->mdrefr |= 0x30000000;
 
 	/* enable wakeup by µcontroller, on/off switch
 	 * or real-time clock alarm
@@ -158,24 +158,23 @@ sa1100_power_off(void)
 	resetregs->rcsr =  RCSR_all;
 
 	/* disable internal oscillator, float CS lines */
-	powerregs->pcfr = PCFR_opde;
+	powerregs->pcfr = PCFR_opde|PCFR_fp|PCFR_fs;
 	powerregs->pgsr = 0;
 	/* set resume address. The loader jumps to it */
 	powerregs->pspr = (ulong)sa1100_power_resume;
-//	powerregs->pspr = 0;
-
-//sa1100_power_resume();
-
-	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
 
 	/* set all GPIOs to input mode  */
 	gpioregs->direction = 0;
 	delay(100);
 	/* enter sleep mode */
 
-/*	Doesn't work [sjm]
+	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
+/*	Doesn't work [sjm] 
 	powerregs->ppcr = 0;
+	delay(500);
 */
+	
+	memconfregs->mdrefr |= 0x80000000;
 	powerregs->pmcr = PCFR_suspend;
 	for(;;);
 }
@@ -253,7 +252,7 @@ deepsleep(void) {
 		return;
 	}
 	cacheflush();
-	delay(50);
+	delay(100);
 	sa1100_power_off();
 	/* no return */
 }
