@@ -260,7 +260,7 @@ nop(int fd)
 
 	print("nop...");
 	hdr.type = Tnop;
-	hdr.tag = ~0;
+	hdr.tag = NOTAG;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n)
 		error("write nop");
@@ -288,7 +288,7 @@ session(int fd)
 
 	print("session...");
 	hdr.type = Tsession;
-	hdr.tag = ~0;
+	hdr.tag = NOTAG;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n)
 		error("write session");

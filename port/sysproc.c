@@ -103,7 +103,6 @@ rfork(ulong flag)
 	 * Sched
 	 */
 	if(setlabel(&p->sched)){
-		u->p = p;
 		p->state = Running;
 		p->mach = m;
 		m->proc = p;

@@ -710,7 +710,6 @@ kproc(char *name, void (*func)(void *), void *arg)
 	k = kmap(p->upage);
 	upa = VA(k);
 	up = (User*)upa;
-	up->p = p;
 
 	/*
 	 * Save time: only copy u-> data and useful stack
@@ -720,6 +719,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
 	memmove((void*)(upa+BY2PG-n), (void*)(USERADDR+BY2PG-n), n);
+	up->p = p;
 
 	/*
 	 * Refs
@@ -731,7 +731,6 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 * Sched
 	 */
 	if(setlabel(&p->sched)){
-		u->p = p;
 		p->state = Running;
 		p->mach = m;
 		m->proc = p;

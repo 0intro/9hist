@@ -299,7 +299,7 @@ preamble(int fd)
 
 	print("nop...");
 	hdr.type = Tnop;
-	hdr.tag = ~0;
+	hdr.tag = NOTAG;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n){
 		print("n = %d\n", n);
@@ -324,14 +324,14 @@ preamble(int fd)
 		prerror("not Rnop");
 		return 0;
 	}
-	if(hdr.tag != ~0){
-		prerror("tag not ~0");
+	if(hdr.tag != NOTAG){
+		prerror("tag not NOTAG");
 		return 0;
 	}
 
 	print("session...");
 	hdr.type = Tsession;
-	hdr.tag = ~0;
+	hdr.tag = NOTAG;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n){
 		prerror("write session");
@@ -346,8 +346,8 @@ preamble(int fd)
 		prerror("format session");
 		return 0;
 	}
-	if(hdr.tag != ~0){
-		prerror("tag not ~0");
+	if(hdr.tag != NOTAG){
+		prerror("tag not NOTAG");
 		return 0;
 	}
 	if(hdr.type == Rerror){

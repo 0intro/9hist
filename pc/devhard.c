@@ -319,6 +319,13 @@ hardread(Chan *c, void *a, long n)
 		i -= skip;
 		if(i > n - rv)
 			i = n - rv;
+{int j;
+
+ print("0x%lux(%d) <- ", aa+rv, i);
+ for(j = 0; j<32; j++)
+	print("%.2ux ", cp->buf[j+skip]);
+ print("\n");
+}
 		memmove(aa+rv, cp->buf + skip, i);
 		skip = 0;
 	}
@@ -332,7 +339,7 @@ long
 hardwrite(Chan *c, void *a, long n)
 {
 	Drive *dp;
-	long rv, i;
+	long rv, i, partial;
 	uchar *aa = a;
 	Partition *pp;
 	Controller *cp;
@@ -354,22 +361,24 @@ hardwrite(Chan *c, void *a, long n)
 	 *  read in the first sector before writing
 	 *  it out.
 	 */
-	i = c->offset % dp->bytes;
-	if(i){
-		hardxfer(dp, pp, Cread, c->offset-i, dp->bytes);
-		if(i+n > dp->bytes)
-			rv = dp->bytes - i;
+	partial = c->offset % dp->bytes;
+	if(partial){
+		hardxfer(dp, pp, Cread, c->offset-partial, dp->bytes);
+		if(partial+n > dp->bytes)
+			rv = dp->bytes - partial;
 		else
 			rv = n;
-		memmove(cp->buf+i, aa, rv);
-		hardxfer(dp, pp, Cwrite, c->offset-i, dp->bytes);
+		memmove(cp->buf+partial, aa, rv);
+		hardxfer(dp, pp, Cwrite, c->offset-partial, dp->bytes);
 	} else
 		rv = 0;
 
 	/*
 	 *  write out the full sectors
 	 */
-	for(; rv + dp->bytes <= n; rv += i){
+	partial = (n - rv) % dp->bytes;
+	n -= partial;
+	for(; rv < n; rv += i){
 		i = n - rv;
 		if(i > Maxxfer)
 			i = Maxxfer;
@@ -384,11 +393,11 @@ hardwrite(Chan *c, void *a, long n)
 	 *  read in the last sector before writing
 	 *  it out.
 	 */
-	if(n > rv){
+	if(partial){
 		hardxfer(dp, pp, Cread, c->offset+rv, dp->bytes);
-		memmove(cp->buf, aa+rv, n - rv);
+		memmove(cp->buf, aa+rv, partial);
 		hardxfer(dp, pp, Cwrite, c->offset+rv, dp->bytes);
-		rv = n;
+		rv += partial;
 	}
 	qunlock(cp);
 	poperror();
@@ -473,7 +482,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 	cp->cmd = cmd;
 	cp->dp = dp;
 	cp->sofar = 0;
-/*print("xfer:\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
+print("xfer:\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
 print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);/**/
 	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, cp->tsec);
@@ -616,23 +625,19 @@ hardpart(Drive *dp)
 	 */
 	n = getfields(cp->buf, line, Npart+1, '\n');
 	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) != 0){
-print("bad partition magic\n");
 		goto out;
 	}
 	for(i = 1; i < n; i++){
 		pp++;
-		if(getfields(line[i], field, 3, 0) != 3){
-print("bad partition field\n");
+		if(getfields(line[i], field, 3, ' ') != 3){
 			break;
 		}
 		strncpy(pp->name, field[0], NAMELEN);
 		pp->start = strtoul(field[1], 0, 0);
 		pp->end = strtoul(field[2], 0, 0);
 		if(pp->start > pp->end || pp->start >= dp->p[0].end){
-print("bad partition limit\n");
 			break;
 		}
-print("partition %s from %d to %d\n", pp->name, pp->start, pp->end);
 		dp->npart++;
 	}
 out:
@@ -690,8 +695,8 @@ hardintr(Ureg *ur)
 		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
 			if(++loop > 10000)
 				panic("hardintr 2");
-		inss(cp->pbase+Pdata, &cp->buf[cp->sofar*cp->dp->bytes],
-			cp->dp->bytes/2);
+		inss(cp->pbase+Pdata, &cp->buf[cp->sofar*dp->bytes],
+			dp->bytes/2);
 		cp->sofar++;
 		if(cp->sofar >= cp->nsecs){
 			cp->cmd = 0;
