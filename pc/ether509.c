@@ -68,6 +68,7 @@ enum {
 	TxComplete	= 0x0004,	/* TX Complete */
 	TxAvailable	= 0x0008,	/* TX Available */
 	RxComplete	= 0x0010,	/* RX Complete */
+	Update		= 0x0080,	/* Update Statistics */
 	AllIntr		= 0x00FE,	/* All Interrupt Bits */
 	CmdInProgress	= 0x1000,	/* Command In Progress */
 

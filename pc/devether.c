@@ -209,8 +209,13 @@ etherreset(void)
 				ctlr->irq = 9;
 			setvec(Int0vec+ctlr->irq, ctlr->interrupt, ctlr);
 
-			print("ether%d: %s: port %lux irq %d addr %lux size %d:",
-				ctlrno, ctlr->type, ctlr->port, ctlr->irq, ctlr->mem, ctlr->size);
+			print("ether%d: %s: port 0x%lux irq %d",
+				ctlrno, ctlr->type, ctlr->port, ctlr->irq);
+			if(ctlr->mem)
+				print(" addr 0x%lux", ctlr->mem);
+			if(ctlr->mem)
+				print(" size %d", ctlr->size);
+			print(": ea");
 			for(i = 0; i < sizeof(ctlr->ea); i++)
 				print(" %2.2ux", ctlr->ea[i]);
 			print("\n");
