@@ -503,10 +503,12 @@ extern	cursorunlock(void);
  * gscreen.ldepth is known to be >= 3
  */
 void
-screenload(Rectangle r, uchar *data, int tl, int l)
+screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 {
 	uchar *q;
 	int y;
+
+	USED(dolock);
 
 	if(!rectclip(&r, gscreen.r) || tl<=0)
 		return;
@@ -515,6 +517,34 @@ screenload(Rectangle r, uchar *data, int tl, int l)
 	q = gbaddr(&gscreen, r.min);
 	for(y=r.min.y; y<r.max.y; y++){
 		memmove(q, data, tl);
+		q += gscreen.width*sizeof(ulong);
+		data += l;
+	}
+	unlock(&screenlock);
+}
+
+/*
+ * get a tile from screen memory.
+ * tile is at location r, first pixel in *data. 
+ * tl is length of scan line to insert,
+ * l is amount to advance data after each scan line.
+ * gscreen.ldepth is known to be >= 3
+ */
+void
+screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
+{
+	uchar *q;
+	int y;
+
+	USED(dolock);
+
+	if(!rectclip(&r, gscreen.r) || tl<=0)
+		return;
+
+	lock(&screenlock);
+	q = gbaddr(&gscreen, r.min);
+	for(y=r.min.y; y<r.max.y; y++){
+		memmove(data, q, tl);
 		q += gscreen.width*sizeof(ulong);
 		data += l;
 	}

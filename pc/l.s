@@ -585,7 +585,7 @@ TEXT	x86(SB),$0
 	JZ	is486
 	MOVL	$586,AX
 	JMP	done
-is486
+is486:
 	MOVL	$486,AX
 	JMP	done
 is386:
@@ -645,122 +645,6 @@ TEXT	config(SB),$0
 #define SRX	0x3C4		/* index to sequence registers */
 #define	SR	0x3C5		/* sequence registers */
 #define Smmask	0x02		/*  map mask */
-
-/*
- *  invert the ldepth 0 bitmap
- */
-TEXT	l0update(SB),$0
-	MOVL	from+4(FP),SI
-	MOVL	to+0(FP),DI
-	MOVL	len+8(FP),BX
-
-	MOVL	BX,CX
-	SHRL	$2,CX
-	JZ	l01
-l00:
-	MOVL	-4(SI)(CX*4),AX
-	NOTL	AX
-	MOVL	AX,-4(DI)(CX*4)
-	LOOP	l00
-l01:
-	MOVL	BX,CX
-	ANDL	$(~3),BX
-	ANDL	$3,CX
-	JZ	l03
-	ADDL	BX,SI
-	ADDL	BX,DI
-l02:
-	MOVB	-1(SI)(CX*1),AL
-	NOTL	AX
-	MOVB	AL,-1(DI)(CX*1)
-	LOOP	l02
-l03:
-	RET
-
-/*
- *  separate ldepth 1 bitmap into 2 bit planes
- */
-TEXT	l1update(SB),$0
-	XORL	AX,AX
-	MOVL	from+4(FP),SI
-	MOVL	to+0(FP),DI
-	MOVL	len+8(FP),CX
-	MOVB	$(Smmask),AL
-	MOVW	$(SRX),DX
-	OUTB
-l10:
-	MOVL	-4(SI)(CX*2),DX
-	MOVB	DL,AL
-	MOVL	l1septab(SB)(AX*4),BX
-	SHLL	$4,BX
-	RORL	$8,DX
-	MOVB	DL,AL
-	ORL	l1septab(SB)(AX*4),BX
-	RORL	$12,BX
-	RORL	$8,DX
-	MOVB	DL,AL
-	ORL	l1septab(SB)(AX*4),BX
-	SHLL	$4,BX
-	RORL	$8,DX
-	MOVB	DL,AL
-	ORL	l1septab(SB)(AX*4),BX
-	ROLL	$8,BX
-	MOVW	$(SR),DX
-	MOVB	$0x5,AL			/* write lo order bits to bit planes 1 & 3 */
-	OUTB
-	MOVW	BX,-2(DI)(CX*1)
-	SHRL	$16,BX			/* write hi order bits to bit planes 0 & 2 */
-	MOVB	$0xA,AL
-	OUTB
-	MOVW	BX,-2(DI)(CX*1)
-	LOOP	l10
-	RET
-
-/*
- *  separate ldepth 2 bitmap into 4 bit planes
- */
-TEXT	l2update(SB),$0
-	XORL	AX,AX
-	MOVL	from+4(FP),SI
-	MOVL	to+0(FP),DI
-	MOVL	len+8(FP),CX
-	MOVB	$(Smmask),AL
-	MOVW	$(SRX),DX
-	OUTB
-l20:
-	MOVL	-4(SI)(CX*4),DX
-	MOVB	DL,AL
-	MOVL	l2septab(SB)(AX*4),BX
-	SHLL	$2,BX
-	SHRL	$8,DX
-	MOVB	DL,AL
-	ORL	l2septab(SB)(AX*4),BX
-	SHLL	$2,BX
-	SHRL	$8,DX
-	MOVB	DL,AL
-	ORL	l2septab(SB)(AX*4),BX
-	SHLL	$2,BX
-	SHRL	$8,DX
-	MOVB	DL,AL
-	ORL	l2septab(SB)(AX*4),BX
-	MOVW	$(SR),DX
-	MOVB	$0x1,AL			/* plane 3 */
-	OUTB
-	MOVB	BX,-1(DI)(CX*1)
-	MOVB	$0x2,AL			/* plane 2 */
-	OUTB
-	SHRL	$8,BX
-	MOVB	BX,-1(DI)(CX*1)
-	MOVB	$0x4,AL			/* plane 1 */
-	OUTB
-	SHRL	$8,BX
-	MOVB	BX,-1(DI)(CX*1)
-	MOVB	$0x8,AL			/* plane 0*/
-	OUTB
-	SHRL	$8,BX
-	MOVB	BX,-1(DI)(CX*1)
-	LOOP	l20
-	RET
 
 /*
  * The DP8390 ethernet chip needs some time between

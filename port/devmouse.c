@@ -115,8 +115,22 @@ GBitmap cursorback =
 	{0, 0, 16, 16}
 };
 
+ulong cursorworkbits[16*4];
+GBitmap cursorwork =
+{
+	cursorworkbits,
+	0,
+	1,
+	0,
+	{0, 0, 16, 16},
+	{0, 0, 16, 16}
+};
+
 void	Cursortocursor(Cursor*);
 int	mousechanged(void*);
+
+extern	void	screenload(Rectangle, uchar*, int, int, int);
+extern	void	screenunload(Rectangle, uchar*, int, int, int);
 
 enum{
 	Qdir,
@@ -156,11 +170,14 @@ mouseinit(void)
 {
 	if(!conf.monitor)
 		return;
-	if(gscreen.ldepth > 3)
+	if(gscreen.ldepth > 3){
 		cursorback.ldepth = 0;
-	else{
+		cursorwork.ldepth = 0;
+	}else{
 		cursorback.ldepth = gscreen.ldepth;
 		cursorback.width = ((16 << gscreen.ldepth) + 31) >> 5;
+		cursorwork.ldepth = gscreen.ldepth;
+		cursorwork.width = ((16 << gscreen.ldepth) + 31) >> 5;
 	}
 	cursoron(1);
 }
@@ -434,12 +451,15 @@ cursoron(int dolock)
 			cursor.r.min = mouse.xy;
 			cursor.r.max = add(mouse.xy, Pt(16, 16));
 			cursor.r = raddp(cursor.r, cursor.offset);
-			gbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
-			gbitblt(&gscreen, cursor.r.min,
+			screenunload(cursor.r, (uchar*)cursorworkbits,
+				(16>>3) << gscreen.ldepth, cursorwork.width*BY2WD, 0);
+			memmove(cursorbackbits, cursorworkbits, 16*cursorback.width*BY2WD);
+			gbitblt(&cursorwork, cursorwork.r.min,
 				&clr, Rect(0, 0, 16, 16), flipping? flipD[D&~S] : D&~S);
-			gbitblt(&gscreen, cursor.r.min,
+			gbitblt(&cursorwork, cursorwork.r.min,
 				&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
-			mbbrect(cursor.r);
+			screenload(cursor.r, (uchar*)cursorworkbits,
+				(16>>3) << gscreen.ldepth, cursorwork.width*BY2WD, 0);
 		}
 	}
 	if(dolock)
@@ -454,11 +474,9 @@ cursoroff(int dolock)
 	if(dolock)
 		lock(&cursor);
 	if(--cursor.visible == 0) {
-		if(!hwcurs) {
-			gbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
-			mbbrect(cursor.r);
-			mousescreenupdate();
-		}
+		if(!hwcurs)
+			screenload(cursor.r, (uchar*)cursorbackbits,
+				(16>>3) << gscreen.ldepth, cursorback.width*BY2WD, 0);
 	}
 	if(dolock)
 		unlock(&cursor);
@@ -480,7 +498,6 @@ mouseclock(void)
 		mouse.redraw = 0;
 		cursoroff(0);
 		cursoron(0);
-		mousescreenupdate();
 		unlock(&cursor);
 	}
 }
