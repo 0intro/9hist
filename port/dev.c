@@ -109,6 +109,7 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 			}
 			continue;
 		}
+	return 1;	/* not reached */
 }
 
 void

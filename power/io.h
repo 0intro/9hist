@@ -19,7 +19,7 @@ enum
 
 typedef struct SBCC	SBCC;
 typedef struct Timer	Timer;
-typedef struct Duart	Duart;
+typedef struct Duartreg	Duartreg;
 
 struct SBCC
 {
@@ -50,7 +50,7 @@ struct SBCC
 #define	CLRTIM0		SYNCBUS(uchar, 0x1100000)
 #define	CLRTIM1		SYNCBUS(uchar, 0x1180000)
 
-#define	DUARTREG	SYNCBUS(Duart, 0x1A00000)
+#define	DUARTREG	SYNCBUS(Duartreg, 0x1A00000)
 
 #define LANCERAM	IO2(ushort, 0xE00000)
 #define LANCEEND	IO2(ushort, 0xF00000)

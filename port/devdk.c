@@ -850,6 +850,7 @@ dkwrite(Chan *c, void *a, long n, ulong offset)
 	}
 
 	error(Eperm);
+	return -1;		/* never reached */
 }
 
 void	 
@@ -896,6 +897,7 @@ dkcloneline(Chan *c)
 		}
 	}
 	error(Enodev);
+	return -1;		/* never reached */
 }
 
 static Chan*
@@ -1342,6 +1344,7 @@ dklisten(Chan *c)
 		return lineno;
 	}
 	panic("dklisten terminates strangely\n");
+	return -1;		/* never reached */
 }
 
 /*

@@ -167,6 +167,7 @@ rootserver(char *arg)
 		if(mp->name == 0)
 			continue;
 	}
+	return 0;		/* not reached */
 }
 
 void

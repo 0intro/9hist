@@ -27,6 +27,7 @@ newfd(Chan *c)
 		}
 	unlock(f);
 	exhausted("file descriptors");
+	return 0;		/* not reached */
 }
 
 Chan*

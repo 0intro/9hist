@@ -99,6 +99,7 @@ newchan(void)
 		unlock(&chanalloc);
 		resrcwait("no chans\n");
 	}
+	return 0;	/* not reached */
 }
 
 void
@@ -421,6 +422,7 @@ createdir(Chan *c)
 		}
 	}
 	error(Enocreate);
+	return 0;		/* not reached */
 }
 
 void

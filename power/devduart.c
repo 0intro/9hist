@@ -6,18 +6,17 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-int	duartacr;
-int	duartimr;
-
 void	duartputs(IOQ*, char*, int);
 void	iprint(char*, ...);
 
 #define	PAD	15	/* registers are well-spaced */
 
 /*
- * Register set for half the duart.  There are really two sets.
+ *  Register set for half the duart.  There are really two sets in adjacent
+ *  memory locations.
  */
-struct Duart{
+struct Duartreg
+{
 	uchar	mr1_2,		/* Mode Register Channels 1 & 2 */
 		pad0[PAD];
 	uchar	sr_csr,		/* Status Register/Clock Select Register */
@@ -98,7 +97,7 @@ enum{
 	BD1200		=0x66|0x0000,
 	BD300		=0x44|0x0000,
 
-	Maxport		=8,
+	Maxduart	=8,
 };
 
 /*
@@ -115,55 +114,69 @@ enum {
 };
 
 /*
- *  software info for a serial duart interface
+ *  a duart
  */
-typedef struct Duartport	Duartport;
-struct Duartport
+typedef struct Duart	Duart;
+struct Duart
 {
 	QLock;
-	int	printing;	/* true if printing */
-	Duart	*duart;		/* device */
-	int	inited;
-	int	c;		/* character to restart output */
-	int	op;		/* operation requested */
-	int	val;		/* value of operation */
-	Rendez	opr;		/* waiot here for op to complete */
+	Duartreg	*reg;		/* duart registers */
+	uchar		imr;		/* sticky interrupt mask reg bits */
+	uchar		acr;		/* sticky auxiliary reg bits */
+	int		inited;
+};
+Duart duart[Maxduart];
+
+/*
+ *  values specific to a single duart port
+ */
+typedef struct Port	Port;
+struct Port
+{
+	QLock;
+	int		printing;	/* true if printing */
+	Duart		*d;		/* device */
+	Duartreg	*reg;		/* duart registers (for this port) */
+	int		c;		/* character to restart output */
+	int		op;		/* operation requested */
+	int		val;		/* value of operation */
+	Rendez		opr;		/* waiot here for op to complete */
 
 	/* console interface */
-	int	nostream;	/* can't use the stream interface */
-	IOQ	*iq;		/* input character queue */
-	IOQ	*oq;		/* output character queue */
+	int		nostream;	/* can't use the stream interface */
+	IOQ		*iq;		/* input character queue */
+	IOQ		*oq;		/* output character queue */
 
 	/* stream interface */
-	Queue	*wq;		/* write queue */
-	Rendez	r;		/* kproc waiting for input */
- 	int	kstarted;	/* kproc started */
+	Queue		*wq;		/* write queue */
+	Rendez		r;		/* kproc waiting for input */
+ 	int		kstarted;	/* kproc started */
 };
-Duartport	duartport[Maxport];	/* max possible */
+Port duartport[2*Maxduart];
 
 /*
  *  configure a duart port, default is 9600 baud, 8 bits/char, 1 stop bit,
  *  no parity
  */
 void
-duartsetup(Duartport *dp)
+duartsetup(Port *p, Duart *d, int devno)
 {
-	Duart *duart;
+	Duartreg *reg;
 
-	duart = dp->duart;
+	p->d = d;
+	reg = &d->reg[devno];
+	p->reg = reg;
 
-	duart->cmnd = RESET_RCV|DIS_TX|DIS_RX;
-	duart->cmnd = RESET_TRANS;
-	duart->cmnd = RESET_ERR;
-	duart->cmnd = STOP_BRK;
+	reg->cmnd = RESET_RCV|DIS_TX|DIS_RX;
+	reg->cmnd = RESET_TRANS;
+	reg->cmnd = RESET_ERR;
+	reg->cmnd = STOP_BRK;
 
-	duart->ipc_acr = 0x80;		/* baud-rate set 2 */
-	duart->cmnd = RESET_MR;
-	duart->mr1_2 = NO_PAR|CBITS8;
-	duart->mr1_2 = ONESTOPB;
-	duart->sr_csr = (DBD9600<<4)|DBD9600;
-	duart->is_imr = IM_RRDYA|IM_XRDYA;
-	duart->cmnd = ENB_TX|ENB_RX;
+	reg->cmnd = RESET_MR;
+	reg->mr1_2 = NO_PAR|CBITS8;
+	reg->mr1_2 = ONESTOPB;
+	reg->sr_csr = (DBD9600<<4)|DBD9600;
+	reg->cmnd = ENB_TX|ENB_RX;
 }
 
 /*
@@ -172,27 +185,31 @@ duartsetup(Duartport *dp)
 void
 duartinit(void)
 {
-	Duartport *dp;
+	Port *p;
+	Duart *d;
 
-	dp = &duartport[2*m->machno];
-	if(dp->inited)
+	d = &duart[m->machno];
+	if(d->inited)
 		return;
-	dp->inited = 1;
+	d->reg = DUARTREG;
+	d->imr = IM_RRDYA|IM_XRDYA|IM_RRDYB|IM_XRDYB;
+	d->reg->is_imr = d->imr;
+	d->acr = 0x80;			/* baud rate set 2 */
+	d->reg->ipc_acr = d->acr;
 
-	dp->duart = DUARTREG;
-	duartsetup(dp);
-	dp++;
-	dp->duart = DUARTREG+1;
-	duartsetup(dp);
+	p = &duartport[2*m->machno];
+	duartsetup(p, d, 0);
+	p++;
+	duartsetup(p, d, 1);
 }
 
 /*
  *  enable a duart port
  */
 void
-duartenable(Duartport *dp)
+duartenable(Port *p)
 {
-	dp->duart->cmnd = ENB_TX|ENB_RX;
+	p->reg->cmnd = ENB_TX|ENB_RX;
 }
 
 void
@@ -202,7 +219,7 @@ duartenable0(void)
 }
 
 void
-duartbaud(Duartport *dp, int b)
+duartbaud(Port *p, int b)
 {
 	int x;
 
@@ -232,36 +249,36 @@ duartbaud(Duartport *dp, int b)
 		return;
 	}
 	if(x & 0x0100)
-		duartacr |= 0x80;
+		p->d->acr |= 0x80;
 	else
-		duartacr &= ~0x80;
-	dp->duart->ipc_acr = duartacr;
-	dp->duart->sr_csr = x;
+		p->d->acr &= ~0x80;
+	p->d->reg->ipc_acr = p->d->acr;
+	p->reg->sr_csr = x;
 }
 
 void
-duartdtr(Duartport *dp, int val)
+duartdtr(Port *p, int val)
 {
 	if (val)
-		dp->duart->ctlr=0x01;
+		p->reg->ctlr = 0x01;
 	else
-		dp->duart->ctur=0x01;
+		p->reg->ctur = 0x01;
 }
 
 void
-duartbreak(Duartport *dp, int val)
+duartbreak(Port *p, int val)
 {
-	Duart *duart;
+	Duartreg *reg;
 
-	duart = dp->duart;
+	reg = p->reg;
 	if (val){
-		duartimr &= ~IM_XRDYB;
-		duart->is_imr = duartimr;
-		duart->cmnd = STRT_BRK|ENB_TX;
+		p->d->imr &= ~IM_XRDYB;
+		p->d->reg->is_imr = p->d->imr;
+		reg->cmnd = STRT_BRK|ENB_TX;
 	} else {
-		duart->cmnd = STOP_BRK|ENB_TX;
-		duartimr |= IM_XRDYB;
-		duart->is_imr = duartimr;
+		reg->cmnd = STOP_BRK|ENB_TX;
+		p->d->imr |= IM_XRDYB;
+		p->d->reg->is_imr = p->d->imr;
 	}
 }
 
@@ -269,67 +286,67 @@ duartbreak(Duartport *dp, int val)
  *  do anything requested for this CPU's duarts
  */
 void
-duartslave0(Duartport *dp)
+duartslave0(Port *p)
 {
-	switch(dp->op){
+	switch(p->op){
 	case Ddtr:
-		duartdtr(dp, dp->val);
+		duartdtr(p, p->val);
 		break;
 	case Dbaud:
-		duartbaud(dp, dp->val);
+		duartbaud(p, p->val);
 		break;
 	case Dbreak:
-		duartbreak(dp, dp->val);
+		duartbreak(p, p->val);
 		break;
 	case Dprint:
-		dp->duart->cmnd = ENB_TX;
-		dp->duart->data = dp->val;
+		p->reg->cmnd = ENB_TX;
+		p->reg->data = p->val;
 		break;
 	case Dena:
-		duartenable(dp);
+		duartenable(p);
 		break;
 	case Dstate:
-		dp->val = dp->duart->is_imr;
+		p->val = p->reg->ppcr;
 		break;
 	}
-	dp->op = Dnone;
-	wakeup(&dp->opr);
+	p->op = Dnone;
+	wakeup(&p->opr);
 }
 void
 duartslave(void)
 {
 	IOQ *cq;
-	Duartport *dp;
+	Port *p;
 
-	dp = &duartport[2*m->machno];
-	cq = dp->iq;
-	if(dp->wq && cangetc(cq))
+	p = &duartport[2*m->machno];
+	cq = p->iq;
+	if(p->wq && cangetc(cq))
 		wakeup(&cq->r);
-	if(dp->op != Dnone)
-		duartslave0(dp);
-	dp++;
-	cq = dp->iq;
-	if(dp->wq && cangetc(cq))
+	if(p->op != Dnone)
+		duartslave0(p);
+	p++;
+	cq = p->iq;
+	if(p->wq && cangetc(cq))
 		wakeup(&cq->r);
-	if(dp->op != Dnone)
-		duartslave0(dp);
+	if(p->op != Dnone)
+		duartslave0(p);
 }
 
 void
-duartrintr(Duartport *dp)
+duartrintr(Port *p)
 {
-	Duart *duart;
+	Duartreg *reg;
 	IOQ *cq;
 	int status;
 	char ch;
 
-	duart = dp->duart;
-	status = duart->sr_csr;
-	ch = duart->data;
+	reg = p->reg;
+	status = reg->sr_csr;
+	ch = reg->data;
 	if(status & (FRM_ERR|OVR_ERR|PAR_ERR))
-		duart->cmnd = RESET_ERR;
+		reg->cmnd = RESET_ERR;
 
-	cq = dp->iq;
+	cq = p->iq;
 	if(cq->putc)
 		(*cq->putc)(cq, ch);
 	else
@@ -337,22 +354,22 @@ duartrintr(Duartport *dp)
 }
 
 void
-duartxintr(Duartport *dp)
+duartxintr(Port *p)
 {
-	Duart *duart;
+	Duartreg *reg;
 	IOQ *cq;
 	int ch;
 
-	cq = dp->oq;
+	cq = p->oq;
 	lock(cq);
 	ch = getc(cq);
-	duart = dp->duart;
+	reg = p->reg;
 	if(ch < 0){
-		dp->printing = 0;
+		p->printing = 0;
 		wakeup(&cq->r);
-		duart->cmnd = DIS_TX;
+		reg->cmnd = DIS_TX;
 	} else
-		duart->data = ch;
+		reg->data = ch;
 	unlock(cq);
 }
 
@@ -360,12 +377,13 @@ void
 duartintr(void)
 {
 	int cause, status, c;
-	Duart *duart;
-	Duartport *dp;
+	Duartreg *reg;
+	Port *p;
 
-	dp = &duartport[2*m->machno];
-	duart = dp->duart;
-	cause = duart->is_imr;
+	p = &duartport[2*m->machno];
+	reg = p->reg;
+	cause = reg->is_imr;
+
 	/*
 	 * I can guess your interrupt.
 	 */
@@ -373,22 +391,22 @@ duartintr(void)
 	 * Is it 1?
 	 */
 	if(cause & IM_RRDYA)
-		duartrintr(dp);
+		duartrintr(p);
 	/*
 	 * Is it 2?
 	 */
 	if(cause & IM_XRDYA)
-		duartxintr(dp);
+		duartxintr(p);
 	/*
 	 * Is it 3?
 	 */
 	if(cause & IM_RRDYB)
-		duartrintr(dp+1);
+		duartrintr(p+1);
 	/*
 	 * Is it 4?
 	 */
 	if(cause & IM_XRDYB)
-		duartxintr(dp+1);
+		duartxintr(p+1);
 }
 
 /*
@@ -397,22 +415,22 @@ duartintr(void)
 int
 duartrawputc(int c)
 {
-	Duart *duart;
+	Duartreg *reg;
 	int i;
 
-	duart = DUARTREG;
+	reg = DUARTREG;
 	if(c == '\n')
 		duartrawputc('\r');
-	duart->cmnd = ENB_TX;
+	reg->cmnd = ENB_TX;
 	i = 0;
-	while((duart->sr_csr&XMT_RDY) == 0)
+	while((reg->sr_csr&XMT_RDY) == 0)
 		if(++i >= 1000000){
-			duartsetup(&duartport[0]);
+			duartsetup(&duartport[0], &duart[0], 0);
 			for(i=0; i<100000; i++)
 				;
 			break;
 		}
-	duart->data = c;
+	reg->data = c;
 	if(c == '\n')
 		for(i=0; i<100000; i++)
 			;
@@ -447,19 +465,19 @@ void
 duartputs(IOQ *cq, char *s, int n)
 {
 	int ch, x;
-	Duartport *dp;
-	Duart *duart;
+	Port *p;
+	Duartreg *reg;
 
 	x = splhi();
 	lock(cq);
 	puts(cq, s, n);
-	dp = cq->ptr;
-	if(dp->printing == 0){
+	p = cq->ptr;
+	if(p->printing == 0){
 		ch = getc(cq);
 		if(ch >= 0){
-			dp->printing = 1;
-			dp->val = ch;
-			dp->op = Dprint;
+			p->printing = 1;
+			p->val = ch;
+			p->op = Dprint;
 		}
 	}
 	unlock(cq);
@@ -472,18 +490,18 @@ duartputs(IOQ *cq, char *s, int n)
 void
 duartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 {
-	Duartport *dp = &duartport[port];
+	Port *p = &duartport[port];
 	IOQ *zq;
 
-	dp->nostream = 1;
+	p->nostream = 1;
 	if(oq){
-		dp->oq = oq;
-		dp->oq->puts = duartputs;
-		dp->oq->ptr = dp;
+		p->oq = oq;
+		p->oq->puts = duartputs;
+		p->oq->ptr = p;
 	}
 	if(iq){
-		dp->iq = iq;
-		dp->iq->ptr = dp;
+		p->iq = iq;
+		p->iq->ptr = p;
 
 		/*
 		 *  Stupid HACK to undo a stupid hack
@@ -492,8 +510,8 @@ duartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 		if(iq == zq)
 			kbdq.putc = kbdcr2nl;
 	}
-	duartenable(dp);
-	duartbaud(dp, baud);
+	duartenable(p);
+	duartbaud(p, baud);
 }
 
 static int	duartputc(IOQ *, int);
@@ -513,99 +531,112 @@ Qinfo duartinfo =
 static int
 opdone(void *x)
 {
-	Duartport *dp = x;
+	Port *p = x;
 
-	return dp->op == Dnone;
+	return p->op == Dnone;
 }
 
 static void
 duartstopen(Queue *q, Stream *s)
 {
-	Duartport *dp;
+	Port *p;
 	char name[NAMELEN];
 
-	dp = &duartport[s->id];
+	p = &duartport[s->id];
 
-	qlock(dp);
-	dp->wq = WR(q);
-	WR(q)->ptr = dp;
-	RD(q)->ptr = dp;
-	qunlock(dp);
+	qlock(p);
+	p->wq = WR(q);
+	WR(q)->ptr = p;
+	RD(q)->ptr = p;
+	qunlock(p);
 
-	if(dp->kstarted == 0){
-		dp->kstarted = 1;
-		sprint(name, "duart%d", s->id);
-		kproc(name, duartkproc, dp);
+	if(p->kstarted == 0){
+		p->kstarted = 1;
+		sprint(name, "duart%d", s->id+1);
+		kproc(name, duartkproc, p);
 	}
 
 	/* enable the port */
-	dp->op = Dena;
-	sleep(&dp->opr, opdone, dp);
+	qlock(p);
+	p->op = Dena;
+	sleep(&p->opr, opdone, p);
+	qunlock(p);
 }
 
 static void
 duartstclose(Queue *q)
 {
-	Duartport *dp = q->ptr;
+	Port *p = q->ptr;
 
-	qlock(dp);
-	dp->wq = 0;
-	dp->iq->putc = 0;
+	qlock(p);
+	p->wq = 0;
+	p->iq->putc = 0;
 	WR(q)->ptr = 0;
 	RD(q)->ptr = 0;
-	qunlock(dp);
+	qunlock(p);
 }
 
 static void
 duartoput(Queue *q, Block *bp)
 {
-	Duartport *dp = q->ptr;
+	Port *p = q->ptr;
 	IOQ *cq;
 	int n, m;
 
-	if(dp == 0){
+	if(p == 0){
 		freeb(bp);
 		return;
 	}
-	cq = dp->oq;
+	cq = p->oq;
 	if(waserror()){
 		freeb(bp);
 		nexterror();
 	}
 	if(bp->type == M_CTL){
-		qlock(dp);
+		if(waserror()){
+			qunlock(p);
+			qunlock(p->d);
+			nexterror();
+		}
+		qlock(p);
+		qlock(p->d);
 		while (cangetc(cq))	/* let output drain */
 			sleep(&cq->r, cangetc, cq);
 		n = strtoul((char *)(bp->rptr+1), 0, 0);
 		switch(*bp->rptr){
 		case 'B':
 		case 'b':
-			dp->val = n;
-			dp->op = Dbaud;
-			sleep(&dp->opr, opdone, dp);
+			p->val = n;
+			p->op = Dbaud;
+			sleep(&p->opr, opdone, p);
 			break;
 		case 'D':
 		case 'd':
-			dp->val = n;
-			dp->op = Ddtr;
-			sleep(&dp->opr, opdone, dp);
+			p->val = n;
+			p->op = Ddtr;
+			sleep(&p->opr, opdone, p);
 			break;
 		case 'K':
 		case 'k':
-			dp->val = 1;
-			dp->op = Dbreak;
-			sleep(&dp->opr, opdone, dp);
-			tsleep(&dp->opr, return0, 0, n);
-			dp->val = 0;
-			dp->op = Dbreak;
-			sleep(&dp->opr, opdone, dp);
+			p->val = 1;
+			p->op = Dbreak;
+			if(!waserror()){
+				sleep(&p->opr, opdone, p);
+				tsleep(&p->opr, return0, 0, n);
+				poperror();
+			}
+			p->val = 0;
+			p->op = Dbreak;
+			sleep(&p->opr, opdone, p);
 			break;
 		case 'R':
 		case 'r':
 			/* can't control? */
 			break;
 		}
-		qunlock(dp);
+		qunlock(p->d);
+		qunlock(p);
+		poperror();
 	}else while((m = BLEN(bp)) > 0){
 		while ((n = canputc(cq)) == 0){
 			kprint(" duartoput: sleeping\n");
@@ -626,24 +657,24 @@ duartoput(Queue *q, Block *bp)
 static void
 duartkproc(void *a)
 {
-	Duartport *dp = a;
-	IOQ *cq = dp->iq;
+	Port *p = a;
+	IOQ *cq = p->iq;
 	Block *bp;
 	int n;
 
 loop:
 	while ((n = cangetc(cq)) == 0)
 		sleep(&cq->r, cangetc, cq);
-	qlock(dp);
-	if(dp->wq == 0){
+	qlock(p);
+	if(p->wq == 0){
 		cq->out = cq->in;
 	}else{
 		bp = allocb(n);
 		bp->flags |= S_DELIM;
 		bp->wptr += gets(cq, bp->wptr, n);
-		PUTNEXT(RD(dp->wq), bp);
+		PUTNEXT(RD(p->wq), bp);
 	}
-	qunlock(dp);
+	qunlock(p);
 	goto loop;
 }
 
@@ -656,7 +687,7 @@ int nduartport;
 void
 duartreset(void)
 {
-	Duartport *dp;
+	Port *p;
 	int i;
 
 	/*
@@ -665,8 +696,8 @@ duartreset(void)
 	nduartport = 2*conf.nmach;
 	duartdir = ialloc(nduartport*2*sizeof(Dirtab), 0);
 	for(i = 0; i < nduartport; i++){
-		sprint(duartdir[2*i].name, "eia%d", i);
-		sprint(duartdir[2*i+1].name, "eia%dctl", i);
+		sprint(duartdir[2*i].name, "eia%d", i+1);
+		sprint(duartdir[2*i+1].name, "eia%dctl", i+1);
 		duartdir[2*i].length = 0;
 		duartdir[2*i+1].length = 0;
 		duartdir[2*i].perm = 0666;
@@ -678,18 +709,18 @@ duartreset(void)
 	/*
 	 *  allocate queues for any stream interfaces
 	 */
-	for(dp = duartport; dp < &duartport[nduartport]; dp++){
-		if(dp->nostream)
+	for(p = duartport; p < &duartport[nduartport]; p++){
+		if(p->nostream)
 			continue;
 
-		dp->iq = ialloc(sizeof(IOQ), 0);
-		initq(dp->iq);
-		dp->iq->ptr = dp;
+		p->iq = ialloc(sizeof(IOQ), 0);
+		initq(p->iq);
+		p->iq->ptr = p;
 
-		dp->oq = ialloc(sizeof(IOQ), 0);
-		initq(dp->oq);
-		dp->oq->ptr = dp;
-		dp->oq->puts = duartputs;
+		p->oq = ialloc(sizeof(IOQ), 0);
+		initq(p->oq);
+		p->oq->ptr = p;
+		p->oq->puts = duartputs;
 	}
 }
 
@@ -712,14 +743,14 @@ duartwalk(Chan *c, char *name)
 }
 
 void
-duartstat(Chan *c, char *dp)
+duartstat(Chan *c, char *p)
 {
 	switch(STREAMTYPE(c->qid.path)){
 	case Sdataqid:
-		streamstat(c, dp, duartdir[2*STREAMID(c->qid.path)].name);
+		streamstat(c, p, duartdir[2*STREAMID(c->qid.path)].name);
 		break;
 	default:
-		devstat(c, dp, duartdir, 2*nduartport, devgen);
+		devstat(c, p, duartdir, 2*nduartport, devgen);
 		break;
 	}
 }
@@ -727,19 +758,19 @@ duartstat(Chan *c, char *dp)
 Chan*
 duartopen(Chan *c, int omode)
 {
-	Duartport *dp;
+	Port *p;
 
 	switch(STREAMTYPE(c->qid.path)){
 	case Sdataqid:
 	case Sctlqid:
-		dp = &duartport[STREAMID(c->qid.path)];
+		p = &duartport[STREAMID(c->qid.path)];
 		break;
 	default:
-		dp = 0;
+		p = 0;
 		break;
 	}
 
-	if(dp && dp->nostream)
+	if(p && p->nostream)
 		error(Einuse);
 
 	if((c->qid.path & CHDIR) == 0)
@@ -764,7 +795,7 @@ duartclose(Chan *c)
 long
 duartread(Chan *c, void *buf, long n, ulong offset)
 {
-	Duartport *dp;
+	Port *p;
 
 	if(c->qid.path&CHDIR)
 		return devdirread(c, buf, n, duartdir, 2*nduartport, devgen);
@@ -775,12 +806,12 @@ duartread(Chan *c, void *buf, long n, ulong offset)
 	case Sctlqid:
 		if(offset)
 			return 0;
-		dp = &duartport[STREAMID(c->qid.path)];
-		qlock(dp);
-		dp->op = Dstate;
-		sleep(&dp->opr, opdone, dp);
-		*(uchar *)buf = dp->val;
-		qunlock(dp);
+		p = &duartport[STREAMID(c->qid.path)];
+		qlock(p);
+		p->op = Dstate;
+		sleep(&p->opr, opdone, p);
+		*(uchar *)buf = p->val;
+		qunlock(p);
 		return 1;
 	}
 
@@ -802,7 +833,7 @@ duartremove(Chan *c)
 }
 
 void
-duartwstat(Chan *c, char *dp)
+duartwstat(Chan *c, char *p)
 {
 	USED(c);
 	error(Eperm);

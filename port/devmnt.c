@@ -758,6 +758,7 @@ mntralloc(void)
 		unlock(&mntalloc);
 		resrcwait("no mount buffers");
 	}
+	return 0;		/* not reached */
 }
 
 void

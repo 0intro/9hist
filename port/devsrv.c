@@ -127,6 +127,7 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 		exhausted("server slots");
 	sp = &srv[j];
 	sp->chan = c;
+	incref(c);
 	unlock(&srvlk);
 	poperror();
 	strncpy(sp->name, name, NAMELEN);
@@ -188,25 +189,38 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	Fgrp *f;
 	int i, fd;
 	char buf[32];
+	Chan *c1;
 
-	i = c->qid.path;
-	if(srv[i].chan != c)	/* already been written to */
-		error(Egreg);
 	if(n >= sizeof buf)
 		error(Egreg);
 	memmove(buf, va, n);	/* so we can NUL-terminate */
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
 	f = u->p->fgrp;
+
 	lock(f);
 	if(waserror()){
 		unlock(f);
 		nexterror();
 	}
 	fdtochan(fd, -1, 0);	/* error check only */
-	srv[i].chan = f->fd[fd];
-	incref(srv[i].chan);
+	c1 = f->fd[fd];
+	incref(c1);
 	unlock(f);
+	poperror();
+
+	lock(&srvlk);
+	if (waserror()) {
+		unlock(&srvlk);
+		close(c1);
+		nexterror();
+	}
+	i = c->qid.path;
+	if(srv[i].chan != c)	/* already been written to */
+		error(Egreg);
+	close(c);
+	srv[i].chan = c1;
+	unlock(&srvlk);
 	poperror();
 	return n;
 }

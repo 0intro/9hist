@@ -507,6 +507,7 @@ sysexits(ulong *arg)
 
 	}
 	pexit(status, 1);
+	return 0;		/* not reached */
 }
 
 long
@@ -555,6 +556,7 @@ sysdeath(ulong *arg)
 	USED(arg);
 	pprint("deprecated system call");
 	pexit("Suicide", 0);
+	return 0;	/* not reached */
 }
 
 long
@@ -649,6 +651,7 @@ syssegbrk(ulong *arg)
 		}
 
 	error(Ebadarg);
+	return 0;		/* not reached */
 }
 
 long

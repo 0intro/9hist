@@ -123,4 +123,5 @@ dupwrite(Chan *c, void *va, long n, ulong offset)
 {
 	USED(c, va, n, offset);
 	panic("dupwrite");
+	return 0;		/* not reached */
 }

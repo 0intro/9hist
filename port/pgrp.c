@@ -124,6 +124,7 @@ newpgrp(void)
 		unlock(&pgrpalloc);
 		resrcwait("no pgrps");
 	}
+	return 0;		/* not reached */
 }
 
 Egrp*
@@ -143,6 +144,7 @@ newegrp(void)
 		unlock(&egrpalloc);
 		resrcwait("no envgrps");
 	}
+	return 0;		/* not reached */
 }
 
 Fgrp*
@@ -163,6 +165,7 @@ newfgrp(void)
 		unlock(&fgrpalloc);
 		resrcwait("no filegrps");
 	}
+	return 0;		/* not reached */
 }
 
 Fgrp*
@@ -294,6 +297,7 @@ newmount(Mhead *mh, Chan *to)
 		mountalloc.free = m;
 		unlock(&mountalloc);
 	}
+	return 0;	/* not reached */
 }
 
 void
@@ -368,6 +372,7 @@ newmnthead(void)
 		mountalloc.mhfree = mh;
 		unlock(&mountalloc);
 	}
+	return 0;		/* not reached */
 }
 
 void

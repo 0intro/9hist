@@ -1052,6 +1052,7 @@ urpdump(void)
 	for(up = urp; up < &urp[conf.nurp]; up++)
 		if(up->rq)
 			urpvomit("", up);
+	return 0;
 }
 
 void

@@ -83,6 +83,7 @@ newseg(int type, ulong base, ulong size)
 		unlock(&segalloc);
 		resrcwait("no segments");
 	}
+	return 0;	/* not reached */
 }
 
 void
@@ -196,6 +197,7 @@ dupseg(Segment *s, int share)
 	}
 
 	panic("dupseg");
+	return 0;		/* not reached */
 }
 
 void
@@ -524,6 +526,7 @@ syssegflush(ulong *arg)
 done:
 	qunlock(&s->lk);
 	flushmmu();
+	return 0;
 }
 
 Page*

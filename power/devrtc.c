@@ -149,6 +149,7 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 		return n;
 	}
 	error(Egreg);
+	return -1;		/* never reached */
 }
 
 long	 
@@ -200,6 +201,7 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 		return n;
 	}
 	error(Egreg);
+	return -1;		/* never reached */
 }
 
 void	 

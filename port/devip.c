@@ -115,6 +115,7 @@ ipattach(char *spec)
 	}
 
 	error(Enoproto);
+	return 0;		/* not reached */
 }
 
 Chan *
@@ -695,6 +696,7 @@ iplisten(Chan *c)
 		qunlock(&s->listenq);
 		print("iplisten: no newcon\n");
 	}
+	return -1;		/* not reached */
 }
 
 void

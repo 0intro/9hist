@@ -1100,6 +1100,7 @@ streamctlread(Chan *c, void *vbuf, long n)
 		else
 			panic("streamctlread");
 	}
+	return 0;	/* not reached */
 }
 
 /*

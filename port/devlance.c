@@ -669,6 +669,7 @@ lanceclonecon(Chan *c)
 		return e - l.e;
 	}
 	error(Enodev);
+	return -1;		/* never reached */
 }
 
 /*

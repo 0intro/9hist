@@ -677,6 +677,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		print("consread %lux\n", c->qid);
 		error(Egreg);
 	}
+	return -1;		/* never reached */
 }
 
 void

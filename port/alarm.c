@@ -18,6 +18,7 @@ Alarm*
 alarm(int ms, void (*f)(Alarm*), void *arg)
 {
 	Alarm *a, *w, *pw;
+	int s;
 
 	if(ms < 0)
 		ms = 0;
@@ -25,6 +26,7 @@ alarm(int ms, void (*f)(Alarm*), void *arg)
 	a->when = MACHP(0)->ticks+MS2TK(ms);
 	a->f = f;
 	a->arg = arg;
+	s = splhi();
 	lock(&alarmalloc);
 	pw = 0;
 	for(w=alarmalloc.list; w; pw=w, w=w->next){
@@ -33,6 +35,7 @@ alarm(int ms, void (*f)(Alarm*), void *arg)
 	}
 	insert(&alarmalloc.list, pw, a);
 	unlock(&alarmalloc);
+	splx(s);
 	return a;
 }
 
@@ -91,12 +94,14 @@ alarmkproc(void *arg)
 	Alarm *alist[NA];
 	ulong now;
 	Proc *rp;
+	int s;
 
 	USED(arg);
 
 	for(;;){
 		now = MACHP(0)->ticks;
 
+		s = splhi();
 		lock(&alarmalloc);
 		a = alarmalloc.list;
 		if(a){
@@ -106,6 +111,7 @@ alarmkproc(void *arg)
 				a = alarmalloc.list;
 			}
 			unlock(&alarmalloc);
+			splx(s);
 
 			/*
 			 *  execute alarm functions outside the lock since they
@@ -123,8 +129,10 @@ alarmkproc(void *arg)
 				}
 				poperror();
 			}
-		}else
+		}else{
 			unlock(&alarmalloc);
+			splx(s);
+		}
 
 		qlock(&alarms);
 		while((rp = alarms.head) && rp->alarm <= now){

@@ -238,6 +238,7 @@ newproc(void)
 		unlock(&procalloc);
 		resrcwait("no procs");
 	}
+	return 0;		/* not reached */
 }
 
 void
@@ -824,6 +825,7 @@ newwaitq(void)
 		waitqalloc.free = wq;
 		unlock(&waitqalloc);
 	}
+	return 0;		/* not reached */
 }
 
 void

@@ -366,6 +366,7 @@ if((p->state < Dead) || (p->state > Rendezvous))
 		return n;
 	}
 	error(Egreg);
+	return 0;		/* not reached */
 }
 
 

@@ -170,6 +170,7 @@ rootwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	USED(c, buf, n, offset);
 	error(Egreg);
+	return 0;	/* not reached */
 }
 
 void	 

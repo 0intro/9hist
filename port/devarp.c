@@ -447,17 +447,21 @@ arpdelete(char *addr)
 	Arpcache *ap;
 	uchar ip[4];
 	Ipaddr i;
+	int rv;
 
+	rv = -1;
 	i = ipparse(addr);
 	hnputl(ip, i);	
 	lock(&larphash);
 	for(ap = arplruhead; ap; ap = ap->frwd) {
 		if(memcmp(ap->eip, ip, sizeof(ap->eip)) == 0) {
 			ap->status = ARP_FREE;
+			rv = 0;
 			break;
 		}
 	}
 	unlock(&larphash);
+	return rv;
 }
 
 void
