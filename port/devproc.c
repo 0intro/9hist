@@ -45,6 +45,8 @@ enum
 	CMstop,
 	CMwaitstop,
 	CMwired,
+	CMfair,
+	CMunfair,
 };
 
 #define	STATSIZE	(2*KNAMELEN+12+9*12)
@@ -91,6 +93,8 @@ Cmdtab proccmd[] = {
 	CMstop,		"stop",		1,
 	CMwaitstop,	"waitstop",	1,
 	CMwired,	"wired",	2,
+	CMfair,	"fair",	1,
+	CMunfair,	"unfair",	1,
 };
 
 /* Segment type from portdat.h */
@@ -117,6 +121,8 @@ Chan*	proctext(Chan*, Proc*);
 Segment* txt2data(Proc*, Segment*);
 int	procstopped(void*);
 void	mntscan(Mntwalk*, Proc*);
+
+extern int unfair;
 
 static int
 procgen(Chan *c, char *name, Dirtab *tab, int, int s, Dir *dp)
@@ -1190,6 +1196,16 @@ procctlreq(Proc *p, char *va, int n)
 		break;
 	case CMwired:
 		procwired(p, atoi(cb->f[1]));
+		break;
+	case CMfair:
+		if(!iseve())
+			error(Eperm);
+		unfair = 0;
+		break;
+	case CMunfair:
+		if(!iseve())
+			error(Eperm);
+		unfair = 1;
 		break;
 	}
 

@@ -231,6 +231,7 @@ ipoput4(Fs *f, Block *bp, int gating, int ttl, int tos)
 	int lid, len, seglen, chunk, dlen, blklen, offset, medialen;
 	Route *r, *sr;
 	IP *ip;
+	Proto *pr;
 
 	ip = f->ip;
 
@@ -262,6 +263,10 @@ ipoput4(Fs *f, Block *bp, int gating, int ttl, int tos)
 	if(r == nil){
 		ip->stats[OutNoRoutes]++;
 		netlog(f, Logip, "no interface %V\n", eh->dst);
+		if(!gating){
+			freeblist(bp);	
+			error("no route");
+		}
 		goto free;
 	}
 
