@@ -37,7 +37,10 @@ enum
 	Rudptickms	= 50,
 	Rudpmaxxmit	= 10,
 	Maxunacked	= 100,
+
 };
+
+#define Hangupgen	0xffffffff	/* used only in hangup messages */
 
 typedef struct Udphdr Udphdr;
 struct Udphdr
@@ -100,6 +103,8 @@ struct Rudphdr
 typedef struct Reliable Reliable;
 struct Reliable
 {
+	Ref;
+
 	Reliable *next;
 
 	uchar	addr[IPaddrlen];	/* always V6 when put here */
@@ -121,7 +126,6 @@ struct Reliable
 	ulong	ackrcvd;	/* last msg for which ack was rcvd */
 
 	/* flow control */
-	QLock	lock;
 	Rendez	vous;
 	int	blocked;
 };
@@ -176,9 +180,11 @@ struct Rudpcb
 /*
  * local functions 
  */
-void	relsendack(Conv *, Reliable *);
+void	relsendack(Conv *, Reliable *, int);
 int	reliput(Conv *, Block *, uchar *, ushort);
 Reliable *relstate(Rudpcb *, uchar *, ushort, char *from);
+void	relput(Reliable *);
+void	relforget(Conv *, uchar *, int, int);
 void	relackproc(void *);
 void	relackq(Reliable *, Block *);
 void	relhangup(Conv *, Reliable *);
@@ -263,7 +269,7 @@ rudpclose(Conv *c)
 	qlock(ucb);
 	for(r = ucb->r; r; r = r->next){
 		if(r->acksent != r->rcvseq)
-			relsendack(c, r);
+			relsendack(c, r, 0);
 	}
 	qunlock(ucb);
 
@@ -280,7 +286,7 @@ rudpclose(Conv *c)
 	qlock(ucb);
 	for(r = ucb->r; r; r = nr){
 		if(r->acksent != r->rcvseq)
-			relsendack(c, r);
+			relsendack(c, r, 0);
 		nr = r->next;
 		relhangup(c, r);
 		free(r);
@@ -429,7 +435,6 @@ rudpkick(Conv *c, int)
 	hnputs(uh->udpcksum, ptclcsum(bp, UDP_IPHDR, dlen+UDP_RHDRSIZE));
 
 	relackq(r, bp);
-	qunlock(ucb);
 
 	upriv->ustats.rudpOutDatagrams++;
 
@@ -439,13 +444,13 @@ rudpkick(Conv *c, int)
 	doipoput(c, f, bp, 0, c->ttl, c->tos);
 
 	/* flow control of sorts */
-	qlock(&r->lock);
 	if(UNACKED(r) > Maxunacked){
 		r->blocked = 1;
 		sleep(&r->vous, flow, r);
 		r->blocked = 0;
 	}
-	qunlock(&r->lock);
+	relput(r);
+	qunlock(ucb);
 }
 
 void
@@ -615,6 +620,7 @@ char*
 rudpctl(Conv *c, char **f, int n)
 {
 	Rudpcb *ucb;
+	uchar ip[IPaddrlen];
 	int x;
 
 	ucb = (Rudpcb*)c->ptcl;
@@ -626,6 +632,15 @@ rudpctl(Conv *c, char **f, int n)
 		return nil;
 	} else if(strcmp(f[0], "headers") == 0){
 		ucb->headers = 6;
+		return nil;
+	} else if(strcmp(f[0], "hangup") == 0){
+		if(n < 3)
+			return "bad syntax";
+		parseip(ip, f[1]);
+		x = atoi(f[2]);
+		qlock(ucb);
+		relforget(c, ip, x, 1);
+		qunlock(ucb);
 		return nil;
 	} else if(strcmp(f[0], "randdrop") == 0){
 		x = 10;		/* default is 10% */
@@ -764,7 +779,7 @@ loop:
 					relrexmit(c, r);
 			}
 			if(r->acksent != r->rcvseq)
-				relsendack(c, r);
+				relsendack(c, r, 0);
 		}
 		qunlock(ucb);
 	}
@@ -798,6 +813,8 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from)
 		memmove(r->addr, addr, IPaddrlen);
 		r->port = port;
 		r->unacked = 0;
+		if(generation == Hangupgen)
+			generation++;
 		r->sndgen = generation++;
 		r->sndseq = 0;
 		r->ackrcvd = 0;
@@ -806,11 +823,41 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from)
 		r->acksent = 0;
 		r->xmits = 0;
 		r->timeout = 0;
+		r->ref = 0;
+		incref(r);	/* one reference for being in the list */
 	}
-
+	incref(r);
 	return r;
 }
 
+void
+relput(Reliable *r)
+{
+	if(decref(r) == 0)
+		free(r);
+}
+
+void
+relforget(Conv *c, uchar *ip, int port, int originator)
+{
+	Rudpcb *ucb;
+	Reliable *r, **l;
+
+	ucb = (Rudpcb*)c->ptcl;
+
+	l = &ucb->r;
+	for(r = *l; r; r = *l){
+		if(ipcmp(ip, r->addr) == 0 && port == r->port){
+			*l = r->next;
+			if(originator)
+				relsendack(c, r, 1);
+			relhangup(c, r);
+			relput(r);	/* remove from the list */
+			break;
+		}
+		l = &r->next;
+	}
+}
 
 /* 
  *  process a rcvd reliable packet. return -1 if not to be passed to user process,
@@ -826,6 +873,7 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 	Reliable *r;
 	Rudphdr *rh;
 	ulong seq, ack, sgen, agen, ackreal;
+	int rv = -1;
 
 	/* get fields */
 	uh = (Udphdr*)(bp->rp);
@@ -837,20 +885,27 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 
 	upriv = c->p->priv;
 	ucb = (Rudpcb*)c->ptcl;
+	qlock(ucb);
 	r = relstate(ucb, addr, port, "input");
-	
 
 	DPRINT("rcvd %lud/%lud, %lud/%lud, r->sndgen = %lud\n", 
 		seq, sgen, ack, agen, r->sndgen);
 
 	/* if acking an incorrect generation, ignore */
 	if(ack && agen != r->sndgen)
-		return -1;
+		goto out;
+
+	/* Look for a hangup */
+	if(sgen == Hangupgen) {
+		if(agen == r->sndgen)
+			relforget(c, addr, port, 0);
+		goto out;
+	}
 
 	/* make sure we're not talking to a new remote side */
 	if(r->rcvgen != sgen){
 		if(seq != 0 && seq != 1)
-			return -1;
+			goto out;
 
 		/* new connection */
 		if(r->rcvgen != 0){
@@ -893,22 +948,26 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 
 	/* no message or input queue full */
 	if(seq == 0 || qfull(c->rq))
-		return -1;
+		goto out;
 
 	/* refuse out of order delivery */
 	if(seq != NEXTSEQ(r->rcvseq)){
-		relsendack(c, r);	/* tell him we got it already */
+		relsendack(c, r, 0);	/* tell him we got it already */
 		upriv->orders++;
 		DPRINT("out of sequence %lud not %lud\n", seq, NEXTSEQ(r->rcvseq));
-		return -1;
+		goto out;
 	}
 	r->rcvseq = seq;
 
-	return 0;
+	rv = 0;
+out:
+	relput(r);
+	qunlock(ucb);
+	return rv;
 }
 
 void
-relsendack(Conv *c, Reliable *r)
+relsendack(Conv *c, Reliable *r, int hangup)
 {
 	Udphdr *uh;
 	Block *bp;
@@ -939,7 +998,10 @@ relsendack(Conv *c, Reliable *r)
 	v6tov4(uh->udpsrc, c->laddr);
 	hnputs(uh->udplen, ptcllen);
 
-	hnputl(rh->relsgen, r->sndgen);
+	if(hangup)
+		hnputl(rh->relsgen, Hangupgen);
+	else
+		hnputl(rh->relsgen, r->sndgen);
 	hnputl(rh->relseq, 0);
 	hnputl(rh->relagen, r->rcvgen);
 	hnputl(rh->relack, r->rcvseq);
@@ -954,6 +1016,7 @@ relsendack(Conv *c, Reliable *r)
 	DPRINT("sendack: %lud/%lud, %lud/%lud\n", 0L, r->sndgen, r->rcvseq, r->rcvgen);
 	doipoput(c, f, bp, 0, c->ttl, c->tos);
 }
+
 
 /*
  *  called with ucb locked (and c locked if user initiated close)
@@ -980,6 +1043,8 @@ relhangup(Conv *c, Reliable *r)
 	r->rcvgen = 0;
 	r->rcvseq = 0;
 	r->acksent = 0;
+	if(generation == Hangupgen)
+		generation++;
 	r->sndgen = generation++;
 	r->sndseq = 0;
 	r->ackrcvd = 0;

@@ -929,6 +929,33 @@ static char* mediatable[9] = {
 };
 
 static int
+scanphy(Ctlr* ctlr)
+{
+	int i, oui, x;
+
+	for(i = 0; i < 32; i++){
+		if((oui = miir(ctlr, i, 2)) == -1 || oui == 0 || oui == 0xFFFF)
+			continue;
+		oui <<= 6;
+		x = miir(ctlr, i, 3);
+		oui |= x>>10;
+		//print("phy%d: oui %uX reg1 %uX\n", i, oui, miir(ctlr, i, 1));
+
+		ctlr->eeprom[6] = i;
+		if(oui == 0xAA00)
+			ctlr->eeprom[6] |= 0x07<<8;
+		else if(oui == 0x80017){
+			if(x & 0x01)
+				ctlr->eeprom[6] |= 0x0A<<8;
+			else
+				ctlr->eeprom[6] |= 0x04<<8;
+		}
+		return i;
+	}
+	return -1;
+}
+
+static int
 reset(Ether* ether)
 {
 	int anar, anlpar, bmcr, bmsr, i, k, medium, phyaddr, port, x;
@@ -1009,11 +1036,19 @@ reset(Ether* ether)
 	 * Eeprom[6] indicates whether there is a PHY and whether
 	 * it's not 10Mb-only, in which case use the given PHY address
 	 * to set any PHY specific options and determine the speed.
+	 * Unfortunately, sometimes the EEPROM is blank except for
+	 * the ether address and checksum; in this case look at the
+	 * controller type and if 0 scan for the first PHY and try to
+	 * use that.
 	 * If no PHY, assume 82503 (serial) operation.
 	 */
-	if((ctlr->eeprom[6] & 0x1F00) && !(ctlr->eeprom[6] & 0x8000)){
+	if((ctlr->eeprom[6] & 0x1F00) && !(ctlr->eeprom[6] & 0x8000))
 		phyaddr = ctlr->eeprom[6] & 0x00FF;
-
+	else if(!(ctlr->eeprom[5] & 0xFF00))
+		phyaddr = scanphy(ctlr);
+	else
+		phyaddr = -1;
+	if(phyaddr >= 0){
 		/*
 		 * Resolve the highest common ability of the two
 		 * link partners. In descending order:
