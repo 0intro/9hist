@@ -406,6 +406,8 @@ static X86type x86intel[] =
 	{ 5,	3,	23,	"P24T", },
 	{ 5,	4,	23,	"P55C MMX", },
 	{ 5,	7,	23,	"P54C VRT", },
+	{ 5,	8,	11,	"AMD-K6 3D", },	/* Kenji Arisawa arisawa@aichi-u.ac.jp */
+	{ 5,	9,	11,	"AMD-K6 3D+", },/* Kenji Arisawa arisawa@aichi-u.ac.jp */
 	{ 6,	1,	16,	"PentiumPro", },/* determined by trial and error */
 	{ 6,	3,	16,	"PentiumII", },
 	{ 6,	5,	16,	"PentiumII/Xeon", },
@@ -436,12 +438,13 @@ static X86type x86amd[] =
 	{ 5,	1,	23,	"AMD-K5", },	/* guesswork */
 	{ 5,	2,	23,	"AMD-K5", },	/* guesswork */
 	{ 5,	3,	23,	"AMD-K5", },	/* guesswork */
-	{ 5,	6,	11,	"AMD-K6", },	/* determined by trial and error */
-	{ 5,	7,	11,	"AMD-K6", },	/* determined by trial and error */
-	{ 5,	8,	11,	"AMD-K6 3D", },	/* guesswork */
-	{ 5,	9,	11,	"AMD-K6 3D+", },/* guesswork */
+	{ 5,	6,	11,	"AMD-K6", },	/* trial and error */
+	{ 5,	7,	11,	"AMD-K6", },	/* trial and error */
+	{ 5,	8,	11,	"AMD-K6-2", },	/* trial and error */
+	{ 5,	9,	11,	"AMD-K6-III", },/* trial and error */
 
-	{ 6,	1,	11,	"AMD-Athlon", },
+	{ 6,	1,	11,	"AMD-Athlon", },/* trial and error */
+	{ 6,	2,	11,	"AMD-Athlon", },/* trial and error */
 
 	{ 4,	-1,	22,	"Am486", },	/* guesswork */
 	{ 5,	-1,	23,	"AMD-K5/K6", },	/* guesswork */

@@ -443,7 +443,6 @@ sdpopen(Chan* ch, int omode)
 	case Qstats:
 	case Qrstats:
 		c = sdp->conv[CONV(ch->qid)];
-print("open %d:%ld: ref=%d\n", c->id, TYPE(ch->qid), c->ref);
 		qlock(c);
 		if(waserror()) {
 			qunlock(c);
@@ -567,7 +566,6 @@ sdpread(Chan *ch, void *a, long n, vlong off)
 		b = readcontrol(sdp->conv[CONV(ch->qid)], n);
 		if(b == nil)
 			return 0;
-print("readcontrol asked %ld got %ld\n", n, BLEN(b));
 		if(BLEN(b) < n)
 			n = BLEN(b);
 		memmove(a, b->rp, n);
@@ -798,7 +796,6 @@ sdpclone(Sdp *sdp)
 			break;
 		}
 		if(c->ref == 0 && canqlock(c)){
-print("%d: state=%d reader=%d ref=%d\n", c->id, c->state, c->reader, c->ref);
 			if(c->ref == 0)
 				break;
 			qunlock(c);
@@ -836,9 +833,7 @@ static int
 convretry(Conv *c, int reset)
 {
 	c->retries++;
-print("convretry: %s: %d\n", convstatename[c->state], c->retries);
 	if(c->retries > MaxRetries) {
-print("convretry: giving up\n");
 		if(reset)
 			convoconnect(c, ConReset, c->dialid, c->acceptid);
 		convsetstate(c, CClosed);
@@ -882,7 +877,6 @@ convtimer(Conv *c, ulong sec)
 		// keepalive - randomly spaced between KeepAlive and 2*KeepAlive
 		if(c->timeout + KeepAlive > sec && nrand(c->lastrecv + 2*KeepAlive - sec) > 0)
 			break;
-print("sending keep alive: %ld\n", sec - c->lastrecv);
 		// can not use writecontrol
 		b = allocb(4);
 		c->out.controlseq++;
@@ -961,7 +955,7 @@ static void
 convsetstate(Conv *c, int state)
 {
 
-print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
+if(0)print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 
 	switch(state) {
 	default:
@@ -1023,7 +1017,6 @@ static void
 convderef(Conv *c)
 {
 	c->ref--;
-print("convderef: %d: ref == %d\n", c->id, c->ref);
 	if(c->ref > 0)
 		return;
 	assert(c->ref == 0);
@@ -1342,7 +1335,7 @@ conviconnect(Conv *c, int subtype, Block *b)
 	acceptid = nhgetl(b->rp + 4);
 	freeb(b);
 
-print("conviconnect: %s: %d %uld %uld\n", convstatename[c->state], subtype, dialid, acceptid);
+if(0)print("conviconnect: %s: %d %uld %uld\n", convstatename[c->state], subtype, dialid, acceptid);
 
 	if(subtype == ConReset) {
 		convsetstate(c, CClosed);
@@ -1429,7 +1422,7 @@ print("conviconnect: %s: %d %uld %uld\n", convstatename[c->state], subtype, dial
 	}
 Reset:
 	// invalid connection message - reset to sender
-print("invalid conviconnect - sending reset\n");
+if(0)print("invalid conviconnect - sending reset\n");
 	convoconnect(c, ConReset, dialid, acceptid);
 	convsetstate(c, CClosed);
 }
@@ -1471,10 +1464,8 @@ if(0) print("recv %ld size=%ld\n", cseq, BLEN(b));
 		}
 		return;
 	case ControlAck:
-		if(cseq != c->out.controlseq) {
-print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
+		if(cseq != c->out.controlseq)
 			return;
-		}
 		if(BLEN(b) < sizeof(AckPkt))
 			return;
 		ack = (AckPkt*)(b->rp);
@@ -1653,7 +1644,7 @@ readcontrol(Conv *c, int n)
 	for(;;) {
 		if(c->chan == nil || c->state == CClosed) {
 			qunlock(c);
-print("readcontrol: return error - state = %s\n", convstatename[c->state]);
+if(0)print("readcontrol: return error - state = %s\n", convstatename[c->state]);
 			error("conversation closed");
 		}
 
@@ -1662,7 +1653,7 @@ print("readcontrol: return error - state = %s\n", convstatename[c->state]);
 
 		if(c->state == CRemoteClose) {
 			qunlock(c);
-print("readcontrol: return nil - state = %s\n", convstatename[c->state]);
+if(0)print("readcontrol: return nil - state = %s\n", convstatename[c->state]);
 			poperror();
 			return nil;
 		}
@@ -1695,10 +1686,8 @@ static void
 writewait(Conv *c)
 {
 	for(;;) {
-		if(c->state == CInit || c->state == CClosed || c->state == CRemoteClose) {
-print("writecontrol: return error - state = %s\n", convstatename[c->state]);
+		if(c->state == CInit || c->state == CClosed || c->state == CRemoteClose)
 			error("conversation closed");
-		}
 
 		if(c->state == COpen && c->out.controlpkt == nil)
 			break;
@@ -1818,7 +1807,6 @@ convreader(void *a)
 	Conv *c = a;
 	Block *b;
 
-print("convreader\n");
 	qlock(c);
 	assert(c->reader == 1);
 	while(c->dataopen == 0 && c->state != CClosed) {
@@ -1830,7 +1818,6 @@ print("convreader\n");
 		}
 		qlock(c);
 		if(b == nil) {
-print("up->error = %s\n", up->error);
 			if(strcmp(up->error, Eintr) != 0) {
 				convsetstate(c, CClosed);
 				break;
@@ -1840,7 +1827,6 @@ print("up->error = %s\n", up->error);
 			poperror();
 		}
 	}
-print("convreader exiting\n");
 	c->reader = 0;
 	convderef(c);
 	qunlock(c);
