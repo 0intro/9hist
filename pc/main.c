@@ -131,6 +131,7 @@ main(void)
 	MACHP(0) = (Mach*)CPU0MACH;
 	m->pdb = (ulong*)CPU0PDB;
 	machinit();
+	ioinit();
 	active.machs = 1;
 	active.exiting = 0;
 	options();
@@ -434,7 +435,7 @@ confinit(void)
 		 * 4MB on the first Image chunk allocation.
 		 */
 		if(conf.npage*BY2PG < 16*MB)
-			poolsetparam(imagmem, 0, 4*1024*1024, 0, nil);
+			poolconfig(imagmem, 0, 4*1024*1024, 0, nil);
 	}
 	conf.upages = conf.npage - kpages;
 	conf.ialloc = (kpages/2)*BY2PG;
@@ -450,14 +451,14 @@ confinit(void)
 		+ conf.nimage*sizeof(Image)
 		+ conf.nswap
 		+ conf.nswppo*sizeof(Page);
-	poolsetparam(mainmem, kpages, 0, 0, nil);
+	poolconfig(mainmem, kpages, 0, 0, nil);
 	if(!cpuserver){
 		/*
 		 * give terminals lots of image memory, too; the dynamic
 		 * allocation will balance the load properly, hopefully.
 		 * be careful with 32-bit overflow.
 		 */
-		poolsetparam(imagmem, kpages, 0, 0, nil);
+		poolconfig(imagmem, kpages, 0, 0, nil);
 	}
 }
 

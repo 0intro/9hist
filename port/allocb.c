@@ -19,7 +19,7 @@ struct
 } ialloc;
 
 /*
- *  allocate blocks, round the data base up to a multiple of BLOCKALIGN.
+ *  allocate blocks, round the data base upt to a multiple of BLOCKALIGN.
  */
 Block*
 allocb(int size)
@@ -29,7 +29,7 @@ allocb(int size)
 	int n;
 
 	n = sizeof(Block) + size;
-	b = mallocz(n+Hdrspc, 0);
+	b = malloc(n+Hdrspc);
 	if(b == 0)
 		exhausted("Blocks");
 	memset(b, 0, sizeof(Block));
@@ -72,7 +72,7 @@ iallocb(int size)
 	}
 
 	n = sizeof(Block) + size;
-	b = mallocz(n+Hdrspc, 0);
+	b = malloc(n+Hdrspc);
 	if(b == 0){
 		print("iallocb: no memory %lud/%lud\n",
 			ialloc.bytes, conf.ialloc);

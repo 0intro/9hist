@@ -218,3 +218,16 @@ typedef struct SCSIdev {
 	char*	type;
 	Scsiio	(*reset)(int, ISAConf*);
 } SCSIdev;
+
+typedef struct SMBus SMBus;
+struct SMBus {
+	void	*arg;
+	ulong	addr;
+	int	(*quick)(SMBus*, int);
+	int	(*send)(SMBus*, int, int);
+	int	(*recv)(SMBus*, int, int*);
+	int	(*bytewrite)(SMBus*, int);
+	int	(*byteread)(SMBus*, int, int*);
+	int	(*wordwrite)(SMBus*, int);
+	int	(*wordread)(SMBus*, int, int*);
+};

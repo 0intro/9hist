@@ -398,6 +398,9 @@ kbdinit(void)
 		panic("kbdinit");
 	qnoblock(kbdq, 1);
 
+	ioalloc(Data, 1, 0);
+	ioalloc(Cmd, 1, 0);
+
 	intrenable(IrqKBD, i8042intr, 0, BUSUNKNOWN);
 
 	/* wait for a quiescent controller */

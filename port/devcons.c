@@ -919,7 +919,7 @@ genrandom(void*)
 
 	for(;;){
 		for(;;)
-			if(++rb.randomcount > 0)
+			if(++rb.randomcount > 100000)
 				break;
 		if(anyhigher())
 			sched();

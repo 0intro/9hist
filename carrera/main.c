@@ -474,7 +474,7 @@ confinit(void)
 
 	if(top > 16*MB/BY2PG){
 		conf.upages = (conf.npage*60)/100;
-		poolsetparam("Image", 0, 0, 4*1024*1024, nil);
+		imagmem->minarena = 4*1024*1024;
 	}else
 		conf.upages = (conf.npage*40)/100;
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;

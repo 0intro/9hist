@@ -90,6 +90,11 @@ dmainit(int chan, int maxtransfer)
 	DMA *dp;
 	DMAxfer *xp;
 
+	if(ioalloc(0x00, 0x10, 0) < 0
+	|| ioalloc(0x80, 0x10, 0) < 0
+	|| ioalloc(0xd0, 0x10, 0) < 0)
+		panic("dmainit");
+
 	if(maxtransfer > 64*1024)
 		maxtransfer = 64*1024;
 

@@ -76,6 +76,13 @@ static RMap rmapumbrw = {
 	&mapumbrw[nelem(mapumbrw)-1],
 };
 
+static Map mapiospace[256];
+static RMap rmapiospace = {
+	"x86 IO port space",
+	mapiospace,
+	&mapiospace[nelem(mapiospace)-1],
+};
+
 void
 memdebug(void)
 {
@@ -544,4 +551,32 @@ void
 upafree(ulong pa, int size)
 {
 	mapfree(&xrmapupa, pa, size);
+}
+
+
+/*
+ *  since mapalloc uses 0 to mean no allocation, add one to pa
+ *  to shift the whole io range up one in the map.
+ */
+void
+ioinit(void)
+{
+	mapfree(&rmapiospace, 1, (1<<24)+1);
+}
+
+ulong
+ioalloc(ulong pa, int size, int align)
+{
+	ulong a;
+
+	if((a = mapalloc(&rmapiospace, ++pa, size, align)) == 0)
+		return 0;
+
+	return --a;
+}
+
+void
+iofree(ulong pa, int size)
+{
+	mapfree(&rmapiospace, ++pa, size);
 }
