@@ -55,6 +55,7 @@ struct Mdata {
 
 typedef struct Tfile Tfile;
 struct Tfile {
+	Lock;
 	int	r;
 	char	name[NAMELEN];
 	ushort	bno;
@@ -180,6 +181,17 @@ validdata(Tfs *fs, uchar *p)
 		break;
 	}
 	return md;
+}
+
+static Mdata*
+readdata(Tfs *fs, ulong bno, uchar *buf)
+{
+	if(bno >= fs->nblocks)
+		return 0;
+	n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno);
+	if(n != Blen)
+		return 0;
+	return validdata(fs, buf);
 }
 
 static int
@@ -603,6 +615,9 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 	Tfs *fs;
 	Tfile *f;
 	int sofar, i;
+	ulong bno, tbno;
+	Mdata *md;
+	uchar buf[Blen];
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, tinyfstab, Ntinyfstab, tinyfsgen);
@@ -613,6 +628,22 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 		return 0;
 	if(n + offset >= f->length)
 		n = f->length - offset;
+
+	/* walk to first data block */
+	bno = f->dbno;
+	for(sofar = 0; sofar < offset; sofar += Blen){
+		md = readdata(fs, bno, buf);
+		if(md == 0)
+			error(Eio);
+		bno = GETS(md->bno);
+	}
+
+	/* read first block */
+	i = offset%Blen;
+
+	/* read data */
+	for(sofar = 0; sofar+Blen < offset; sofar += Blen){
+	
 
 	return n;
 }
