@@ -208,20 +208,20 @@ struct Tctl
 	uchar	type;			/* Listening or active connection */
 	uchar	code;			/* Icmp code */		
 	struct {
-		ulong	una;		/* Unacked data pointer */
-		ulong	nxt;		/* Next sequence expected */
-		ulong	ptr;		/* Data pointer */
+		int	una;		/* Unacked data pointer */
+		int	nxt;		/* Next sequence expected */
+		int	ptr;		/* Data pointer */
 		ushort	wnd;		/* Tcp send window */
-		ulong	up;		/* Urgent data pointer */
-		ulong	wl1;
-		ulong	wl2;
+		int	up;		/* Urgent data pointer */
+		int	wl1;
+		int	wl2;
 	} snd;
 	struct {
-		ulong	nxt;		/* Receive pointer to next byte slot */
+		int	nxt;		/* Receive pointer to next byte slot */
 		ushort	wnd;		/* Receive window incoming */
-		ulong	up;		/* Urgent pointer */
+		int	up;		/* Urgent pointer */
 	} rcv;
-	ulong	iss;			/* Initial sequence number */
+	int	iss;			/* Initial sequence number */
 	ushort	cwind;			/* Congestion window */
 	ushort	ssthresh;		/* Slow start threshold */
 	int	resent;			/* Bytes just resent */
@@ -230,7 +230,7 @@ struct Tctl
 	int	rerecv;			/* Overlap of data rerecevived */
 	ushort	window;			/* Recevive window */
 	int	max_snd;		/* Max send */
-	ulong	last_ack;		/* Last acknowledege received */
+	int	last_ack;		/* Last acknowledege received */
 	char	backoff;		/* Exponential backoff counter */
 	char	flags;			/* State flags */
 	char	tos;			/* Type of service */
@@ -248,7 +248,7 @@ struct Tctl
 	Timer	timer;			/* Activity timer */
 	Timer	acktimer;		/* Acknoledge timer */
 	Timer	rtt_timer;		/* Round trip timer */
-	ulong	rttseq;			/* Round trip sequence */
+	int	rttseq;			/* Round trip sequence */
 	int	srtt;			/* Shortened round trip */
 	int	mdev;			/* Mean deviation of round trip */
 };
@@ -264,8 +264,8 @@ struct	Tcp
 {
 	Port	source;
 	Port	dest;
-	ulong	seq;
-	ulong	ack;
+	int	seq;
+	int	ack;
 	char	flags;
 	ushort	wnd;
 	ushort	up;
@@ -311,7 +311,7 @@ struct Ipconv
 enum
 {
 	MAX_TIME 	= (1<<20),	/* Forever */
-	TCP_ACK		= 50,		/* Timed ack sequence in ms */
+	TCP_ACK		= 200,		/* Timed ack sequence every 200ms */
 
 	URG		= 0x20,		/* Data marked urgent */
 	ACK		= 0x10,		/* Aknowledge is valid */
@@ -326,7 +326,7 @@ enum
 
 	MSS_LENGTH	= 4,		/* Mean segment size */
 	MSL2		= 10,
-	MSPTICK		= 50,		/* Milliseconds per timer tick */
+	MSPTICK		= 100,		/* Milliseconds per timer tick */
 	DEF_MSS		= 1024,		/* Default mean segment */
 	DEF_RTT		= 1000,		/* Default round trip */
 
@@ -477,13 +477,13 @@ ushort	ptcl_csum(Block*bp, int, int);
 int	pullb(Block **, int);
 void	reset(Ipaddr, Ipaddr, char, ushort, Tcp*);
 void	tcpsndsyn(Tcpctl*);
-int	seq_ge(ulong, ulong);
-int	seq_gt(ulong, ulong);
-int	seq_gt(ulong, ulong);
-int	seq_le(ulong, ulong);
-int	seq_lt(ulong, ulong);
-int	seq_within(ulong, ulong, ulong);
-int	seq_within(ulong, ulong, ulong);
+int	seq_ge(int, int);
+int	seq_gt(int, int);
+int	seq_gt(int, int);
+int	seq_le(int, int);
+int	seq_lt(int, int);
+int	seq_within(int, int, int);
+int	seq_within(int, int, int);
 void	tcpsetstate(Ipconv *, char);
 void	tcpgo(Timer *);
 void	tcphalt(Timer *);

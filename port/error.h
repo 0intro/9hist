@@ -55,3 +55,4 @@ extern char Esfnotcached[];	/* subfont not cached */
 extern char Egreg[];		/* it's a thermal problem */
 extern char Esoverlap[];	/* segments overlap */
 extern char Emouseset[];	/* mouse type already set */
+extern char Erecover[];		/* failed to recover fd */

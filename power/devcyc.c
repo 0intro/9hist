@@ -7,7 +7,7 @@
 #include	"devtab.h"
 
 #include	"io.h"
-#include	"../../fs/cyc/comm.h"
+#include	"/sys/src/fs/cyc/comm.h"
 
 
 typedef struct Commcyc	Commcyc;
@@ -171,9 +171,9 @@ cycopen(Chan *c, int omode)
 		 */
 		cp->wi = 0;
 		cp->ri = 0;
-		mp = &u->kcyc;
+		mp = up->kcyc;
 		mp->cmd = Ureset;
-		cmp = cycsend(cp, &((User*)(u->p->upage->pa|KZERO))->kcyc);
+		cmp = cycsend(cp, up->kcyc);
 		cycwait(cmp);
 		delay(100);
 		print("reset\n");
@@ -199,8 +199,8 @@ cycclose(Chan *c)
 
 	cp = &cyclone[c->dev];
 	if(c->qid.path != CHDIR){
-		u->kcyc.cmd = Ureboot;
-		cmp = cycsend(cp, &((User*)(u->p->upage->pa|KZERO))->kcyc);
+		up->kcyc->cmd = Ureboot;
+		cmp = cycsend(cp, up->kcyc);
 		cycwait(cmp);
 		unlock(&cp->busy);
 	}
@@ -221,10 +221,9 @@ cycmsgintr(Cycmsg *hm)
 long	 
 cycread(Chan *c, void *buf, long n, ulong offset)
 {
-	User *pu;
+	ulong l, m;
 	Commcyc *cp;
 	Cycmsg *mp, **cmp;
-	ulong l, m;
 
 	USED(offset);
 	cp = &cyclone[c->dev];
@@ -237,13 +236,12 @@ cycread(Chan *c, void *buf, long n, ulong offset)
 			print("cyclone bufsize %d %d\n", n, sizeof cp->buf);
 			error(Egreg);
 		}
-		pu = (User*)(u->p->upage->pa|KZERO);
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
 			/*
 			 *  use supplied buffer, no need to lock for reply
 			 */
 
-			mp = &pu->kcyc;
+			mp = up->kcyc;
 			mp->cmd = Uread;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
@@ -267,7 +265,7 @@ cycread(Chan *c, void *buf, long n, ulong offset)
 			/*
 			 * use cyclone buffer. lock the buffer until the reply
 			 */
-			mp = &pu->ucyc;
+			mp = up->ucyc;
 			qlock(&cp->buflock);
 			mp->cmd = Uread;
 			mp->param[0] = MP2VME(cp->buf);
@@ -281,6 +279,7 @@ cycread(Chan *c, void *buf, long n, ulong offset)
 			do
 				m = mp->param[3];
 			while(m==0 && --l>0);
+
 			if(m==0 || m>n){
 				print("devcyc: count %ld %ld\n", m, n);
 				qunlock(&cp->buflock);
@@ -299,7 +298,6 @@ cycread(Chan *c, void *buf, long n, ulong offset)
 long	 
 cycwrite(Chan *c, void *buf, long n, ulong offset)
 {
-	User *pu;
 	Commcyc *cp;
 	Cycmsg *mp, **cmp;
 
@@ -314,12 +312,11 @@ cycwrite(Chan *c, void *buf, long n, ulong offset)
 			print("cyclone write bufsize\n");
 			error(Egreg);
 		}
-		pu = (User*)(u->p->upage->pa|KZERO);
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
 			/*
 			 * use supplied buffer, no need to lock for reply
 			 */
-			mp = &pu->kcyc;
+			mp = up->kcyc;
 
 			mp->cmd = Uwrite;
 			mp->param[0] = MP2VME(buf);
@@ -332,7 +329,7 @@ cycwrite(Chan *c, void *buf, long n, ulong offset)
 			/*
 			 * use cyclone buffer.  lock the buffer until the reply
 			 */
-			mp = &pu->ucyc;
+			mp = up->ucyc;
 			qlock(&cp->buflock);
 			memmove(cp->buf, buf, n);
 

@@ -15,8 +15,6 @@ lock(Lock *l)
 
 	for(i = 0; i < 10000000; i++){
     		if (tas(&l->key) == 0){
-			if(u)
-				u->p->hasspin = 1;
 			l->pc = pc;
 			return;
 		}
@@ -32,8 +30,6 @@ canlock(Lock *l)
 	if(tas(&l->key))
 		return 0;
 	l->pc = getcallerpc(((uchar*)&l) - sizeof(l));
-	if(u && u->p)
-		u->p->hasspin = 1;
 	return 1;
 }
 
@@ -42,6 +38,4 @@ unlock(Lock *l)
 {
 	l->pc = 0;
 	l->key = 0;
-	if(u && u->p)
-		u->p->hasspin = 0;
 }

@@ -13,7 +13,7 @@
 
 #define	 DBG	if(0)print
 int 		ilcksum = 1;
-static 	int 	initseq = 25001;
+static 	int 	initseq = 26000;
 static	Rendez	ilackr;
 
 char	*ilstate[] = 
@@ -596,9 +596,8 @@ ilhangup(Ipconv *s, char *msg)
 	qunlock(s);
 	if(callout)
 		wakeup(&ic->syncer);
+
 	s->psrc = 0;
-	s->pdst = 0;
-	s->dst = 0;
 }
 
 void
@@ -736,16 +735,16 @@ void
 ilackproc(void *a)
 {
 	Ipifc *ifc;
-	Ipconv **base, **p, **last, *s;
+	Ipconv **base, **p, **end, *s;
 	Ilcb *ic;
 
 	ifc = (Ipifc*)a;
 	base = ifc->conv;
-	last = &base[Nipconv];
+	end = &base[Nipconv];
 
 	for(;;) {
 		tsleep(&ilackr, return0, 0, Iltickms);
-		for(p = base; p < last && *p; p++) {
+		for(p = base; p < end && *p; p++) {
 			s = *p;
 			ic = &s->ilctl;
 			ic->timeout += Iltickms;

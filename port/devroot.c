@@ -6,13 +6,15 @@
 #include	"../port/error.h"
 #include	"devtab.h"
 
-enum{
+enum
+{
 	Qdir,
 	Qbin,
 	Qdev,
 	Qenv,
 	Qproc,
 	Qnet,
+	Qrecover,
 
 	Qboot,
 	Qcfs,
@@ -33,6 +35,7 @@ Dirtab rootdir[]={
 	"env",		{Qenv|CHDIR},	0,			0777,
 	"proc",		{Qproc|CHDIR},	0,			0777,
 	"net",		{Qnet|CHDIR},	0,			0777,
+	"recover",	{Qrecover},	0,			0777,
 };
 #define	NROOT	(sizeof rootdir/sizeof(Dirtab))
 Dirtab rootpdir[]={
@@ -41,6 +44,22 @@ Dirtab rootpdir[]={
 };
 Dirtab *rootmap[sizeof rootpdir/sizeof(Dirtab)];
 int	nroot;
+
+typedef struct Recover Recover;
+struct Recover
+{
+	int	len;
+	char	*req;
+	Recover	*next;
+};
+
+struct 
+{
+	Lock;
+	QLock;
+	Rendez;
+	Recover	*q;
+}reclist;
 
 int
 rootgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
@@ -110,6 +129,15 @@ rootstat(Chan *c, char *dp)
 Chan*
 rootopen(Chan *c, int omode)
 {
+	switch(c->qid.path & ~CHDIR) {
+	default:
+		break;
+	case Qrecover:
+		if(strcmp(up->user, eve) != 0)
+			error(Eperm);
+		break;
+	}
+
 	return devopen(c, omode, rootdir, nroot, rootgen);
 }
 
@@ -129,9 +157,17 @@ rootclose(Chan *c)
 	USED(c);
 }
 
+int
+rdrdy(void *a)
+{
+	USED(a);
+	return reclist.q != 0;
+}
+
 long	 
 rootread(Chan *c, void *buf, long n, ulong offset)
 {
+	Recover *r;
 
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:
@@ -161,6 +197,30 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 		memmove(buf, ((char*)fscode)+offset, n);
 		return n;
 
+	case Qrecover:
+		qlock(&reclist);
+		if(waserror()) {
+			qunlock(&reclist);
+			nexterror();
+		}
+
+		sleep(&reclist, rdrdy, 0);
+
+		lock(&reclist);
+		r = reclist.q;
+		reclist.q = r->next;
+		unlock(&reclist);
+
+		qunlock(&reclist);
+
+		poperror();
+		if(n < r->len)
+			n = r->len;
+		memmove(buf, r->req, n);
+		free(r->req);
+		free(r);
+		return n;
+
 	case Qdev:
 		return 0;
 	}
@@ -170,9 +230,22 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 long	 
 rootwrite(Chan *c, void *buf, long n, ulong offset)
 {
-	USED(c, buf, n, offset);
-	error(Egreg);
-	return 0;	/* not reached */
+	char tmp[256];
+
+	USED(offset);
+	switch(c->qid.path & ~CHDIR){
+	default:
+		error(Egreg);
+	case Qrecover:
+		if(n > sizeof(tmp)-1)
+			error(Etoosmall);
+		/* Nul terminate */
+		memmove(tmp, buf, n);
+		tmp[n] = '\0';
+		mntrepl(tmp);
+		return n;
+	}
+	return 0;
 }
 
 void	 
@@ -187,4 +260,22 @@ rootwstat(Chan *c, char *dp)
 {
 	USED(c, dp);
 	error(Eperm);
+}
+
+void
+rootrecover(Path *p, char *mntname)
+{
+	int i;
+	Recover *r;
+	char buf[256];
+
+	r = malloc(sizeof(Recover));
+	i = ptpath(p, buf, sizeof(buf));
+	r->req = smalloc(i+strlen(mntname)+2);
+	sprint(r->req, "%s %s", buf, mntname);
+	lock(&reclist);
+	r->next = reclist.q;
+	reclist.q = r;
+	unlock(&reclist);
+	wakeup(&reclist);
 }

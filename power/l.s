@@ -99,7 +99,7 @@ TEXT	firmware(SB), $0
 
 TEXT	splhi(SB), $0
 
-	MOVW	R31, 8(R(MACH))	/* save PC in m->splpc */
+	MOVW	R31, 0xC(R(MACH))	/* save PC in m->splpc */
 	MOVW	M(STATUS), R1
 	AND	$~IEC, R1, R2
 	MOVW	R2, M(STATUS)
@@ -108,7 +108,7 @@ TEXT	splhi(SB), $0
 
 TEXT	splx(SB), $0
 
-	MOVW	R31, 8(R(MACH))	/* save PC in m->splpc */
+	MOVW	R31, 0xC(R(MACH))	/* save PC in m->splpc */
 	MOVW	M(STATUS), R2
 	AND	$IEC, R1
 	AND	$~IEC, R2
@@ -128,12 +128,11 @@ TEXT	spllo(SB), $0
 TEXT	muxlock(SB),$0
 
 	MOVW	R1, R2		/* sbsem */
-	MOVW	4(FP), R3	/* &lk->val */
+	MOVW	4(FP), R3	/* lk->val */
 
 	MOVW	M(STATUS), R5	/* splhi */
 	AND	$~IEC, R5, R4
 	MOVW	R4, M(STATUS)
-	NOOP
 
 	MOVW	0(R2),R4	/* grab sbsem */
 	AND	$1, R4
@@ -183,18 +182,22 @@ TEXT	getcallerpc(SB), $0
 
 TEXT	gotopc(SB), $8
 
-	MOVW	R1, 0(FP)
-	MOVW	$(64*1024), R1
-	MOVW	R1, 8(SP)
-	MOVW	R0, R1
+	MOVW	R1, 0(FP)		/* save arguments for later */
+	MOVW	$(64*1024), R7
+	MOVW	R7, 8(SP)
 	JAL	icflush(SB)
-	MOVW	0(FP), R1
-
+	MOVW	0(FP), R7
 	MOVW	_argc(SB), R4
 	MOVW	_argv(SB), R5
 	MOVW	_env(SB), R6
 	MOVW	R0, 4(SP)
-	JMP	(R1)
+	JMP	(R7)
+
+TEXT	putcontext(SB), $4
+
+	SLL	$6, R1
+	MOVW	R1, M(TLBVIRT)
+	RET
 
 TEXT	puttlb(SB), $4
 
@@ -229,19 +232,9 @@ TEXT	puttlbx(SB), $0
 	RET
 
 TEXT	tlbp(SB), $0
-	MOVW	M(TLBVIRT), R2
-	AND	$(~(BY2PG-1)), R1, R4	/* get the VPN */
-	AND	$((NTLBPID-1)<<6), R2	/* get the pid */
-	OR	R4, R2
-	MOVW	R2, M(TLBVIRT)
-	NOOP
 	TLBP
 	NOOP
-	MOVW	M(INDEX), R2
-	MOVW	R0, R1
-	BLTZ	R2, bad
-	MOVW	$1, R1
-bad:
+	MOVW	M(INDEX), R1
 	RET
 	
 TEXT	tlbvirt(SB), $0
@@ -252,7 +245,6 @@ TEXT	tlbvirt(SB), $0
 	
 
 TEXT	gettlb(SB), $0
-
 	MOVW	4(FP), R4
 	SLL	$8, R1
 	MOVW	R1, M(INDEX)
@@ -267,7 +259,6 @@ TEXT	gettlb(SB), $0
 	RET
 
 TEXT	gettlbvirt(SB), $0
-
 	SLL	$8, R1
 	MOVW	R1, M(INDEX)
 	NOOP
@@ -277,19 +268,22 @@ TEXT	gettlbvirt(SB), $0
 	NOOP
 	RET
 
-TEXT	vector80(SB), $-4
+TEXT getcause(SB), $0
+	MOVW	M(CAUSE), R1
+	RET
 
+TEXT	vector80(SB), $-4
 	MOVW	$exception(SB), R26
 	JMP	(R26)
 
 TEXT	vector0(SB), $-4
-
-	MOVW	$((MACHADDR+368) & 0xffff0000), R26	/* get m->tlbfault BUG */	
+/* 	get m->tlbfault BUG
+	MOVW	$((MACHADDR+368) & 0xffff0000), R26
 	OR	$((MACHADDR+368) & 0xffff), R26
 	MOVW	(R26), R27
 	ADD	$1, R27
 	MOVW	R27, (R26)
-
+*/
 	MOVW	$utlbmiss(SB), R26
 	MOVW	M(TLBVIRT), R27
 	JMP	(R26)
@@ -302,12 +296,15 @@ TEXT	utlbmiss(SB), $-4
 	XOR	R26, R27
 	AND	$(STLBSIZE-1), R27
 	SLL	$8, R27
-	/* R27 = (((tlbvirt<<1)^(tlbvirt>>12)) & (STLBSIZE-1)) << 8 (8 to clear zero in TLBPHYS) */
-	MOVW	R27, M(TLBPHYS)			/* scratch register, store */
+	/*
+	 * R27 = (((tlbvirt<<1)^(tlbvirt>>12)) & (STLBSIZE-1)) << 8 
+	 * (8 to clear zero in TLBPHYS)
+	 */
+	MOVW	R27, M(TLBPHYS)
 
-	MOVW	$((MACHADDR+4) & 0xffff0000), R26	/* get &mach[0].stb BUG */	
-	OR	$((MACHADDR+4) & 0xffff), R26
-	MOVW	$MPID, R27				/* add BY2PG*machno */
+	MOVW	$((MACHADDR+4)&0xffff0000), R26	/* get &mach[0].stb BUG */	
+	OR	$((MACHADDR+4)&0xffff), R26
+	MOVW	$MPID, R27			/* add BY2PG*machno */
 	MOVB	3(R27), R27
 	AND	$7, R27
 	SLL	$PGSHIFT, R27
@@ -334,20 +331,23 @@ stlbm:
 
 
 TEXT	exception(SB), $-4
-
 	MOVW	M(STATUS), R26
 	AND	$KUP, R26
 	BEQ	R26, waskernel
 
 wasuser:
-	MOVW	SP, R26
-		/*
-		 * set kernel sp: ureg - ureg* - pc
-		 * done in 2 steps because R30 is not set
-		 * and the loader will make a literal
-		 */
-	MOVW	$((UREGADDR-2*BY2WD) & 0xffff0000), SP
-	OR	$((UREGADDR-2*BY2WD) & 0xffff), SP
+	MOVW	$(MACHADDR&0xffff0000), R27	
+	OR	$(MACHADDR&0xffff), R27
+	MOVW	$MPID, R26
+	MOVB	3(R26), R26
+	AND	$7, R26
+	SLL	$PGSHIFT, R26
+	ADDU	R26,R27			/* R27->current mach */
+	MOVW	8(R27), R26		/* R27 = mach->proc */
+	MOVW	8(R26), R27		/* mach->proc->kstack */
+	MOVW	SP, R26			/* save user sp */
+	ADDU	$(KSTACK-UREGSIZE-2*BY2WD), R27, SP
+	
 	MOVW	R26, 0x10(SP)			/* user SP */
 	MOVW	R31, 0x28(SP)
 	MOVW	R30, 0x2C(SP)
@@ -360,19 +360,19 @@ wasuser:
 	JAL	saveregs(SB)
 
 	MOVW	$setR30(SB), R30
-	SUBU	$(UREGADDR-2*BY2WD-USERADDR), SP, R(USER)
 	MOVW	$MPID, R1
 	MOVB	3(R1), R1
 	MOVW	$MACHADDR, R(MACH)		/* locn of &mach[0] */
 	AND	$7, R1
 	SLL	$PGSHIFT, R1
 	ADDU	R1, R(MACH)			/* add offset for mach # */
-	MOVW	4(SP), R1			/* first arg for syscall, trap */
-
+	MOVW	8(R(MACH)), R(USER)		/* set up to mach->p */
+	MOVW	4(SP), R1			/* first arg for syscall/trap */
 	BNE	R26, notsys
 
 	JAL	syscall(SB)
 
+sysrestore:
 	MOVW	0x28(SP), R31
 	MOVW	0x08(SP), R26
 	MOVW	0x2C(SP), R30
@@ -395,7 +395,7 @@ restore:
 	RFE	(R26)
 
 waskernel:
-	MOVW	$1, R26			/* not sys call */
+	MOVW	$1, R26			/* not syscall */
 	MOVW	SP, -0x90(SP)		/* drop this if possible */
 	SUB	$0xA0, SP
 	MOVW	R31, 0x28(SP)
@@ -407,6 +407,10 @@ waskernel:
 	ADD	$0xA0, SP
 	RFE	(R26)
 
+TEXT	forkret(SB), $0
+	MOVW	R0, R1			/* Fake out system call return */
+	JMP	sysrestore
+
 TEXT	saveregs(SB), $-4
 	MOVW	R1, 0x9C(SP)
 	MOVW	R2, 0x98(SP)
@@ -417,7 +421,7 @@ TEXT	saveregs(SB), $-4
 	MOVW	R1, 0x08(SP)
 	MOVW	R2, 0x0C(SP)
 
-	BEQ	R26, return		/* sys call, don't save */
+	BEQ	R26, return		/* syscall, don't save */
 
 	MOVW	M(CAUSE), R1
 	MOVW	M(BADVADDR), R2
@@ -506,7 +510,7 @@ TEXT	clrfpintr(SB), $0
 	OR	$CU1, R3
 	MOVW	R3, M(STATUS)
 	WAIT
-	MOVW	FCR31, R1		/* Read it to stall the fpu */
+	MOVW	FCR31, R1	/* Read it to stall the fpu */
 	WAIT
 	MOVW	R0, FCR31
 	WAIT
@@ -516,7 +520,7 @@ TEXT	clrfpintr(SB), $0
 
 TEXT	savefpregs(SB), $0
 	MOVW	M(STATUS), R3
-	MOVW	FCR31, R2		/* Read stalls the fpu until inst. complete. */
+	MOVW	FCR31, R2	/* Read stalls the fpu until inst. complete. */
 	WAIT
 
 	MOVD	F0, 0x00(R1)

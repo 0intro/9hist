@@ -81,13 +81,12 @@ checkalarms(void)
 ulong
 procalarm(ulong time)
 {
-	Proc **l, *f, *p;
+	Proc **l, *f;
 	ulong when, old;
 
-	p = u->p;
-	old = TK2MS(p->alarm - MACHP(0)->ticks);
+	old = TK2MS(up->alarm - MACHP(0)->ticks);
 	if(time == 0) {
-		p->alarm = 0;
+		up->alarm = 0;
 		return old;
 	}
 	when = MS2TK(time)+MACHP(0)->ticks;
@@ -95,30 +94,30 @@ procalarm(ulong time)
 	qlock(&alarms);
 	l = &alarms.head;
 	for(f = *l; f; f = f->palarm) {
-		if(p == f){
+		if(up == f){
 			*l = f->palarm;
 			break;
 		}
 		l = &f->palarm;
 	}
 
-	p->palarm = 0;
+	up->palarm = 0;
 	if(alarms.head) {
 		l = &alarms.head;
 		for(f = *l; f; f = f->palarm) {
 			if(f->alarm > when) {
-				p->palarm = f;
-				*l = p;
+				up->palarm = f;
+				*l = up;
 				goto done;
 			}
 			l = &f->palarm;
 		}
-		*l = p;
+		*l = up;
 	}
 	else
-		alarms.head = p;
+		alarms.head = up;
 done:
-	p->alarm = when;
+	up->alarm = when;
 	qunlock(&alarms);
 
 	return old;			

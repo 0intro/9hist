@@ -12,62 +12,58 @@ int	shargs(char*, int, char**);
 long
 sysr1(ulong *arg)
 {
-	xsummary();
-	print("[%s %s %d] r1 = %d\n", u->p->user, u->p->text, u->p->pid, arg[0]);
+	Chan *c;
+
+	c = fdtochan(arg[0], -1, 0, 0);
+	ptpath(c->path, (char*)arg[1], arg[2]);
 	return 0;
 }
 
 long
 sysrfork(ulong *arg)
 {
-	KMap *k;
+	Proc *p;
+	int n, i;
 	Pgrp *opg;
 	Egrp *oeg;
 	Fgrp *ofg;
-	int n, i;
-	Proc *p, *parent;
-	ulong upa, pid, flag;
-	/*
-	 * used to compute last valid system stack address for copy
-	 */
-	int lastvar;	
+	ulong pid, flag;
 
 	flag = arg[0];
-	p = u->p;
 	if((flag&RFPROC) == 0) {
 		if(flag & (RFNAMEG|RFCNAMEG)) {
 			if((flag & (RFNAMEG|RFCNAMEG)) == (RFNAMEG|RFCNAMEG))
 				error(Ebadarg);
-			opg = p->pgrp;
-			p->pgrp = newpgrp();
+			opg = up->pgrp;
+			up->pgrp = newpgrp();
 			if(flag & RFNAMEG)
-				pgrpcpy(p->pgrp, opg);
+				pgrpcpy(up->pgrp, opg);
 			closepgrp(opg);
 		}
 		if(flag & (RFENVG|RFCENVG)) {
 			if((flag & (RFENVG|RFCENVG)) == (RFENVG|RFCENVG))
 				error(Ebadarg);
-			oeg = p->egrp;
-			p->egrp = smalloc(sizeof(Egrp));
-			p->egrp->ref = 1;
+			oeg = up->egrp;
+			up->egrp = smalloc(sizeof(Egrp));
+			up->egrp->ref = 1;
 			if(flag & RFENVG)
-				envcpy(p->egrp, oeg);
+				envcpy(up->egrp, oeg);
 			closeegrp(oeg);
 		}
 		if(flag & RFFDG) {
-			ofg = p->fgrp;
-			p->fgrp = dupfgrp(ofg);
+			ofg = up->fgrp;
+			up->fgrp = dupfgrp(ofg);
 			closefgrp(ofg);
 		}
 		else
 		if(flag & RFCFDG) {
-			ofg = p->fgrp;
-			p->fgrp = smalloc(sizeof(Fgrp));
-			p->fgrp->ref = 1;
+			ofg = up->fgrp;
+			up->fgrp = smalloc(sizeof(Fgrp));
+			up->fgrp->ref = 1;
 			closefgrp(ofg);
 		}
 		if(flag & RFNOTEG)
-			p->noteid = incref(&noteidalloc);
+			up->noteid = incref(&noteidalloc);
 		if(flag & (RFMEM|RFNOWAIT))
 			error(Ebadarg);
 		return 0;
@@ -81,41 +77,40 @@ sysrfork(ulong *arg)
 		error(Ebadarg);
 
 	p = newproc();
-	parent = u->p;
 
-	/* Page va of upage used as check in mapstack */
-	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
-	k = kmap(p->upage);
-	upa = VA(k);
+	p->fpsave = up->fpsave;
+	p->scallnr = up->scallnr;
+	p->s = up->s;
+	p->nerrlab = 0;
+	p->slash = up->slash;
+	p->dot = up->dot;
+	incref(p->dot);	
 
-	/* Save time: only copy u-> data and useful stack */
-	memmove((void*)upa, u, sizeof(User));
-	n = USERADDR+BY2PG - (ulong)&lastvar;
-	n = (n+32) & ~(BY2WD-1);
-	memmove((void*)(upa+BY2PG-n), (void*)(USERADDR+BY2PG-n), n);
-	((User *)upa)->p = p;
-	kunmap(k);
+	memmove(p->note, up->note, sizeof(p->note));
+	p->nnote = up->nnote;
+	p->notified = 0;
+	p->lastnote = up->lastnote;
+	p->notify = up->notify;
+	p->ureg = 0;
+	p->dbgreg = 0;
 
 	/* Make a new set of memory segments */
 	n = flag & RFMEM;
 	for(i = 0; i < NSEG; i++)
-		if(parent->seg[i])
-			p->seg[i] = dupseg(parent->seg, i, n);
-	
-	/* Refs */
-	incref(u->dot);	
+		if(up->seg[i])
+			p->seg[i] = dupseg(up->seg, i, n);
 
 	/* File descriptors */
 	if(flag & (RFFDG|RFCFDG)) {
 		if(flag & RFFDG)
-			p->fgrp = dupfgrp(parent->fgrp);
+			p->fgrp = dupfgrp(up->fgrp);
 		else {
 			p->fgrp = smalloc(sizeof(Fgrp));
 			p->fgrp->ref = 1;
 		}
 	}
 	else {
-		p->fgrp = parent->fgrp;
+		p->fgrp = up->fgrp;
 		incref(p->fgrp);
 	}
 
@@ -123,10 +118,10 @@ sysrfork(ulong *arg)
 	if(flag & (RFNAMEG|RFCNAMEG)) {	
 		p->pgrp = newpgrp();
 		if(flag & RFNAMEG)
-			pgrpcpy(p->pgrp, parent->pgrp);
+			pgrpcpy(p->pgrp, up->pgrp);
 	}
 	else {
-		p->pgrp = parent->pgrp;
+		p->pgrp = up->pgrp;
 		incref(p->pgrp);
 	}
 
@@ -135,47 +130,39 @@ sysrfork(ulong *arg)
 		p->egrp = smalloc(sizeof(Egrp));
 		p->egrp->ref = 1;
 		if(flag & RFENVG)
-			envcpy(p->egrp, parent->egrp);
+			envcpy(p->egrp, up->egrp);
 	}
 	else {
-		p->egrp = parent->egrp;
+		p->egrp = up->egrp;
 		incref(p->egrp);
 	}
 
-	p->hang = parent->hang;
-	p->procmode = parent->procmode;
+	p->hang = up->hang;
+	p->procmode = up->procmode;
 
-	if(setlabel(&p->sched)){
-		/*
-		 *  use u->p instead of p, because we don't trust the compiler, after a
-		 *  gotolabel, to find the correct contents of a local variable.
-		 */
-		p = u->p;
-		p->state = Running;
-		p->mach = m;
-		m->proc = p;
-		spllo();
-		return 0;
-	}
-
-	p->parent = parent;
-	p->parentpid = parent->pid;
+	/* Craft a return frame which will cause the child to pop out of
+	 * the scheduler in user mode with the return register zero
+	 */
+	forkchild(p, up->dbgreg);
+	
+	p->parent = up;
+	p->parentpid = up->pid;
 	if(flag&RFNOWAIT)
 		p->parentpid = 1;
 	else {
-		lock(&parent->exl);
-		parent->nchild++;
-		unlock(&parent->exl);
+		lock(&up->exl);
+		up->nchild++;
+		unlock(&up->exl);
 	}
 	if((flag&RFNOTEG) == 0)
-		p->noteid = parent->noteid;
+		p->noteid = up->noteid;
 
-	p->fpstate = parent->fpstate;
+	p->fpstate = up->fpstate;
 	pid = p->pid;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
-	memmove(p->text, parent->text, NAMELEN);
-	memmove(p->user, parent->user, NAMELEN);
+	memmove(p->text, up->text, NAMELEN);
+	memmove(p->user, up->user, NAMELEN);
 	/*
 	 *  since the bss/data segments are now shareable,
 	 *  any mmu info about this process is now stale
@@ -198,7 +185,6 @@ l2be(long l)
 long
 sysexec(ulong *arg)
 {
-	Proc *p;
 	Segment *s, *ts;
 	ulong t, d, b;
 	int i;
@@ -214,7 +200,6 @@ sysexec(ulong *arg)
 	Image *img;
 	ulong magic, text, entry, data, bss;
 
-	p = u->p;
 	validaddr(arg[0], 1, 0);
 	file = (char*)arg[0];
 	indir = 0;
@@ -225,7 +210,7 @@ sysexec(ulong *arg)
 		nexterror();
 	}
 	if(!indir)
-		strcpy(elem, u->elem);
+		strcpy(elem, up->elem);
 
 	n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec), 0);
 	if(n < 2)
@@ -315,7 +300,7 @@ sysexec(ulong *arg)
 	if(spage > TSTKSIZ)
 		error(Enovmem);
 
-	p->seg[ESEG] = newseg(SG_STACK, TSTKTOP-USTKSIZE, USTKSIZE/BY2PG);
+	up->seg[ESEG] = newseg(SG_STACK, TSTKTOP-USTKSIZE, USTKSIZE/BY2PG);
 
 	/*
 	 * Args: pass 2: assemble; the pages will be faulted in
@@ -338,7 +323,7 @@ sysexec(ulong *arg)
 		charp += n;
 	}
 
-	memmove(p->text, elem, NAMELEN);
+	memmove(up->text, elem, NAMELEN);
 
 	/*
 	 * Committed.
@@ -346,14 +331,14 @@ sysexec(ulong *arg)
 	 * Special segments are maintained accross exec
 	 */
 	for(i = SSEG; i <= BSEG; i++) {
-		putseg(p->seg[i]);
-		p->seg[i] = 0;	    /* prevent a second free if we have an error */
+		putseg(up->seg[i]);
+		up->seg[i] = 0;	    /* prevent a second free if we have an error */
 	}
 
 	/*
 	 * Close on exec
 	 */
-	f = u->p->fgrp;
+	f = up->fgrp;
 	for(i=0; i<=f->maxfd; i++)
 		fdclose(i, CCEXEC);
 
@@ -361,7 +346,7 @@ sysexec(ulong *arg)
 	/* attachimage returns a locked cache image */
 	img = attachimage(SG_TEXT|SG_RONLY, tc, UTZERO, (t-UTZERO)>>PGSHIFT);
 	ts = img->s;
-	p->seg[TSEG] = ts;
+	up->seg[TSEG] = ts;
 	ts->flushme = 1;
 	ts->fstart = 0;
 	ts->flen = sizeof(Exec)+text;
@@ -369,7 +354,7 @@ sysexec(ulong *arg)
 
 	/* Data. Shared. */
 	s = newseg(SG_DATA, t, (d-t)>>PGSHIFT);
-	p->seg[DSEG] = s;
+	up->seg[DSEG] = s;
 
 	/* Attached by hand */
 	incref(img);
@@ -378,14 +363,14 @@ sysexec(ulong *arg)
 	s->flen = data;
 
 	/* BSS. Zero fill on demand */
-	p->seg[BSEG] = newseg(SG_BSS, d, (b-d)>>PGSHIFT);
+	up->seg[BSEG] = newseg(SG_BSS, d, (b-d)>>PGSHIFT);
 
 	/*
 	 * Move the stack
 	 */
-	s = p->seg[ESEG];
-	p->seg[ESEG] = 0;
-	p->seg[SSEG] = s;
+	s = up->seg[ESEG];
+	up->seg[ESEG] = 0;
+	up->seg[SSEG] = s;
 	s->base = USTKTOP-USTKSIZE;
 	s->top = USTKTOP;
 	relocateseg(s, TSTKTOP-USTKTOP);
@@ -397,14 +382,14 @@ sysexec(ulong *arg)
 	 *  space and needs to be flushed
 	 */
 	flushmmu();
-	qlock(&p->debug);
-	u->nnote = 0;
-	u->notify = 0;
-	u->notified = 0;
-	procsetup(p);
-	qunlock(&p->debug);
-	if(p->hang)
-		p->procctl = Proc_stopme;
+	qlock(&up->debug);
+	up->nnote = 0;
+	up->notify = 0;
+	up->notified = 0;
+	procsetup(up);
+	qunlock(&up->debug);
+	if(up->hang)
+		up->procctl = Proc_stopme;
 
 	return execregs(entry, ssize, nargs);
 }
@@ -422,7 +407,7 @@ shargs(char *s, int n, char **ap)
 	s[i] = 0;
 	*ap = 0;
 	i = 0;
-	for(;;){
+	for(;;) {
 		while(*s==' ' || *s=='\t')
 			s++;
 		if(*s == 0)
@@ -453,7 +438,7 @@ syssleep(ulong *arg)
 	if(arg[0] == 0)
 		sched();
 	else
-		tsleep(&u->p->sleep, return0, 0, arg[0]);
+		tsleep(&up->sleep, return0, 0, arg[0]);
 
 	return 0;
 }
@@ -508,12 +493,13 @@ sysdeath(ulong *arg)
 long
 syserrstr(ulong *arg)
 {
-	char tmp[ERRLEN];
+	char *e, tmp[ERRLEN];
 
 	validaddr(arg[0], ERRLEN, 1);
-	memmove(tmp, (char*)arg[0], ERRLEN);
-	memmove((char*)arg[0], u->error, ERRLEN);
-	memmove(u->error, tmp, ERRLEN);
+	e = (char*)arg[0];
+	memmove(tmp, e, ERRLEN);
+	memmove(e, up->error, ERRLEN);
+	memmove(up->error, tmp, ERRLEN);
 	return 0;
 }
 
@@ -523,7 +509,7 @@ sysnotify(ulong *arg)
 	USED(arg);
 	if(arg[0] != 0)
 		validaddr(arg[0], sizeof(ulong), 0);
-	u->notify = (int(*)(void*, char*))(arg[0]);
+	up->notify = (int(*)(void*, char*))(arg[0]);
 	return 0;
 }
 
@@ -531,7 +517,7 @@ long
 sysnoted(ulong *arg)
 {
 	USED(arg);
-	if(u->notified == 0)
+	if(up->notified == 0)
 		error(Egreg);
 	return 0;
 }
@@ -539,21 +525,23 @@ sysnoted(ulong *arg)
 long
 syssegbrk(ulong *arg)
 {
-	Segment *s;
 	int i;
+	ulong addr;
+	Segment *s;
 
-	for(i = 0; i < NSEG; i++)
-		if(s = u->p->seg[i]) {
-			if(arg[0] >= s->base && arg[0] < s->top) {
-				switch(s->type&SG_TYPE) {
-				case SG_TEXT:
-				case SG_DATA:
-					error(Ebadarg);
-				default:
-					return ibrk(arg[1], i);
-				}
-			}
+	addr = arg[0];
+	for(i = 0; i < NSEG; i++) {
+		s = up->seg[i];
+		if(s == 0 || addr < s->base || addr >= s->top)
+			continue;
+		switch(s->type&SG_TYPE) {
+		case SG_TEXT:
+		case SG_DATA:
+			error(Ebadarg);
+		default:
+			return ibrk(arg[1], i);
 		}
+	}
 
 	error(Ebadarg);
 	return 0;		/* not reached */
@@ -562,21 +550,23 @@ syssegbrk(ulong *arg)
 long
 syssegattach(ulong *arg)
 {
-	return segattach(u->p, arg[0], (char*)arg[1], arg[2], arg[3]);
+	return segattach(up, arg[0], (char*)arg[1], arg[2], arg[3]);
 }
 
 long
 syssegdetach(ulong *arg)
 {
 	int i;
+	ulong addr;
 	Segment *s;
 
 	s = 0;
+	addr = arg[0];
 	for(i = 0; i < NSEG; i++)
-		if(s = u->p->seg[i]) {
+		if(s = up->seg[i]) {
 			qlock(&s->lk);
-			if((arg[0] >= s->base && arg[0] < s->top) || 
-			   (s->top == s->base && arg[0] == s->base))
+			if((addr >= s->base && addr < s->top) || 
+			   (s->top == s->base && addr == s->base))
 				goto found;
 			qunlock(&s->lk);
 		}
@@ -584,11 +574,12 @@ syssegdetach(ulong *arg)
 	error(Ebadarg);
 
 found:
+	/* Check we are not detaching the current stack segment */
 	if((ulong)arg >= s->base && (ulong)arg < s->top) {
 		qunlock(&s->lk);
 		error(Ebadarg);
 	}
-	u->p->seg[i] = 0;
+	up->seg[i] = 0;
 	qunlock(&s->lk);
 	putseg(s);
 
@@ -604,7 +595,7 @@ syssegfree(ulong *arg)
 	ulong from, pages;
 
 	from = PGROUND(arg[0]);
-	s = seg(u->p, from, 1);
+	s = seg(up, from, 1);
 	if(s == 0)
 		error(Ebadarg);
 
@@ -637,9 +628,9 @@ sysrendezvous(ulong *arg)
 	ulong val;
 
 	tag = arg[0];
-	l = &REND(u->p->pgrp, tag);
+	l = &REND(up->pgrp, tag);
 
-	lock(u->p->pgrp);
+	lock(up->pgrp);
 	for(p = *l; p; p = p->rendhash) {
 		if(p->rendtag == tag) {
 			*l = p->rendhash;
@@ -649,24 +640,23 @@ sysrendezvous(ulong *arg)
 			while(p->state != Rendezvous)
 				;
 			ready(p);
-			unlock(u->p->pgrp);
+			unlock(up->pgrp);
 			return val;	
 		}
 		l = &p->rendhash;
 	}
 
 	/* Going to sleep here */
-	p = u->p;
-	p->rendtag = tag;
-	p->rendval = arg[1];
-	p->rendhash = *l;
-	*l = p;
+	up->rendtag = tag;
+	up->rendval = arg[1];
+	up->rendhash = *l;
+	*l = up;
 
 	s = splhi();
-	unlock(p->pgrp);
-	u->p->state = Rendezvous;
+	unlock(up->pgrp);
+	up->state = Rendezvous;
 	sched();
 	splx(s);
 
-	return u->p->rendval;
+	return up->rendval;
 }

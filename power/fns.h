@@ -39,7 +39,6 @@ void	lanceparity(void);
 void	lancesetup(Lance*);
 void	launchinit(void);
 void	launch(int);
-#define	mmunewpage(x)
 int	muxlock(int*, int*);
 void	newstart(void);
 int	newtlbpid(Proc*);
@@ -52,6 +51,7 @@ void	printslave(void);
 #define procsave(p)
 #define procrestore(p)
 void	purgetlb(int);
+void	putcontext(int);
 void	putstlb(ulong, ulong);
 void	putstrn(char*, long);
 void	puttlb(ulong, ulong);
@@ -74,7 +74,9 @@ void	vector0(void);
 void	vector80(void);
 void	vmereset(void);
 void	wbflush(void);
-#define	waserror()	setlabel(&u->errlab[u->nerrlab++])
+#define	waserror()	setlabel(&up->errlab[up->nerrlab++])
 #define	kmapperm(x)	kmap(x)
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))
 #define PADDR(a)	((ulong)(a)&~KZERO)
+Page*	lkpage(Segment*, ulong);
+void	lkpgfree(Page*);

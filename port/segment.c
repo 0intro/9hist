@@ -5,8 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-Page *lkpage(Segment*, ulong);
-void lkpgfree(Page*);
+Page *snewpage(ulong addr);
 void imagereclaim(void);
 
 /* System specific segattach devices */
@@ -312,7 +311,7 @@ ibrk(ulong addr, int seg)
 	ulong newtop, newsize;
 	int i;
 
-	s = u->p->seg[seg];
+	s = up->seg[seg];
 	if(s == 0)
 		error(Ebadarg);
 
@@ -323,7 +322,7 @@ ibrk(ulong addr, int seg)
 
 	/* We may start with the bss overlapping the data */
 	if(addr < s->base) {
-		if(seg != BSEG || u->p->seg[DSEG] == 0 || addr < u->p->seg[DSEG]->base) {
+		if(seg != BSEG || up->seg[DSEG] == 0 || addr < up->seg[DSEG]->base) {
 			qunlock(&s->lk);
 			error(Enovmem);
 		}
@@ -340,7 +339,7 @@ ibrk(ulong addr, int seg)
 	}
 
 	for(i = 0; i < NSEG; i++) {
-		ns = u->p->seg[i];
+		ns = up->seg[i];
 		if(ns == 0 || ns == s)
 			continue;
 		if(newtop >= ns->base && newtop < ns->top) {
@@ -408,7 +407,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	vmemchr(name, 0, ~0);
 
 	for(sno = 0; sno < NSEG; sno++)
-		if(u->p->seg[sno] == 0 && sno != ESEG)
+		if(up->seg[sno] == 0 && sno != ESEG)
 			break;
 
 	if(sno == NSEG)
@@ -418,7 +417,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	len = PGROUND(len);
 	newtop = va+len;
 	for(i = 0; i < NSEG; i++) {
-		ns = u->p->seg[i];
+		ns = up->seg[i];
 		if(ns == 0)
 			continue;	
 		if((newtop > ns->base && newtop <= ns->top) ||
@@ -440,7 +439,9 @@ found:
 
 	s = newseg(attr, va, len/BY2PG);
 	s->pseg = ps;
-	u->p->seg[sno] = s;
+	up->seg[sno] = s;
+
+	/* Need some code build mapped devices here */
 
 	return 0;
 }
@@ -453,7 +454,7 @@ syssegflush(ulong *arg)
 	ulong soff;
 	Page *pg;
 
-	s = seg(u->p, arg[0], 1);
+	s = seg(up, arg[0], 1);
 	if(s == 0)
 		error(Ebadarg);
 
@@ -469,7 +470,8 @@ syssegflush(ulong *arg)
 		if(s->map[i]) {
 			while(j < PTEPERTAB) {
 				if(pg = s->map[i]->pages[j]) 
-					memset(pg->cachectl, PG_TXTFLUSH, sizeof pg->cachectl);
+					for(i = 0; i < MAXMACH; i++)
+						pg->cachectl[i] |= PG_TXTFLUSH;
 				if(--pages == 0)
 					goto done;
 				j++;
@@ -483,4 +485,10 @@ done:
 	qunlock(&s->lk);
 	flushmmu();
 	return 0;
+}
+
+Page*
+snewpage(ulong addr)
+{
+	return newpage(1, 0, addr);
 }

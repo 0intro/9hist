@@ -8,7 +8,8 @@
 
 #include	"devtab.h"
 
-enum{
+enum
+{
 	Qdir,
 	Qctl,
 	Qmem,
@@ -19,6 +20,7 @@ enum{
 	Qstatus,
 	Qtext,
 	Qwait,
+	Qns,
 };
 
 #define	STATSIZE	(2*NAMELEN+12+7*12)
@@ -33,6 +35,7 @@ Dirtab procdir[] =
 	"status",	{Qstatus},	STATSIZE,		0444,
 	"text",		{Qtext},	0,			0000,
 	"wait",		{Qwait},	0,			0400,
+	"ns",		{Qns},		0,			0400,
 };
 
 /* Segment type from portdat.h */
@@ -59,6 +62,7 @@ int	procctlmemio(Proc*, ulong, int, void*, int);
 Chan*	proctext(Chan*, Proc*);
 Segment* txt2data(Proc*, Segment*);
 int	procstopped(void*);
+void	mntscan(Mntwalk*);
 
 int
 procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
@@ -163,6 +167,8 @@ procopen(Chan *c, int omode)
 
 	switch(QID(c->qid)){
 	case Qtext:
+		if(omode != OREAD)
+			error(Eperm);
 		tc = proctext(c, p);
 		tc->offset = 0;
 		return tc;
@@ -174,6 +180,10 @@ procopen(Chan *c, int omode)
 	case Qproc:
 	case Qstatus:
 	case Qwait:
+		break;
+
+	case Qns:
+		c->aux = malloc(sizeof(Mntwalk));
 		break;
 
 	case Qnotepg:
@@ -223,7 +233,7 @@ procwstat(Chan *c, char *db)
 	if(p->pid != PID(c->qid))
 		error(Eprocdied);
 
-	if(strcmp(u->p->user, p->user) != 0 && strcmp(u->p->user, eve) != 0)
+	if(strcmp(up->user, p->user) != 0 && strcmp(up->user, eve) != 0)
 		error(Eperm);
 
 	p->procmode = d.mode&0777;
@@ -232,23 +242,21 @@ procwstat(Chan *c, char *db)
 void
 procclose(Chan * c)
 {
-	USED(c);
+	if(QID(c->qid) == Qns)
+		free(c->aux);
 }
 
 long
 procread(Chan *c, void *va, long n, ulong offset)
 {
-	char *a = va, *b, *sps;
-	char statbuf[NSEG*32];
-	Proc *p;
-	Page *pg;
-	KMap *k;
-	Segment *s;
-	int i, j;
 	long l;
-	User *up;
-	Segment *sg;
+	Proc *p;
+	int i, j;
 	Waitq *wq;
+	Mntwalk *mw;
+	Segment *sg, *s;
+	char *a = va, *sps;
+	char statbuf[NSEG*32];
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, procgen);
@@ -259,23 +267,9 @@ procread(Chan *c, void *va, long n, ulong offset)
 
 	switch(QID(c->qid)){
 	case Qmem:
-		/* ugly math: USERADDR+BY2PG may be == 0 */
-		if(offset >= USERADDR && offset <= USERADDR+BY2PG-1) {
-			if(offset+n >= USERADDR+BY2PG-1)
-				n = USERADDR+BY2PG - offset;
-			pg = p->upage;
-			if(pg==0 || p->pid!=PID(c->qid))
-				error(Eprocdied);
-			k = kmap(pg);
-			b = (char*)VA(k);
-			memmove(a, b+(offset-USERADDR), n);
-			kunmap(k);
-			return n;
-		}
-
 		if(offset >= KZERO) {
 			/* Protect crypt key memory */
-			if(offset < palloc.cmemtop && offset+n > palloc.cmembase)
+			if(offset >= palloc.cmembase&&offset < palloc.cmemtop)
 				error(Eperm);
 
 			/* validate physical kernel addresses */
@@ -309,26 +303,18 @@ procread(Chan *c, void *va, long n, ulong offset)
 		}
 		if(p->pid != PID(c->qid))
 			error(Eprocdied);
-		k = kmap(p->upage);
-		up = (User*)VA(k);
-		if(up->p != p){
-			kunmap(k);
-			pprint("note read u/p mismatch");
-			error(Egreg);
-		}
 		if(n < ERRLEN)
 			error(Etoosmall);
-		if(up->nnote == 0)
+		if(p->nnote == 0)
 			n = 0;
-		else{
-			memmove(va, up->note[0].msg, ERRLEN);
-			up->nnote--;
-			memmove(&up->note[0], &up->note[1], up->nnote*sizeof(Note));
+		else {
+			memmove(va, p->note[0].msg, ERRLEN);
+			p->nnote--;
+			memmove(p->note, p->note+1, p->nnote*sizeof(Note));
 			n = ERRLEN;
 		}
-		if(up->nnote == 0)
+		if(p->nnote == 0)
 			p->notepending = 0;
-		kunmap(k);
 		poperror();
 		qunlock(&p->debug);
 		return n;
@@ -403,7 +389,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 		}
 
 		lock(&p->exl);
-		if(u->p == p && p->nchild == 0 && p->waitq == 0) {
+		if(up == p && p->nchild == 0 && p->waitq == 0) {
 			unlock(&p->exl);
 			error(Enochild);
 		}
@@ -422,31 +408,83 @@ procread(Chan *c, void *va, long n, ulong offset)
 		memmove(a, &wq->w, sizeof(Waitmsg));
 		free(wq);
 		return sizeof(Waitmsg);
+
+	case Qns:
+		mw = c->aux;
+		mntscan(mw);
+		if(mw->mh == 0)
+			return 0;
+		if(n < NAMELEN+11)
+			error(Etoosmall);
+		i = sprint(a, "%s %d ", mw->cm->spec, mw->cm->flag);
+		n -= i;
+		a += i;
+		i = ptpath(mw->mh->from->path, a, n);
+		n -= i;
+		a += i;
+		if(n > 0) {
+			*a++ = ' ';
+			n--;
+		}
+		a += ptpath(mw->cm->to->path, a, n);
+		return a - (char*)va;
 	}
 	error(Egreg);
 	return 0;		/* not reached */
 }
 
+void
+mntscan(Mntwalk *mw)
+{
+	Pgrp *pg;
+	Mount *t;
+	int nxt;
+	ulong last, bestmid;
+	Mhead **h, **he, *f;
+
+	pg = up->pgrp;
+	rlock(&pg->ns);
+
+	nxt = 0;
+	last = 0;
+	bestmid = ~0;
+	if(mw->mh)
+		last = mw->cm->mountid;
+
+	he = &pg->mnthash[MNTHASH];
+	for(h = pg->mnthash; h < he; h++) {
+		for(f = *h; f; f = f->hash) {
+			for(t = f->mount; t; t = t->next) {
+				if(mw->mh == 0 ||
+				  (t->mountid > last && t->mountid < bestmid)) {
+					mw->cm = t;
+					mw->mh = f;
+					bestmid = mw->cm->mountid;
+					nxt = 1;
+				}
+			}
+		}
+	}
+	if(nxt == 0)
+		mw->mh = 0;
+
+	runlock(&pg->ns);
+}
 
 long
 procwrite(Chan *c, void *va, long n, ulong offset)
 {
 	Proc *p;
-	User *up;
-	KMap *k;
 	char buf[ERRLEN];
-	Ureg *ur;
-	User *pxu;
-	Page *pg;
-	char *a = va, *b;
-	ulong hi;
 
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 
 	p = proctab(SLOT(c->qid));
 
-	/* Use the remembered noteid in the channel rather than the process pgrpid */
+	/* Use the remembered noteid in the channel rather
+	 * than the process pgrpid
+	 */
 	if(QID(c->qid) == Qnotepg) {
 		pgrpnote(NOTEID(c->pgrpid), va, n, NUser);
 		return n;
@@ -465,32 +503,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		if(p->state != Stopped)
 			error(Ebadctl);
 
-		if(offset >= USERADDR && offset <= USERADDR+BY2PG-1) {
-			pg = p->upage;
-			if(pg==0 || p->pid!=PID(c->qid))
-				error(Eprocdied);
-			k = kmap(pg);
-			b = (char*)VA(k);
-			pxu = (User*)b;
-			hi = offset+n;
-			/* Check for floating point registers */
-			if(offset >= (ulong)&u->fpsave &&
-			   hi <= (ulong)&u->fpsave+sizeof(FPsave)){
-				memmove(b+(offset-USERADDR), a, n);
-				break;
-			}
-			/* Check user register set for process at kernel entry */
-			ur = pxu->dbgreg;
-			if(offset < (ulong)ur || hi > (ulong)ur+sizeof(Ureg)) {
-				kunmap(k);
-				error(Ebadarg);
-			}
-			ur = (Ureg*)(b+((ulong)ur-USERADDR));
-			setregisters(ur, b+(offset-USERADDR), a, n);
-			kunmap(k);
-		}
-		else	/* Try user memory segments */
-			n = procctlmemio(p, offset, n, va, 0);
+		n = procctlmemio(p, offset, n, va, 0);
 		break;
 
 	case Qctl:
@@ -500,14 +513,6 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 	case Qnote:
 		if(p->kp)
 			error(Eperm);
-		k = kmap(p->upage);
-		up = (User*)VA(k);
-		if(up->p != p){
-			kunmap(k);
-			pprint("note write u/p mismatch");
-			error(Egreg);
-		}
-		kunmap(k);
 		if(n >= ERRLEN-1)
 			error(Etoobig);
 		memmove(buf, va, n);
@@ -582,16 +587,16 @@ procstopwait(Proc *p, int ctl)
 
 	if(ctl != 0)
 		p->procctl = ctl;
-	p->pdbg = u->p;
+	p->pdbg = up;
 	pid = p->pid;
 	qunlock(&p->debug);
-	u->p->psstate = "Stopwait";
+	up->psstate = "Stopwait";
 	if(waserror()) {
 		p->pdbg = 0;
 		qlock(&p->debug);
 		nexterror();
 	}
-	sleep(&u->p->sleep, procstopped, p);
+	sleep(&up->sleep, procstopped, p);
 	poperror();
 	qlock(&p->debug);
 	if(p->pid != pid)
@@ -609,7 +614,8 @@ procctlreq(Proc *p, char *va, int n)
 
 	if(strncmp(buf, "stop", 4) == 0)
 		procstopwait(p, Proc_stopme);
-	else if(strncmp(buf, "kill", 4) == 0) {
+	else
+	if(strncmp(buf, "kill", 4) == 0) {
 		switch(p->state) {
 		case Broken:
 			unbreak(p);
@@ -624,20 +630,25 @@ procctlreq(Proc *p, char *va, int n)
 			p->procctl = Proc_exitme;
 		}
 	}
-	else if(strncmp(buf, "hang", 4) == 0)
+	else
+	if(strncmp(buf, "hang", 4) == 0)
 		p->hang = 1;
-	else if(strncmp(buf, "nohang", 6) == 0)
+	else
+	if(strncmp(buf, "nohang", 6) == 0)
 		p->hang = 0;
-	else if(strncmp(buf, "waitstop", 8) == 0)
+	else
+	if(strncmp(buf, "waitstop", 8) == 0)
 		procstopwait(p, 0);
-	else if(strncmp(buf, "startstop", 9) == 0) {
+	else
+	if(strncmp(buf, "startstop", 9) == 0) {
 		if(p->state != Stopped)
 			error(Ebadctl);
 		p->procctl = Proc_traceme;
 		ready(p);
 		procstopwait(p, Proc_traceme);
 	}
-	else if(strncmp(buf, "start", 5) == 0) {
+	else
+	if(strncmp(buf, "start", 5) == 0) {
 		if(p->state != Stopped)
 			error(Ebadctl);
 		ready(p);
@@ -671,7 +682,7 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 		if(offset+n >= s->top)
 			n = s->top-offset;
 
-		if(read == 0 && (s->type&SG_TYPE) == SG_TEXT)
+		if((s->type&SG_TYPE) == SG_TEXT)
 			s = txt2data(p, s);
 
 		s->steal++;

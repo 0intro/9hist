@@ -187,7 +187,7 @@ ipincoming(Ipifc *ifc, Ipconv *from)
 			if(from)	/* copy ownership from listening channel */
 				netown(new, from->owner, 0);
 			else		/* current user becomes owner */
-				netown(new, u->p->user, 0);
+				netown(new, up->user, 0);
 
 			new->ref = 1;
 			qunlock(new);
@@ -220,7 +220,7 @@ ipincoming(Ipifc *ifc, Ipconv *from)
 	if(from)	/* copy ownership from listening channel */
 		netown(new, from->owner, 0);
 	else		/* current user becomes owner */
-		netown(new, u->p->user, 0);
+		netown(new, up->user, 0);
 	new->ref = 1;
 	qunlock(new);
 	return new;
@@ -736,8 +736,8 @@ ipremotefill(Chan *c, char *buf, int len)
 {
 	Ipconv *cp;
 
-	if(len < 24)
-		error(Ebadarg);
+	if(len < 32)
+		error(Etoosmall);
 	cp = ipcreateconv(ipifc[c->dev], STREAMID(c->qid.path));
 	sprint(buf, "%d.%d.%d.%d!%d\n", fmtaddr(cp->dst), cp->pdst);
 }
@@ -747,8 +747,8 @@ iplocalfill(Chan *c, char *buf, int len)
 {
 	Ipconv *cp;
 
-	if(len < 24)
-		error(Ebadarg);
+	if(len < 32)
+		error(Etoosmall);
 	cp = ipcreateconv(ipifc[c->dev], STREAMID(c->qid.path));
 	sprint(buf, "%d.%d.%d.%d!%d\n", fmtaddr(Myip[Myself]), cp->psrc);
 }
@@ -764,10 +764,9 @@ ipstatusfill(Chan *c, char *buf, int len)
 	connection = STREAMID(c->qid.path);
 	cp = ipcreateconv(ipifc[c->dev], connection);
 	if(cp->ifc->protop == &tcpinfo)
-		sprint(buf, "tcp/%d %d %s %s %d+%d\n", connection, cp->ref,
+		sprint(buf, "tcp/%d %d %s %s\n", connection, cp->ref,
 			tcpstate[cp->tcpctl.state],
-			cp->tcpctl.flags & CLONE ? "listen" : "connect",
-			cp->tcpctl.srtt, cp->tcpctl.mdev);
+			cp->tcpctl.flags & CLONE ? "listen" : "connect");
 	else if(cp->ifc->protop == &ilinfo)
 		sprint(buf, "il/%d %d %s rtt %d ms %d csum\n", connection, cp->ref,
 			ilstate[cp->ilctl.state], cp->ilctl.rtt,
@@ -1195,7 +1194,7 @@ bsdoput(Queue *q, Block *bp)
 	}
 
 	/* if luser is a lie, hangup */
-	if(memcmp(luser, u->p->user, strlen(u->p->user)+1) != 0)
+	if(memcmp(luser, up->user, strlen(up->user)+1) != 0)
 		bsdclose(q);
 
 	/* mark queue as authenticated and pass data to remote side */

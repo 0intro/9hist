@@ -12,7 +12,7 @@ delay(int ms)
 {
 	int i;
 
-	ms *= 7000;	/* experimentally determined */
+	ms *= 7000;		/* experimentally determined */
 	for(i=0; i<ms; i++)
 		;
 }
@@ -20,10 +20,10 @@ delay(int ms)
 /*
  * AMD 82C54 timer
  *
- * ctr2 is clocked at 3.6864 MHz.
- * ctr2 output clocks ctr0 and ctr1.
+ * ctr2 is clocked at 3.6864 MHz. ctr2 output clocks ctr0 and ctr1.
  * ctr0 drives INTR2.  ctr1 drives INTR4.
- * To get 100Hz, 36864==9*4096=36*1024 so clock ctr2 every 1024 and ctr0 every 36.
+ * To get 100Hz, 36864==9*4096=36*1024 so clock ctr2
+ * every 1024 and ctr0 every 36.
  */
 
 struct Timer{
@@ -44,8 +44,6 @@ struct Timer{
 #define	CTR(x)	((x)<<6)	/* which counter x */
 #define	SET16	0x30		/* lsbyte then msbyte */
 #define	MODE2	0x04		/* interval timer */
-
-
 
 void
 clockinit(void)
@@ -70,70 +68,64 @@ clockinit(void)
 	m->ticks = 0;
 }
 
-
-
 void
 clock(Ureg *ur)
 {
-	int i, nrun = 0;
 	Proc *p;
+	int i, nrun;
 
-	if(ur->cause & INTR2){
-		i = *CLRTIM0;
-		USED(i);
-		m->ticks++;
-		if(m->ticks&(1<<4))
-			LEDON(LEDpulse);
-		else
-			LEDOFF(LEDpulse);
-		if(m->proc)
-			m->proc->pc = ur->pc;
+	if((ur->cause&INTR2) == 0) {
+		if(ur->cause & INTR4) {
+			i = *CLRTIM1;
+			USED(i);
+		}
+		return;
+	}
+	nrun = 0;
+	i = *CLRTIM0;
+	USED(i);
 
-		if(m->machno == 0){
-			p = m->proc;
-			if(p) {
-				nrun++;
-				p->time[p->insyscall]++;
-			}
-			for(i=1; i<conf.nmach; i++){
-				if(active.machs & (1<<i)){
-					p = MACHP(i)->proc;
-					if(p) {
-						p->time[p->insyscall]++;
-						nrun++;
-					}
+	m->ticks++;
+	if(m->proc)
+		m->proc->pc = ur->pc;
+
+	if(m->machno == 0) {
+		p = m->proc;
+		if(p) {
+			nrun++;
+			p->time[p->insyscall]++;
+		}
+		for(i=1; i<conf.nmach; i++) {
+			if(active.machs & (1<<i)) {
+				p = MACHP(i)->proc;
+				if(p) {
+					p->time[p->insyscall]++;
+					nrun++;
 				}
 			}
-			nrun = (nrdy+nrun)*1000;
-			m->load = (m->load*19+nrun)/20;
 		}
-		duartslave();
-		if((active.machs&(1<<m->machno)) == 0)
-			return;
-		if(active.exiting && active.machs&(1<<m->machno)){
-			print("someone's exiting\n");
-			exit(0);
-		}
-		checkalarms();
-		kproftimer(ur->pc);
-		if(u && (ur->status&IEP) && u->p->state==Running){
-			if(anyready()) {
-				if(u->p->hasspin)
-					u->p->hasspin = 0;	/* just in case */
-				else
-					sched();
-			}
-			/* user profiling clock */
-			if(ur->status & KUP)
-				(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	
-		}
-		return;
+		nrun = (nrdy+nrun)*1000;
+		m->load = (m->load*19+nrun)/20;
 	}
-	if(ur->cause & INTR4){
-		extern ulong start;
+	duartslave();
+	if((active.machs&(1<<m->machno)) == 0)
+		return;
 
-		i = *CLRTIM1;
-		USED(i);
-		return;
+	if(active.exiting && active.machs&(1<<m->machno)) {
+		print("someone's exiting\n");
+		exit(0);
 	}
+
+	checkalarms();
+	kproftimer(ur->pc);
+
+	if(up == 0 || (ur->status&IEP) == 0 || up->state != Running)
+		return;
+
+	if(anyready())
+		sched();
+
+	/* user profiling clock */
+	if(ur->status & KUP)
+		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	
 }

@@ -170,7 +170,7 @@ pipeopen(Chan *c, int omode)
 	qunlock(p);
 	poperror();
 
-	c->mode = openmode(omode);
+	c->mode = omode&~OTRUNC;
 	c->flag |= COPEN;
 	c->offset = 0;
 	return c;
@@ -260,7 +260,7 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 		return streamwrite(c, va, n, 0);
 
 	if(waserror()) {
-		postnote(u->p, 1, "sys: write on closed pipe", NUser);
+		postnote(up, 1, "sys: write on closed pipe", NUser);
 		error(Egreg);
 	}
 	n = streamwrite(c, va, n, 0);

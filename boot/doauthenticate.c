@@ -24,29 +24,36 @@ fromauth(Method *mp, char *trbuf, char *tbuf)
 {
 	char t;
 	char *msg;
-	static char error[ERRLEN];
+	static char error[2*ERRLEN];
 
 	if(afd < 0){
 		if(mp->auth == 0)
 			fatal("no method for accessing auth server");
 		afd = (*mp->auth)();
-		if(afd < 0)
-			return ccmsg;
+		if(afd < 0) {
+			sprint(error, "%s: %r", ccmsg);
+			return error;
+		}
 	}
 	if(write(afd, trbuf, TICKREQLEN) < 0 || read(afd, &t, 1) != 1){
 		close(afd);
 		afd = -1;
-		return pbmsg;
+		sprint(error, "%s: %r", pbmsg);
+		return error;
 	}
 	switch(t){
 	case AuthOK:
 		msg = 0;
-		if(readn(afd, tbuf, 2*TICKETLEN) < 0)
-			msg = pbmsg;
+		if(readn(afd, tbuf, 2*TICKETLEN) < 0) {
+			sprint(error, "%s: %r", pbmsg);
+			msg = error;
+		}
 		break;
 	case AuthErr:
-		if(readn(afd, error, ERRLEN) < 0)
-			msg = pbmsg;
+		if(readn(afd, error, ERRLEN) < 0) {
+			sprint(error, "%s: %r", pbmsg);
+			msg = error;
+		}
 		else {
 			error[ERRLEN-1] = 0;
 			msg = error;

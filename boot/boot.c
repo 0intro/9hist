@@ -1,13 +1,11 @@
 #include <u.h>
 #include <libc.h>
 #include <auth.h>
+#include <fcall.h>
 #include "../boot/boot.h"
 
-#define DEFSYS "bootes"
 typedef struct Net	Net;
 typedef struct Flavor	Flavor;
-
-int	printcol;
 
 char	cputype[NAMELEN];
 char	terminal[NAMELEN];
@@ -15,15 +13,15 @@ char	sys[2*NAMELEN];
 char	username[NAMELEN];
 char	bootfile[3*NAMELEN];
 char	conffile[NAMELEN];
-
-int mflag;
-int fflag;
-int kflag;
-int aflag;
-int pflag;
-int afd = -1;
-
+int	printcol;
+int	mflag;
+int	fflag;
+int	kflag;
+int	aflag;
+int	pflag;
+int	afd = -1;
 static void	swapproc(void);
+static void	recover(Method*);
 static Method	*rootserver(char*);
 
 void
@@ -87,12 +85,22 @@ boot(int argc, char *argv[])
 	 */
 	(*pword)(islocal, mp);
 
+	switch(rfork(RFPROC|RFNAMEG|RFFDG)) {
+	case -1:
+		print("failed to start recover: %r\n");
+		break;
+	case 0:
+		recover(mp);
+		break;
+	}
+
 	/*
 	 *  connect to the root file system
 	 */
 	fd = (*mp->connect)();
 	if(fd < 0)
 		fatal("can't connect to file server");
+	nop(fd);
 	if(!islocal && !ishybrid){
 		if(cfs)
 			fd = (*cfs)(fd);
@@ -132,7 +140,6 @@ boot(int argc, char *argv[])
 	settime(islocal);
 	close(afd);
 	swapproc();
-	remove("#e/password");
 
 	sprint(cmd, "/%s/init", cputype);
 	sprint(flags, "-%s%s%s", cpuflag ? "c" : "t", mflag ? "m" : "", aflag ? "a" : "");
@@ -183,6 +190,44 @@ rootserver(char *arg)
 	return 0;		/* not reached */
 }
 
+int
+nop(int fd)
+{
+	int n;
+	Fcall hdr;
+	char buf[128];
+
+	print("boot: nop...");
+	hdr.type = Tnop;
+	hdr.tag = NOTAG;
+	n = convS2M(&hdr, buf);
+	if(write(fd, buf, n) != n){
+		fatal("write nop");
+		return 0;
+	}
+reread:
+	n = read(fd, buf, sizeof buf);
+	if(n <= 0){
+		fatal("read nop");
+		return 0;
+	}
+	if(n == 2)
+		goto reread;
+	if(convM2S(buf, &hdr, n) == 0) {
+		fatal("format nop");
+		return 0;
+	}
+	if(hdr.type != Rnop){
+		fatal("not Rnop");
+		return 0;
+	}
+	if(hdr.tag != NOTAG){
+		fatal("tag not NOTAG");
+		return 0;
+	}
+	return 1;
+}
+
 static void
 swapproc(void)
 {
@@ -195,4 +240,79 @@ swapproc(void)
 	}
 	if(write(fd, "start", 5) <= 0)
 		warning("starting swap kproc");
+	close(fd);
+}
+
+void
+reattach(int rec, Method *amp, char *buf)
+{
+	char *mp;
+	int fd, n, sv[2];
+	char tmp[64], *p;
+
+	mp = strchr(buf, ' ');
+	if(mp == 0)
+		goto fail;
+	*mp++ = '\0';
+
+	p = strrchr(buf, '/');
+	if(p == 0)
+		goto fail;
+	*p = '\0';
+
+	sprint(tmp, "%s/remote", buf);
+	fd = open(tmp, OREAD);
+	if(fd < 0)
+		goto fail;
+	n = read(fd, tmp, sizeof(tmp));
+	if(n < 0)
+		goto fail;
+	close(fd);
+	tmp[n-1] = '\0';
+
+	print("boot: Service %s down, wait...\n", tmp);
+
+	p = strrchr(buf, '/');
+	if(p == 0)
+		goto fail;
+	*p = '\0';
+
+	while(plumb(buf, tmp, sv, 0) < 0)
+		sleep(30);
+
+	nop(sv[1]);
+	doauthenticate(sv[1], amp);
+
+	print("boot: Service %s Ok\n", tmp);
+
+	n = sprint(tmp, "%d %s", sv[1], mp);
+	if(write(rec, tmp, n) < 0) {
+		errstr(tmp);
+		print("write recover: %s\n", tmp);
+	}
+	exits(0);
+fail:
+	print("recover fail: %s\n", buf);
+	exits(0);
+}
+
+void
+recover(Method *mp)
+{
+	int fd, n;
+	char buf[256];
+
+	fd = open("#/./recover", ORDWR);
+	if(fd < 0)
+		exits(0);
+
+	for(;;) {
+		n = read(fd, buf, sizeof(buf));
+		if(n < 0)
+			exits(0);
+		buf[n] = '\0';
+
+		if(fork() == 0)
+			reattach(fd, mp, buf);
+	}
 }

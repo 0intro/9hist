@@ -31,7 +31,7 @@ envgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	USED(tab);
 	USED(ntab);
 
-	eg = u->p->egrp;
+	eg = up->egrp;
 	qlock(eg);
 
 	for(e = eg->entries; e && s; e = e->link)
@@ -62,7 +62,6 @@ envclone(Chan *c, Chan *nc)
 int
 envwalk(Chan *c, char *name)
 {
-
 	return devwalk(c, name, 0, 0, envgen);
 }
 
@@ -78,7 +77,7 @@ envopen(Chan *c, int omode)
 	Egrp *eg;
 	Evalue *e;
 	
-	eg = u->p->egrp;
+	eg = up->egrp;
 	if(c->qid.path & CHDIR) {
 		if(omode != OREAD)
 			error(Eperm);
@@ -117,7 +116,7 @@ envcreate(Chan *c, char *name, int omode, ulong perm)
 		error(Eperm);
 
 	omode = openmode(omode);
-	eg = u->p->egrp;
+	eg = up->egrp;
 
 	qlock(eg);
 	if(waserror()) {
@@ -155,7 +154,7 @@ envremove(Chan *c)
 	if(c->qid.path & CHDIR)
 		error(Eperm);
 
-	eg = u->p->egrp;
+	eg = up->egrp;
 	qlock(eg);
 
 	l = &eg->entries;
@@ -200,7 +199,7 @@ envread(Chan *c, void *a, long n, ulong offset)
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, envgen);
 
-	eg = u->p->egrp;
+	eg = up->egrp;
 	qlock(eg);
 	for(e = eg->entries; e; e = e->link)
 		if(e->path == c->qid.path)
@@ -236,7 +235,7 @@ envwrite(Chan *c, void *a, long n, ulong offset)
 	if(vend > Maxenvsize)
 		error(Etoobig);
 
-	eg = u->p->egrp;
+	eg = up->egrp;
 	qlock(eg);
 	for(e = eg->entries; e; e = e->link)
 		if(e->path == c->qid.path)
@@ -313,13 +312,4 @@ ksetenv(char *ename, char *eval)
 	c = namec(buf, Acreate, OWRITE, 0600);
 	(*devtab[c->type].write)(c, eval, strlen(eval), 0);
 	close(c);
-}
-
-void
-ksetterm(char *f)
-{
-	char buf[2*NAMELEN];
-
-	sprint(buf, f, conffile);
-	ksetenv("terminal", buf);
 }

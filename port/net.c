@@ -136,7 +136,34 @@ netwalk(Chan *c, char *name, Network *np)
 void
 netstat(Chan *c, char *db, Network *np)
 {
-	devstat(c, db, (Dirtab*)np, 1, netgen);
+	int i;
+	Dir dir;
+
+	for(i=0;; i++)
+		switch(netgen(c, (Dirtab*)np, 0, i, &dir)){
+		case -1:
+		/*
+		 * devices with interesting directories usually don't get
+		 * here, which is good because we've lost the name by now.
+		 */
+			if(c->qid.path & CHDIR){
+				devdir(c, c->qid, c->path->elem, 0L, eve, CHDIR|0555, &dir);
+				convD2M(&dir, db);
+				return;
+			}
+			print("netstat %C %lux\n", devchar[c->type], c->qid.path);
+			error(Enonexist);
+		case 0:
+			break;
+		case 1:
+			if(eqqid(c->qid, dir.qid)){
+				if(c->flag&CMSG)
+					dir.mode |= CHMOUNT;
+				convD2M(&dir, db);
+				return;
+			}
+			break;
+		}
 }
 
 Chan *
@@ -159,10 +186,12 @@ netopen(Chan *c, int omode, Network *np)
 			id = (*np->listen)(c);
 			streamclose(c);
 			c->qid.path = STREAMQID(id, Sctlqid);
+			ptclone(c, 1, id);
 			break;
 		case Qclone:
 			id = (*np->clone)(c);
 			c->qid.path = STREAMQID(id, Sctlqid);
+			ptclone(c, 0, id);
 			break;
 		default:
 			if(omode != OREAD)
@@ -175,7 +204,7 @@ netopen(Chan *c, int omode, Network *np)
 			if(np->protop && c->stream->devq->next->info != np->protop)
 				pushq(c->stream, np->protop);
 			p = findprot(np, id);
-			if(netown(p, u->p->user, omode&7) < 0)
+			if(netown(p, up->user, omode&7) < 0)
 				error(Eperm);
 			break;
 		}
@@ -283,7 +312,7 @@ netwstat(Chan *c, char *db, Network *np)
 	 *  ownership of the connection.  The open file descriptor is used as
 	 *  a capability for the connection.
 	 */
-	if(strncmp(p->owner, u->p->user, NAMELEN) != 0 && u->scallnr != FWSTAT){
+	if(strncmp(p->owner, up->user, NAMELEN) != 0 && up->scallnr != FWSTAT){
 		unlock(np);
 		error(Eperm);
 	}

@@ -27,7 +27,7 @@ rebootopen(Queue *q, Stream *s)
 {
 	USED(q);
 	USED(s);
-	if(strcmp(u->p->user, eve) != 0)
+	if(strcmp(up->user, eve) != 0)
 		error(Eperm);
 }
 

@@ -6,9 +6,9 @@
 #include	"../port/error.h"
 #include	"devtab.h"
 
-typedef struct Mntrpc Mntrpc;
 struct Mntrpc
 {
+	Chan	*c;		/* Channel for whom we are working */
 	Mntrpc	*list;		/* Free/pending list */
 	Fcall	request;	/* Outgoing file system protocol message */
 	Fcall	reply;		/* Incoming reply */
@@ -21,24 +21,10 @@ struct Mntrpc
 	char	flush[MAXMSG];	/* Somewhere to build flush */
 };
 
-struct Mnt
-{
-	Ref;			/* Count of attached channels */
-	Chan	*c;		/* Channel to file service */
-	Proc	*rip;		/* Reader in progress */
-	Mntrpc	*queue;		/* Queue of pending requests on this channel */
-	int	id;		/* Multiplexor id for channel check */
-	Mnt	*list;		/* Free list */
-	char	mux;		/* Set if the device does the multiplexing */
-	int	blocksize;	/* read/write block size */
-	ushort	flushtag;	/* Tag to send flush on */
-	ushort	flushbase;	/* Base tag of flush window for this buffer */
-};
-
 struct Mntalloc
 {
 	Lock;
-	Mnt	*list;		/* Mount devices in used */
+	Mnt	*list;		/* Mount devices in use */
 	Mnt	*mntfree;	/* Free list */
 	Mntrpc	*rpcfree;
 	int	id;
@@ -48,23 +34,25 @@ struct Mntalloc
 #define MAXRPC		(MAXFDATA+MAXMSG)
 #define limit(n, max)	(n > max ? max : n)
 
-Chan*	mattach(Mnt*, char*);
+void	mattach(Mnt*, Chan*, char*);
+void	mntauth(Mnt *, Mntrpc *, char *, ushort);
 Mnt*	mntchk(Chan*);
 void	mntdirfix(uchar*, Chan*);
-void	mntdoclunk(Mnt *, Mntrpc *);
 int	mntflush(Mnt*, Mntrpc*);
 void	mntfree(Mntrpc*);
 void	mntgate(Mnt*);
 void	mntpntfree(Mnt*);
 void	mntqrm(Mnt*, Mntrpc*);
-Mntrpc*	mntralloc(void);
+Mntrpc*	mntralloc(Chan*);
 long	mntrdwr(int , Chan*, void*,long , ulong);
 void	mntrpcread(Mnt*, Mntrpc*);
 void	mountio(Mnt*, Mntrpc*);
 void	mountmux(Mnt*, Mntrpc*);
 void	mountrpc(Mnt*, Mntrpc*);
 int	rpcattn(Mntrpc*);
-void	mclose(Mnt*);
+void	mclose(Mnt*, Chan*);
+void	mntrecover(Mnt*, Mntrpc*);
+Chan*	mntchan(void);
 
 enum
 {
@@ -92,9 +80,11 @@ mntattach(char *muxattach)
 {
 	Mnt *m;
 	Chan *c, *mc;
+	char buf[NAMELEN];
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
+		char	recov;
 	}bogus;
 
 	bogus = *((struct bogus *)muxattach);
@@ -108,12 +98,18 @@ mntattach(char *muxattach)
 				unlock(&mntalloc);
 				m->ref++;
 				unlock(m);
-				return mattach(m, bogus.spec);
+				c = mntchan();
+				if(waserror()) {
+					chanfree(c);
+					nexterror();
+				}
+				mattach(m, c, bogus.spec);
+				poperror();
+				return c;
 			}
 			unlock(m);	
 		}
 	}
-
 	m = mntalloc.mntfree;
 	if(m != 0)
 		mntalloc.mntfree = m->list;	
@@ -137,7 +133,8 @@ mntattach(char *muxattach)
 	m->rip = 0;
 	m->c = c;
 	m->c->flag |= CMSG;
-	m->blocksize = MAXFDATA;/**/
+	m->blocksize = MAXFDATA;	/**/
+	m->recov = bogus.recov;
 
 	switch(devchar[m->c->type]) {
 	default:
@@ -148,61 +145,70 @@ mntattach(char *muxattach)
 		break;
 	}
 	incref(m->c);
+
+	sprint(buf, "#M%d", m->id);
+	m->tree.root = ptenter(&m->tree, 0, buf);
+
 	unlock(m);
 
+	c = mntchan();
 	if(waserror()) {
-		mclose(m);
-		nexterror();
-	}
-
-	c = mattach(m, bogus.spec);
-
-	/*
-	 *  If exportfs mounts on behalf of a local devmnt, the mount
-	 *  point is folded onto the original channel to preserve a single
-	 *  fid/tag space.  CHDIR is cleared by exportfs to indicate it
-	 *  is supplying the mount.
-	 */
-	mc = m->c;
-	if(mc->type == devno('M', 0) && (c->qid.path&CHDIR) == 0) {
-		c->qid.path |= CHDIR;
-		c->mntptr = mc->mntptr;
-		c->mchan = mc->mntptr->c;
-		c->mqid = c->qid;
-		incref(c->mntptr);
-		mclose(m);
-	}
-
-	poperror();
-	return c;
-}
-
-Chan *
-mattach(Mnt *m, char *spec)
-{
-	Chan *c;
-	Mntrpc *r;
-	ulong id;
-
-	r = mntralloc();
-	c = devattach('M', spec);
-	lock(&mntalloc);
-	c->dev = mntalloc.id++;
-	unlock(&mntalloc);
-	c->mntptr = m;
-
-	if(waserror()){
-		mntfree(r);
-		/* Close must not be called since
-		 * it will call mnt recursively
+		mclose(m, c);
+		/* Close must not be called since it will
+		 * call mnt recursively
 		 */
 		chanfree(c);
 		nexterror();
 	}
 
+	mattach(m, c, bogus.spec);
+	poperror();
+
+	mc = m->c;
+	if(mc->type == devno('M', 0) && (c->qid.path&CHDIR) == 0) {
+		mclose(m, c);
+		c->qid.path |= CHDIR;
+		c->mntptr = mc->mntptr;
+		c->mchan = c->mntptr->c;
+		c->mqid = c->qid;
+		c->path = c->mntptr->tree.root;
+		incref(c->path);
+		incref(c->mntptr);
+	}
+
+	return c;
+}
+
+Chan*
+mntchan(void)
+{
+	Chan *c;
+
+	c = devattach('M', 0);
+	lock(&mntalloc);
+	c->dev = mntalloc.id++;
+	unlock(&mntalloc);
+
+	return c;
+}
+
+void
+mattach(Mnt *m, Chan *c, char *spec)
+{
+	ulong id;
+	Mntrpc *r;
+
+	r = mntralloc(0);
+	c->mntptr = m;
+
+	if(waserror()){
+		mntfree(r);
+		nexterror();
+	}
+
 	r->request.type = Tattach;
 	r->request.fid = c->fid;
-	memmove(r->request.uname, u->p->user, NAMELEN);
+	memmove(r->request.uname, up->user, NAMELEN);
 	strncpy(r->request.aname, spec, NAMELEN);
 	id = authrequest(m->c->session, &r->request);
 	mountrpc(m, r);
@@ -211,9 +217,11 @@ mattach(Mnt *m, char *spec)
 	c->qid = r->reply.qid;
 	c->mchan = m->c;
 	c->mqid = c->qid;
+	c->path = m->tree.root;
+	incref(c->path);
+
 	poperror();
 	mntfree(r);
-	return c;
 }
 
 Chan*
@@ -224,7 +232,7 @@ mntclone(Chan *c, Chan *nc)
 	int alloc = 0;
 
 	m = mntchk(c);
-	r = mntralloc();
+	r = mntralloc(c);
 	if(nc == 0) {
 		nc = newchan();
 		alloc = 1;
@@ -255,10 +263,11 @@ int
 mntwalk(Chan *c, char *name)
 {
 	Mnt *m;
+	Path *op;
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc();
+	r = mntralloc(c);
 	if(waserror()) {
 		mntfree(r);
 		return 0;
@@ -269,6 +278,15 @@ mntwalk(Chan *c, char *name)
 	mountrpc(m, r);
 
 	c->qid = r->reply.qid;
+	op = c->path;
+	c->path = ptenter(&m->tree, op, name);
+/* ASSERT */
+if(op->ref == 0) {
+	char buf[128];
+	ptpath(op, buf, sizeof(buf));
+	print("PATH: '%s' walking %s\n", op, name);
+}
+	decref(op);
 
 	poperror();
 	mntfree(r);
@@ -282,7 +300,7 @@ mntstat(Chan *c, char *dp)
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc();
+	r = mntralloc(c);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
@@ -304,7 +322,7 @@ mntopen(Chan *c, int omode)
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc();
+	r = mntralloc(c);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
@@ -330,7 +348,7 @@ mntcreate(Chan *c, char *name, int omode, ulong perm)
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc();
+	r = mntralloc(c);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
@@ -356,26 +374,31 @@ mntclunk(Chan *c, int t)
 	Mntrpc *r;
 		
 	m = mntchk(c);
-	r = mntralloc();
+	r = mntralloc(c);
 	if(waserror()){
-		mntdoclunk(m, r);
+		mntfree(r);
+		mclose(m, c);
 		nexterror();
 	}
 
 	r->request.type = t;
 	r->request.fid = c->fid;
 	mountrpc(m, r);
-	mntdoclunk(m, r);
+	mntfree(r);
+	mclose(m, c);
 	poperror();
 }
 
 void
-mclose(Mnt *m)
+mclose(Mnt *m, Chan *c)
 {
 	Mntrpc *q, *r;
 
 	if(decref(m) != 0)
 		return;
+
+	c->path = 0;
+	ptclose(&m->tree);
 
 	for(q = m->queue; q; q = r) {
 		r = q->list;
@@ -385,13 +408,6 @@ mclose(Mnt *m)
 	m->id = 0;
 	close(m->c);
 	mntpntfree(m);
-}
-
-void
-mntdoclunk(Mnt *m, Mntrpc *r)
-{
-	mntfree(r);
-	mclose(m);
 }
 
 void
@@ -433,7 +449,7 @@ mntwstat(Chan *c, char *dp)
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc();
+	r = mntralloc(c);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
@@ -475,9 +491,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 
 	m = mntchk(c);
 	uba = buf;
-	cnt = 0;
-	for(;;) {
-		r = mntralloc();
+	for(cnt = 0; n; n -= nr) {
+		r = mntralloc(c);
 		if(waserror()) {
 			mntfree(r);
 			nexterror();
@@ -496,8 +511,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 		offset += nr;
 		uba += nr;
 		cnt += nr;
-		n -= nr;
-		if(nr != r->request.count || n == 0)
+		if(nr != r->request.count)
 			break;
 	}
 	return cnt;
@@ -506,21 +520,31 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 void
 mountrpc(Mnt *m, Mntrpc *r)
 {
-	r->reply.tag = 0;		/* poison the old values */
+	int t;
+
+	r->reply.tag = 0;
 	r->reply.type = 4;
 
+	while(waserror()) {
+		if(m->recov == 0)
+			nexterror();
+		mntrecover(m, r);
+	}
 	mountio(m, r);
-	if(r->reply.type == Rerror)
+	poperror();
+
+	t = r->reply.type;
+	switch(t) {
+	case Rerror:
 		error(r->reply.ename);
-
-	if(r->reply.type == Rflush)
+	case Rflush:
 		error(Eintr);
-
-	if(r->reply.type != r->request.type+1) {
-		print("mnt: mismatched reply 0x%lux T%d R%d tags req %d fls %d rep %d\n",
-				r, r->request.type, r->reply.type, r->request.tag, 
-				r->flushtag, r->reply.tag);
-
+	default:
+		if(t == r->request.type+1)
+			break;
+		print("mnt: mismatch rep 0x%lux T%d R%d rq %d fls %d rp %d\n",
+			r, t, r->reply.type, r->request.tag, 
+			r->flushtag, r->reply.tag);
 		error(Emountrpc);
 	}
 }
@@ -570,7 +594,7 @@ mountio(Mnt *m, Mntrpc *r)
 		if(r->done)
 			return;
 	}
-	m->rip = u->p;
+	m->rip = up;
 	unlock(m);
 	while(r->done == 0) {
 		mntrpcread(m, r);
@@ -612,7 +636,7 @@ mntgate(Mnt *m)
 
 	lock(m);
 	m->rip = 0;
-	for(q = m->queue; q; q = q->list)
+	for(q = m->queue; q; q = q->list) {
 		if(q->done == 0) {
 			lock(&q->r);
 			if(q->r.p) {
@@ -623,6 +647,7 @@ mntgate(Mnt *m)
 			}
 			unlock(&q->r);
 		}
+	}
 	unlock(m);
 }
 
@@ -643,7 +668,7 @@ mountmux(Mnt *m, Mntrpc *r)
 				dp = q->rpc;
 				q->rpc = r->rpc;
 				r->rpc = dp;
-				memmove(&q->reply, &r->reply, sizeof(Fcall));
+				q->reply = r->reply;
 				q->done = 1;
 				wakeup(&q->r);
 			}else
@@ -674,7 +699,7 @@ mntflush(Mnt *m, Mntrpc *r)
 	n = convS2M(&flush, r->flush);
 
 	if(waserror()) {
-		if(strcmp(u->error, Eintr) == 0)
+		if(strcmp(up->error, Eintr) == 0)
 			return 1;
 		mntqrm(m, r);
 		return 0;
@@ -685,7 +710,7 @@ mntflush(Mnt *m, Mntrpc *r)
 }
 
 Mntrpc *
-mntralloc(void)
+mntralloc(Chan *c)
 {
 	Mntrpc *new;
 
@@ -703,6 +728,7 @@ mntralloc(void)
 		new->request.tag = mntalloc.rpctag++;
 	}
 	unlock(&mntalloc);
+	new->c = c;
 	new->done = 0;
 	new->flushed = 0;
 	return new;
@@ -737,15 +763,77 @@ mntqrm(Mnt *m, Mntrpc *r)
 	unlock(m);
 }
 
+void
+recoverchan(Mnt *m, Chan *c)
+{
+	int i, n, flg;
+	Path *safe, *p, **pav;
+
+	if(m->c == 0)
+		error(Eshutdown);
+
+	flg = c->flag;
+	/* Don't recursively recover */
+	c->flag &= ~(COPEN|CRECOV);
+
+	n = 0;
+	for(p = c->path; p; p = p->parent)
+		n++;
+	pav = smalloc(sizeof(Path*)*n);
+	i = n;
+	for(p = c->path; p; p = p->parent)
+		pav[--i] = p;
+
+	safe = c->path;
+
+	if(waserror()) {
+		c->flag = flg;
+		free(pav);
+		nexterror();
+	}
+
+	/* Attach the fid onto the file server (sets c->path to #Mxxx) */
+	mattach(m, c, c->xmnt->spec);
+	poperror();
+
+	/*
+	 * c is now at the root so we free where
+	 * the chan was before the server connection was lost
+	 */
+	decref(safe);
+
+	for(i = 1; i < n; i++) {
+		if(mntwalk(c, pav[i]->elem) == 0) {
+			free(pav);
+			/* Shut down the channel */
+			c->dev = m->id-1;
+			error(Erecover);
+		}
+	}
+	free(pav);
+	if(flg&COPEN)
+		mntopen(c, c->mode);
+}
+
 Mnt *
 mntchk(Chan *c)
 {
 	Mnt *m;
 
 	m = c->mntptr;
-	/* Was it closed and reused ? */
-	if(m->id == 0 || m->id >= c->dev)	/* Sanity check */
+
+	/*
+	 * Was it closed and reused
+	 */
+	if(m->id == 0 || m->id >= c->dev)
 		error(Eshutdown);
+
+	/*
+	 * Try and get the channel back
+	 */
+	if((c->flag&CRECOV) && m->recprog == 0)
+		recoverchan(m, c);
+
 	return m;
 }
 
@@ -762,4 +850,105 @@ int
 rpcattn(Mntrpc *r)
 {
 	return r->done || r->m->rip == 0;
+}
+
+int
+recdone(Mnt *m)
+{
+	return m->recprog == 0;
+}
+
+void
+mntrecdel(Mnt *m, Mntrpc *r)
+{
+	Mntrpc *f, **l;
+
+	lock(m);
+	l = &m->recwait;
+	for(f = *l; f; f = f->list) {
+		if(f == r) {
+			*l = r->list;
+			break;
+		}
+	}
+	unlock(m);
+}
+
+void
+mntrecover(Mnt *m, Mntrpc *r)
+{
+	char *ps;
+
+	lock(m);
+	if(m->recprog == 0) {
+		m->recprog = 1;
+		unlock(m);
+		chanrec(m);
+		/*
+		 * Send a message to boot via #/recover
+		 */
+		rootrecover(m->c->path, m->tree.root->elem);
+		lock(m);
+	}
+	r->list = m->recwait;
+	m->recwait = r;
+	unlock(m);
+
+	pprint("lost server connection, wait...\n");
+
+	ps = up->psstate;
+	up->psstate = "Recover";
+
+	if(waserror()) {
+		up->psstate = ps;
+		mntrecdel(m, r);
+		nexterror();
+	}
+	sleep(&r->r, recdone, m);
+	poperror();
+
+	r->done = 0;
+	mntrecdel(m, r);
+	recoverchan(m, r->c);
+
+	up->psstate = ps;
+}
+
+void
+mntrepl(char *buf)
+{
+	int fd;
+	Mnt *m;
+	char *p;
+	Chan *c1;
+	Mntrpc *r;
+
+	/* reply from boot is 'fd #M23' */
+	fd = strtoul(buf, &p, 0);
+
+	p++;
+	lock(&mntalloc);
+	for(m = mntalloc.list; m; m = m->list) {
+		if(strcmp(p, m->tree.root->elem) == 0)
+			break;
+	}
+	unlock(&mntalloc);
+	if(m == 0)
+		error(Eunmount);
+
+	c1 = fdtochan(fd, ORDWR, 0, 1);	/* error check and inc ref */
+
+	/* If the channel was posted fix it up */
+	srvrecover(m->c, c1);
+
+	lock(m);
+	close(m->c);
+	m->c = c1;
+	m->recprog = 0;
+
+	/* Wakeup partially complete rpc */
+	for(r = m->recwait; r; r = r->list)
+		wakeup(&r->r);
+
+	unlock(m);
 }

@@ -685,7 +685,7 @@ lanceclonecon(Chan *c)
 			continue;
 		}
 		e->inuse = 1;
-		netown(e, u->p->user, 0);
+		netown(e, up->user, 0);
 		qunlock(e);
 		return e - l.e;
 	}
@@ -817,7 +817,7 @@ lancekproc(void *arg)
 	USED(arg);
 
 	while(waserror())
-		print("lancekproc err %s\n", u->error);
+		print("lancekproc err %s\n", up->error);
 
 	for(;;){
 		qlock(&l.rlock);

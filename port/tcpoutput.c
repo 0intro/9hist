@@ -46,9 +46,10 @@ tcpoutput(Ipconv *s)
 		 */
 		if(tcb->snd.wnd == 0){
 			if(sent != 0) {
-				if ((tcb->flags&FORCE) == 0)
+				if (tcb->flags&FORCE)
+						tcb->snd.ptr = tcb->snd.una;
+				else
 					break;
-				tcb->snd.ptr = tcb->snd.una;
 			}
 			usable = 1;
 		}
@@ -91,9 +92,8 @@ tcpoutput(Ipconv *s)
 			}
 			break;
 		}
-		tcb->last_ack = tcb->rcv.nxt;
 		seg.seq = tcb->snd.ptr;
-		seg.ack = tcb->rcv.nxt;
+		seg.ack = tcb->last_ack = tcb->rcv.nxt;
 		seg.wnd = tcb->rcv.wnd;
 
 		/* Pull out data to send */
@@ -112,7 +112,7 @@ tcpoutput(Ipconv *s)
 		/*
 		 * keep track of balance of resent data */
 		if(tcb->snd.ptr < tcb->snd.nxt)
-			tcb->resent += MIN(tcb->snd.nxt - tcb->snd.ptr,(int)ssize);
+			tcb->resent += MIN((int)tcb->snd.nxt - (int)tcb->snd.ptr,(int)ssize);
 
 		tcb->snd.ptr += ssize;
 
@@ -184,7 +184,6 @@ tcptimeout(void *arg)
 	default:
 		tcb->backoff++;
 		if (tcb->backoff >= MAXBACKOFF && tcb->snd.wnd > 0) {
-print("tcp connection timed out\n"); 
 			localclose(s, Etimedout);
 			break;
 		}

@@ -14,7 +14,7 @@ void
 pageinit(void)
 {
 	Page *p;
-	ulong np, hw, hr, vmem, pmem;
+	ulong np, vmem, pmem;
 
 	np = palloc.np0+palloc.np1;
 	palloc.head = xalloc(np*sizeof(Page));
@@ -51,11 +51,7 @@ pageinit(void)
 	swapalloc.highwater = (palloc.freecount*5)/100;
 	swapalloc.headroom = swapalloc.highwater + (swapalloc.highwater/4);
 
-	hw = swapalloc.highwater*BY2PG;
-	hr = swapalloc.headroom*BY2PG;
-	
-	print("%lud free pages, %dK bytes, swap %dK, highwater %dK, headroom %dK\n", 
-	palloc.user, pmem, vmem, hw/1024, hr/1024);/**/
+	print("%lud free pages\n%dK bytes\n%dK swap\n", palloc.user, pmem, vmem);
 }
 
 Page*
@@ -63,13 +59,13 @@ newpage(int clear, Segment **s, ulong va)
 {
 	Page *p;
 	KMap *k;
-	int hw, i, dontalloc;
+	int hw, dontalloc;
 
 retry:
 	lock(&palloc);
 
 	hw = swapalloc.highwater;
-	while((palloc.freecount < hw && u->p->kp == 0) || palloc.freecount == 0) {
+	while((palloc.freecount < hw && up->kp == 0) || palloc.freecount == 0) {
 		palloc.wanted++;
 		unlock(&palloc);
 		dontalloc = 0;
@@ -120,9 +116,7 @@ retry:
 	p->ref++;
 	p->va = va;
 	p->modref = 0;
-	for(i = 0; i < MAXMACH; i++)
-		p->cachectl[i] = PG_NOFLUSH;
-	mmunewpage(p);
+	memset(p->cachectl, PG_DATINVALID, sizeof(p->cachectl));
 	unlock(p);
 
 	if(clear){
@@ -205,6 +199,7 @@ void
 duppage(Page *p)				/* Always call with p locked */
 {
 	Page *np;
+	int i;
 
 	/* No dup for swap pages */
 	if(p->image == &swapimage) {
@@ -249,7 +244,8 @@ duppage(Page *p)				/* Always call with p locked */
 	uncachepage(np);
 	np->va = p->va;
 	np->daddr = p->daddr;
-	mmunewpage(np);
+	for(i = 0; i < MAXMACH; i++)
+		np->cachectl[i] |= PG_DATINVALID;
 	copypage(p, np);
 	cachepage(np, p->image);
 	unlock(np);
@@ -408,8 +404,8 @@ void
 freepte(Segment *s, Pte *p)
 {
 	int ref;
-	Page *pt, **pg, **ptop;
 	void (*fn)(Page*);
+	Page *pt, **pg, **ptop;
 
 	switch(s->type&SG_TYPE) {
 	case SG_PHYSICAL:

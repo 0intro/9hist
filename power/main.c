@@ -6,16 +6,16 @@
 #include	"io.h"
 #include	"init.h"
 
-Softtlb stlb[MAXMACH][STLBSIZE];		/* software tlb simulation */
-int	_argc;					/* args passed by boot process */
+Softtlb stlb[MAXMACH][STLBSIZE];	/* software tlb simulation */
+int	_argc;				/* args passed by boot process */
 char 	**_argv;
 char	**_env;
-char 	argbuf[128];				/* arguments passed to initcode */
+char 	argbuf[128];			/* arguments passed to initcode */
 int	argsize;
-char	consname[NAMELEN];			/* environment vars from NVRAM */
+char	consname[NAMELEN];		/* environment vars from NVRAM */
 char	diskless[NAMELEN];
-char	confbuf[4*1024];			/* config file read by boot program */
-int	ioid;					/* IO board type */
+char	confbuf[4*1024];		/* config file read by boot program */
+int	ioid;				/* IO board type */
 
 void
 main(void)
@@ -29,6 +29,7 @@ main(void)
 	xinit();
 	printinit();
 	duartspecial(0, &printq, &kbdq, 9600);
+	print("\n\nBRAZIL\n");
 	pageinit();
 	tlbinit();
 	vecinit();
@@ -168,40 +169,38 @@ launchinit(void)
 		launch(i);
 	for(i=0; i<1000000; i++)
 		if(active.machs == (1<<conf.nmach) - 1){
-			print("all launched\n");
+			print("all launched\n");/**/
 			return;
 		}
 	print("launch: active = %x\n", active.machs);
 }
 
-
 void
 init0(void)
 {
-	m->proc = u->p;
-	u->p->state = Running;
-	u->p->mach = m;
+	char buf[2*NAMELEN];
+
 	spllo();
 
 	/*
 	 * These are o.k. because rootinit is null.
 	 * Then early kproc's will have a root and dot.
 	 */
-	u->slash = (*devtab[0].attach)(0);
-	u->dot = clone(u->slash, 0);
+	up->slash = namec("#/", Atodir, 0, 0);
+	up->dot = clone(up->slash, 0);
+
 	chandevinit();
 
 	if(!waserror()){
 		ksetenv("cputype", "mips");
-		ksetterm("sgi %s 4D");
+		sprint(buf, "sgi %s 4D", conffile);
+		ksetenv("terminal", buf);
 		ksetenv("sysname", sysname);
 		poperror();
 	}
 
-	if(conf.debugger && conf.nmach > 2)
-		kproc("kdebug", debugger, 0);
 	kproc("alarm", alarmkproc, 0);
-	touser((uchar*)(USTKTOP - sizeof(argbuf)));
+	touser((uchar*)(USTKTOP-sizeof(argbuf)));
 }
 
 FPsave	initfp;
@@ -210,11 +209,10 @@ void
 userinit(void)
 {
 	Proc *p;
-	Segment *s;
-	User *up;
 	KMap *k;
-	char **av;
 	Page *pg;
+	char **av;
+	Segment *s;
 
 	p = newproc();
 	p->pgrp = newpgrp();
@@ -226,25 +224,16 @@ userinit(void)
 
 	strcpy(p->text, "*init*");
 	strcpy(p->user, eve);
+
 	savefpregs(&initfp);
 	p->fpstate = FPinit;
+	p->fpsave.fpstatus = initfp.fpstatus;
 
 	/*
 	 * Kernel Stack
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = USERADDR+BY2PG-(1+MAXSYSARG)*BY2WD;
-	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
-
-	/*
-	 * User
-	 */
-	k = kmap(p->upage);
-	up = (User*)VA(k);
-	up->p = p;
-	up->fpsave.fpstatus = initfp.fpstatus;
-	kunmap(k);
-
+	p->sched.sp = (ulong)p->kstack+KSTACK-(1+MAXSYSARG)*BY2WD;
 	/*
 	 * User Stack, pass input arguments to boot process
 	 */
@@ -255,12 +244,11 @@ userinit(void)
 	k = kmap(pg);
 	for(av = (char**)argbuf; *av; av++)
 		*av += (USTKTOP - sizeof(argbuf)) - (ulong)argbuf;
+
 	memmove((uchar*)VA(k) + BY2PG - sizeof(argbuf), argbuf, sizeof argbuf);
 	kunmap(k);
 
-	/*
-	 * Text
-	 */
+	/* Text */
 	s = newseg(SG_TEXT, UTZERO, 1);
 	p->seg[TSEG] = s;
 	segpage(s, newpage(1, 0, UTZERO));
@@ -335,7 +323,6 @@ exit(int ispanic)
 	int i;
 
 	USED(ispanic);
-	u = 0;
 	lock(&active);
 	active.machs &= ~(1<<m->machno);
 	active.exiting = 1;
@@ -349,6 +336,7 @@ exit(int ispanic)
 	for(i=0; i<2000000; i++)
 		;
 	duartenable0();
+	firmware(PROM_REINIT);
 	firmware(cpuserver ? PROM_AUTOBOOT : PROM_REINIT);
 }
 
@@ -464,16 +452,16 @@ void
 confread(void)
 {
 	char *line;
-	char *lend;
+	char *end;
 
 	/*
 	 *  process configuration file
 	 */
 	line = confbuf;
-	while(lend = strchr(line, '\n')){
-		*lend = 0;
+	while(end = strchr(line, '\n')){
+		*end = 0;
 		confset(line);
-		line = lend+1;
+		line = end+1;
 	}
 }
 
@@ -519,8 +507,6 @@ confinit(void)
 	conf.npage1 = 0;
 	conf.base1 = 0;
 
-	conf.nproc = 128 + 3*i;
-
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);
 	conf.npage0 -= ktop/BY2PG;
@@ -539,9 +525,14 @@ confinit(void)
 	/*
 	 *  set minimal default values
 	 */
-	conf.nmach = 1;
+	conf.nmach = 2;
+	conf.nproc = 100;
 	conf.nswap = 262144;
 	conf.nimage = 200;
+	conf.ipif = 8;
+	conf.ip = 64;
+	conf.arp = 32;
+	conf.frag = 32;
 
 	confread();
 

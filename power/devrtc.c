@@ -100,11 +100,11 @@ rtcopen(Chan *c, int omode)
 	omode = openmode(omode);
 	switch(c->qid.path){
 	case Qrtc:
-		if(strcmp(u->p->user, eve)!=0 && omode!=OREAD)
+		if(strcmp(up->user, eve)!=0 && omode!=OREAD)
 			error(Eperm);
 		break;
 	case Qnvram:
-		if(strcmp(u->p->user, eve)!=0 || !cpuserver)
+		if(strcmp(up->user, eve)!=0 || !cpuserver)
 			error(Eperm);
 	}
 	return devopen(c, omode, rtcdir, NRTC, devgen);

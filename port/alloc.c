@@ -263,7 +263,7 @@ malloc(ulong size)
 	int pow, n;
 	Bucket *bp, *nbp;
 
-	for(pow = 3; pow < Maxpow; pow++)
+	for(pow = 3; pow <= Maxpow; pow++)
 		if(size <= (1<<pow))
 			goto good;
 
@@ -274,15 +274,14 @@ good:
 	bp = arena.btab[pow];
 	if(bp) {
 		arena.btab[pow] = bp->next;
-		if(bp->magic != 0 || bp->size != pow){
-			unlock(&arena);
-			panic("malloc bp %lux magic %lux size %d next %lux pow %d", bp,
-				bp->magic, bp->size, bp->next, pow);
-		}
-		bp->magic = Magic2n;
 		unlock(&arena);
 
-		memset(bp->data, 0, size);
+		if(bp->magic != 0)
+			panic("malloc");
+
+		bp->magic = Magic2n;
+
+		memset(bp->data, 0,  size);
 		return  bp->data;
 	}
 	unlock(&arena);
@@ -297,16 +296,18 @@ good:
 		if(bp == nil)
 			return nil;
 
-		nbp = bp;
+		next = (ulong)bp+size;
+		nbp = (Bucket*)next;
 		lock(&arena);
+		arena.btab[pow] = nbp;
 		arena.nbuck[pow] += n;
-		while(--n) {
+		for(n -= 2; n; n--) {
 			next = (ulong)nbp+size;
-			nbp = (Bucket*)next;
+			nbp->next = (Bucket*)next;
 			nbp->size = pow;
-			nbp->next = arena.btab[pow];
-			arena.btab[pow] = nbp;
+			nbp = nbp->next;
 		}
+		nbp->size = pow;
 		unlock(&arena);
 	}
 	else {
@@ -333,15 +334,15 @@ smalloc(ulong size)
 		p = malloc(size);
 		if(p != nil)
 			return p;
-		s = u->p->psstate;
-		u->p->psstate = "Malloc";
+		s = up->psstate;
+		up->psstate = "Malloc";
 		qlock(&arena.rq);
 		while(waserror())
 			;
 		sleep(&arena.r, return0, nil);
 		poperror();
 		qunlock(&arena.rq);
-		u->p->psstate = s;
+		up->psstate = s;
 	}
 	pexit(Enomem, 1);
 	return 0;
@@ -364,12 +365,12 @@ free(void *ptr)
 	Bucket *bp, **l;
 
 	bp = (Bucket*)((ulong)ptr - bdatoff);
-	l = &arena.btab[bp->size];
-
-	lock(&arena);
 	if(bp->magic != Magic2n)
 		panic("free");
+
 	bp->magic = 0;
+	lock(&arena);
+	l = &arena.btab[bp->size];
 	bp->next = *l;
 	*l = bp;
 	unlock(&arena);

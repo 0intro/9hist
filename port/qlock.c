@@ -10,8 +10,6 @@ qlock(QLock *q)
 {
 	Proc *p, *mp;
 
-	if(u)
-		u->p->qlockpc = getcallerpc(((uchar*)&q) - sizeof(q));
 	lock(&q->use);
 	if(!q->locked) {
 		q->locked = 1;
@@ -19,7 +17,7 @@ qlock(QLock *q)
 		return;
 	}
 	p = q->tail;
-	mp = u->p;
+	mp = up;
 	if(p == 0)
 		q->head = mp;
 	else
@@ -39,8 +37,6 @@ canqlock(QLock *q)
 		unlock(&q->use);
 		return 0;
 	}
-	if(u)
-		u->p->qlockpc = getcallerpc(((uchar*)&q) - sizeof(q));
 	q->locked = 1;
 	unlock(&q->use);
 	return 1;
@@ -51,8 +47,6 @@ qunlock(QLock *q)
 {
 	Proc *p;
 
-	if(u)
-		u->p->qlockpc = 0;
 	lock(&q->use);
 	p = q->head;
 	if(p) {

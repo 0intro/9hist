@@ -93,7 +93,7 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 			l = &mh->hash;
 			link = &mh->mount;
 			for(m = f->mount; m; m = m->next) {
-				n = newmount(mh, m->to);
+				n = newmount(mh, m->to, m->flag, m->spec);
 				*link = n;
 				link = &n->next;	
 			}
@@ -142,7 +142,7 @@ closefgrp(Fgrp *f)
 
 
 Mount*
-newmount(Mhead *mh, Chan *to)
+newmount(Mhead *mh, Chan *to, int flag, char *spec)
 {
 	Mount *m;
 
@@ -151,6 +151,10 @@ newmount(Mhead *mh, Chan *to)
 	m->head = mh;
 	incref(to);
 	m->mountid = incref(&mountid);
+	m->flag = flag;
+	if(spec != 0)
+		strcpy(m->spec, spec);
+
 	return m;
 }
 
@@ -162,6 +166,7 @@ mountfree(Mount *m)
 	while(m) {
 		f = m->next;
 		close(m->to);
+		m->mountid = 0;
 		free(m);
 		m = f;
 	}
@@ -172,14 +177,15 @@ resrcwait(char *reason)
 {
 	char *p;
 
-	p = u->p->psstate;
-	if(reason) {
-		u->p->psstate = reason;
-		print("%s\n", reason);
-	}
-	if(u == 0)
+	if(up == 0)
 		panic("resrcwait");
 
-	tsleep(&u->p->sleep, return0, 0, 300);
-	u->p->psstate = p;
+	p = up->psstate;
+	if(reason) {
+		up->psstate = reason;
+		print("%s\n", reason);
+	}
+
+	tsleep(&up->sleep, return0, 0, 300);
+	up->psstate = p;
 }

@@ -20,7 +20,7 @@ struct Srv
 
 static QLock	srvlk;
 static Srv	*srv;
-static int	path;
+static int	qidpath;
 
 int
 srvgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
@@ -45,7 +45,7 @@ srvgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 void
 srvinit(void)
 {
-	path = 1;
+	qidpath = 1;
 }
 
 void
@@ -132,7 +132,7 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 		qunlock(&srvlk);
 		nexterror();
 	}
-	sp->path = path++;
+	sp->path = qidpath++;
 	sp->link = srv;
 	c->qid.path = sp->path;
 	srv = sp;
@@ -140,7 +140,7 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 	poperror();
 
 	strncpy(sp->name, name, NAMELEN);
-	strncpy(sp->owner, u->p->user, NAMELEN);
+	strncpy(sp->owner, up->user, NAMELEN);
 	sp->perm = perm&0777;
 
 	c->flag |= COPEN;
@@ -218,7 +218,7 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
 
-	c1 = fdtochan(fd, -1, 0, 1);	/* error check only */
+	c1 = fdtochan(fd, -1, 0, 1);	/* error check and inc ref */
 
 	qlock(&srvlk);
 	if(waserror()) {
@@ -240,4 +240,22 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	qunlock(&srvlk);
 	poperror();
 	return n;
+}
+
+void
+srvrecover(Chan *old, Chan *new)
+{
+	Srv *sp;
+
+	qlock(&srvlk);
+	for(sp = srv; sp; sp = sp->link) {
+		if(sp->chan == old) {
+			sp->chan = new;
+			incref(new);
+			qunlock(&srvlk);
+			close(old);
+			return;
+		}
+	}
+	qunlock(&srvlk);
 }

@@ -447,14 +447,13 @@ duartrawputs(char *s)
 	for(i=0; i < 1000000; i++)
 		;
 }
+
 void
 iprint(char *fmt, ...)
 {
-	char buf[1024];
-	long *arg;
+	char buf[512];
 
-	arg = (long*)(&fmt+1);
-	sprint(buf, fmt, *arg, *(arg+1), *(arg+2), *(arg+3));
+	doprint(buf, buf+sizeof(buf), fmt, (&fmt+1));
 	duartrawputs(buf);
 }
 

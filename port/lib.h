@@ -26,10 +26,10 @@ extern	int	atoi(char*);
 
 enum
 {
-	UTFmax		= 3,		/* maximum bytes per rune */
-	Runesync	= 0x80,		/* cannot represent part of a UTF sequence (<) */
-	Runeself	= 0x80,		/* rune and UTF sequences are the same (<) */
-	Runeerror	= 0x80,		/* decoding error in UTF */
+	UTFmax		= 3,	/* maximum bytes per rune */
+	Runesync	= 0x80,	/* cannot represent part of a UTF sequence */
+	Runeself	= 0x80,	/* rune and UTF sequences are the same (<) */
+	Runeerror	= 0x80,	/* decoding error in UTF */
 };
 
 /*
@@ -70,16 +70,17 @@ extern	ulong	strtoul(char*, char**, int);
 extern	char	etext[];
 extern	char	edata[];
 extern	char	end[];
+
 /*
  * Syscall data structures
  */
-
 #define	MORDER	0x0003	/* mask for bits defining order of mounting */
 #define	MREPL	0x0000	/* mount replaces object */
 #define	MBEFORE	0x0001	/* mount goes before others in union directory */
 #define	MAFTER	0x0002	/* mount goes after others in union directory */
 #define	MCREATE	0x0004	/* permit creation in mounted directory */
-#define	MMASK	0x0007	/* all bits on */
+#define MRECOV	0x0008	/* perform recovery if mount channel is lost */
+#define	MMASK	0x000F	/* all bits on */
 
 #define	OREAD	0	/* open for read */
 #define	OWRITE	1	/* write */

@@ -2,6 +2,7 @@ typedef struct Alarms	Alarms;
 typedef struct Block	Block;
 typedef struct Blist	Blist;
 typedef struct Chan	Chan;
+typedef struct Crypt	Crypt;
 typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
 typedef struct Egrp	Egrp;
@@ -13,6 +14,8 @@ typedef struct IOQ	IOQ;
 typedef struct KIOQ	KIOQ;
 typedef struct List	List;
 typedef struct Mount	Mount;
+typedef struct Mntrpc	Mntrpc;
+typedef struct Mntwalk	Mntwalk;
 typedef struct Mnt	Mnt;
 typedef struct Mhead	Mhead;
 typedef struct Netinf	Netinf;
@@ -20,12 +23,14 @@ typedef struct Netprot	Netprot;
 typedef struct Network	Network;
 typedef struct Note	Note;
 typedef struct Page	Page;
+typedef struct Path	Path;
 typedef struct Palloc	Palloc;
 typedef struct Pgrps	Pgrps;
 typedef struct Pgrp	Pgrp;
 typedef struct Physseg	Physseg;
 typedef struct Proc	Proc;
 typedef struct Pte	Pte;
+typedef struct Pthash	Pthash;
 typedef struct Qinfo	Qinfo;
 typedef struct QLock	QLock;
 typedef struct Queue	Queue;
@@ -33,11 +38,11 @@ typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
 typedef struct RWlock	RWlock;
 typedef struct Sargs	Sargs;
-typedef struct Session	Session;
 typedef struct Scsi	Scsi;
 typedef struct Scsibuf	Scsibuf;
 typedef struct Scsidata	Scsidata;
 typedef struct Segment	Segment;
+typedef struct Session	Session;
 typedef struct Stream	Stream;
 typedef struct Talarm	Talarm;
 typedef struct Waitq	Waitq;
@@ -128,7 +133,7 @@ struct Blist
 };
 
 /*
- * Access types in namec
+ * Access types in namec & channel flags
  */
 enum
 {
@@ -137,42 +142,51 @@ enum
 	Aopen,				/* for i/o */
 	Amount,				/* to be mounted upon */
 	Acreate,			/* file is to be created */
+
+	COPEN	= 0x0001,		/* for i/o */
+	CMSG	= 0x0002,		/* the message channel for a mount */
+	CCREATE	= 0x0004,		/* permits creation if c->mnt */
+	CCEXEC	= 0x0008,		/* close on exec */
+	CFREE	= 0x0010,		/* not in use */
+	CRCLOSE	= 0x0020,		/* remove on close */
+	CRECOV	= 0x0040,		/* requires recovery */
 };
 
-/*
- *  Chan.flags
- */
-#define	COPEN	1			/* for i/o */
-#define	CMSG	2			/* is the message channel for a mount */
-#define	CCREATE	4			/* permits creation if c->mnt */
-#define	CCEXEC	8			/* close on exec */
-#define	CFREE	16			/* not in use */
-#define	CRCLOSE	32			/* remove on close */
+struct Path
+{
+	Ref;
+	Path	*hash;
+	Path	*parent;
+	Pthash	*pthash;
+	char	elem[NAMELEN];
+};
 
 struct Chan
 {
 	Ref;
-	union{
-		Chan	*next;		/* allocation */
-		ulong	offset;		/* in file */
-	};
+	Chan	*next;			/* allocation */
+	Chan	*link;
+	ulong	offset;			/* in file */
 	ushort	type;
 	ushort	dev;
 	ushort	mode;			/* read/write */
 	ushort	flag;
 	Qid	qid;
-	Mount	*mnt;			/* mount point that derived Chan */
-	ulong	mountid;
 	int	fid;			/* for devmnt */
 	Stream	*stream;		/* for stream channels */
+	Path	*path;
+	Mount	*mnt;			/* mount point that derived Chan */
+	Mount	*xmnt;			/* Last mount point crossed */
+	ulong	mountid;
 	union {
 		void	*aux;
 		Qid	pgrpid;		/* for #p/notepg */
 		Mnt	*mntptr;	/* for devmnt */
+		ulong	mid;		/* for ns in devproc */
 	};
 	Chan	*mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */
-	Session	*session;
+	Session *session;
 };
 
 struct Dev
@@ -231,8 +245,6 @@ enum
 	ScsiGetcap	= 0x25,
 	ScsiRead	= 0x08,
 	ScsiWrite	= 0x0a,
-	ScsiExtread	= 0x28,
-	ScsiExtwrite	= 0x2a,
 
 	/* data direction */
 	ScsiIn		= 1,
@@ -298,12 +310,36 @@ struct KIOQ
 	int	count;
 };
 
+enum
+{
+	NSMAX	=	1000,
+	NSLOG	=	7,
+	NSCACHE	=	(1<<NSLOG),
+};
+
+struct Pthash
+{
+	QLock;
+	int	npt;
+	Path	*root;
+	Path	*hash[NSCACHE];
+};
+
+struct Mntwalk
+{
+	ulong	id;
+	Mhead	*mh;
+	Mount	*cm;
+};
+
 struct Mount
 {
 	ulong	mountid;
 	Mount	*next;
 	Mhead	*head;
-	Chan	*to;			/* channel replacing underlying channel */
+	Chan	*to;			/* channel replacing channel */
+	int	flag;
+	char	spec[NAMELEN];
 };
 
 struct Mhead
@@ -311,6 +347,24 @@ struct Mhead
 	Chan	*from;			/* channel mounted upon */
 	Mount	*mount;			/* what's mounted upon it */
 	Mhead	*hash;			/* Hash chain */
+};
+
+struct Mnt
+{
+	Ref;			/* Count of attached channels */
+	Chan	*c;		/* Channel to file service */
+	Proc	*rip;		/* Reader in progress */
+	Mntrpc	*queue;		/* Queue of pending requests on this channel */
+	Mntrpc	*recwait;	/* List of rpc's with recovery pending */
+	ulong	id;		/* Multiplexor id for channel check */
+	Mnt	*list;		/* Free list */
+	char	mux;		/* Set if the device does the multiplexing */
+	char	recov;		/* Run recovery if channel is lost */
+	char	recprog;	/* Recovery in progress */
+	int	blocksize;	/* read/write block size */
+	ushort	flushtag;	/* Tag to send flush on */
+	ushort	flushbase;	/* Base tag of flush window for this buffer */
+	Pthash	tree;		/* Path names from this mount point */
 };
 
 enum
@@ -328,11 +382,12 @@ struct Note
 
 enum
 {
-	PG_NOFLUSH	= 0,		/* Fields for cache control of pages */
-	PG_TXTFLUSH	= 1,
-	PG_DATFLUSH	= 2,
-	PG_MOD		= 0x01,		/* Simulated modified and referenced bits */
-	PG_REF		= 0x02,
+	PG_TXTFLUSH	= 1<<1,		/* flush icache */
+	PG_DATFLUSH	= 1<<2,		/* flush both i & d caches */
+	PG_DATINVALID	= 1<<3,		/* invalidate d cache */
+
+	PG_MOD		= 0x01,		/* software modified bit */
+	PG_REF		= 0x02,		/* software referenced bit */
 };
 
 struct Page
@@ -342,6 +397,7 @@ struct Page
 	ulong	va;			/* Virtual address for user */
 	ulong	daddr;			/* Disc address on swap */
 	ushort	ref;			/* Reference count */
+	char	lock;			/* Software lock */
 	char	modref;			/* Simulated modify/reference bits */
 	char	cachectl[MAXMACH];	/* Cache flushing control for putmmu */
 	Image	*image;			/* Associated text or swap image */
@@ -353,21 +409,21 @@ struct Page
 struct Swapalloc
 {
 	Lock;				/* Free map lock */
-	int	free;			/* Number of currently free swap pages */
+	int	free;			/* currently free swap pages */
 	uchar	*swmap;			/* Base of swap map in memory */
 	uchar	*alloc;			/* Round robin allocator */
 	uchar	*last;			/* Speed swap allocation */
 	uchar	*top;			/* Top of swap map */
 	Rendez	r;			/* Pager kproc idle sleep */
-	ulong	highwater;		/* Threshold beyond which we must page */
-	ulong	headroom;		/* Space pager keeps free under highwater */
+	ulong	highwater;		/* Pager start threshold */
+	ulong	headroom;		/* Space pager frees under highwater */
 }swapalloc;
 
 struct Image
 {
 	Ref;
-	Chan	*c;			/* Channel associated with running image */
-	Qid 	qid;			/* Qid for page cache coherence checks */
+	Chan	*c;			/* channl to text file */
+	Qid 	qid;			/* Qid for page cache coherence */
 	Qid	mqid;
 	Chan	*mchan;
 	ushort	type;			/* Device type of owning channel */
@@ -428,17 +484,17 @@ struct Segment
 	ulong	size;		/* size in pages */
 	ulong	fstart;		/* start address in file for demand load */
 	ulong	flen;		/* length of segment in file */
-	int	flushme;	/* maintain consistent icache for this segment */
+	int	flushme;	/* maintain icache for this segment */
 	Image	*image;		/* text in file attached to this segment */
 	Physseg *pseg;
-	Pte	*map[SEGMAPSIZE];	/* segment pte map */
+	Pte	*map[SEGMAPSIZE];
 };
 
 enum
 {
 	RENDHASH =	32,		/* Hash to lookup rendezvous tags */
 	MNTHASH	=	32,		/* Hash to walk mount table */
-	NFD =		100,		/* Number of per process file descriptors */
+	NFD =		100,		/* per process file descriptors */
 	PGHLOG  =	9,
 	PGHSIZE	=	1<<PGHLOG,	/* Page hash for image lookup */
 };
@@ -451,7 +507,8 @@ struct Pgrp
 	Pgrp	*next;			/* free list */
 	ulong	pgrpid;
 	QLock	debug;			/* single access via devproc.c */
-	RWlock	ns;			/* Namespace many read/one write lock */
+	RWlock	ns;			/* Namespace n read/one write lock */
+	QLock	nsh;
 	Mhead	*mnthash[MNTHASH];
 	Proc	*rendhash[RENDHASH];	/* Rendezvous tag hash */
 };
@@ -549,66 +606,91 @@ enum
 	TCUser,
 	TCSys,
 	TCReal,
+
+	NERR = 15,
+	NNOTE = 5,
 };
 
 struct Proc
 {
-	Label	sched;
-	Mach	*mach;			/* machine running this proc */
+	Label	sched;		/* known to l.s */
+	char	*kstack;	/* known to l.s */
+	Mach	*mach;		/* machine running this proc */
 	char	text[NAMELEN];
 	char	user[NAMELEN];
-	Proc	*rnext;			/* next process in run queue */
-	Proc	*qnext;			/* next process on queue for a QLock */
-	QLock	*qlock;			/* address of qlock being queued for DEBUG */
-	ulong	qlockpc;		/* pc of last call to qlock */
+	Proc	*rnext;		/* next process in run queue */
+	Proc	*qnext;		/* next process on queue for a QLock */
+	QLock	*qlock;		/* addrof qlock being queued for DEBUG */
 	int	state;
-	char	*psstate;		/* What /proc/#/status reports */
-	Page	*upage;			/* page from palloc */
+	char	*psstate;	/* What /proc/#/status reports */
+	Page	*upage;		/* page from palloc */
 	Segment	*seg[NSEG];
 	ulong	pid;
-	ulong	noteid;			/* Equivalent of note group */
+	ulong	noteid;		/* Equivalent of note group */
 
-	Lock	exl;			/* Lock count and waitq */
-	Waitq	*waitq;			/* Exited processes wait children */
-	int	nchild;			/* Number of living children */
-	int	nwait;			/* Number of uncollected wait records */
+	Lock	exl;		/* Lock count and waitq */
+	Waitq	*waitq;		/* Exited processes wait children */
+	int	nchild;		/* Number of living children */
+	int	nwait;		/* Number of uncollected wait records */
 	QLock	qwaitr;
-	Rendez	waitr;			/* Place to hang out in wait */
+	Rendez	waitr;		/* Place to hang out in wait */
 	Proc	*parent;
 
-	Pgrp	*pgrp;			/* Process group for notes and namespace */
-	Egrp 	*egrp;			/* Environment group */
-	Fgrp	*fgrp;			/* File descriptor group */
+	Pgrp	*pgrp;		/* Process group for namespace */
+	Egrp 	*egrp;		/* Environment group */
+	Fgrp	*fgrp;		/* File descriptor group */
 
 	ulong	parentpid;
-	ulong	time[6];		/* User, Sys, Real; child U, S, R */
+	ulong	time[6];	/* User, Sys, Real; child U, S, R */
 	short	insyscall;
 	int	fpstate;
 
-	QLock	debug;			/* to access debugging elements of User */
-	Proc	*pdbg;			/* the debugging process */
-	ulong	procmode;		/* proc device file mode */
-	int	hang;			/* hang at next exec for debug */
-	int	procctl;		/* Control for /proc debugging */
-	ulong	pc;			/* DEBUG only */
+	QLock	debug;		/* to access debugging elements of User */
+	Proc	*pdbg;		/* the debugging process */
+	ulong	procmode;	/* proc device file mode */
+	int	hang;		/* hang at next exec for debug */
+	int	procctl;	/* Control for /proc debugging */
+	ulong	pc;		/* DEBUG only */
 
-	Rendez	*r;			/* rendezvous point slept on */
-	Rendez	sleep;			/* place for syssleep/debug */
-	int	notepending;		/* note issued but not acted on */
-	int	kp;			/* true if a kernel process */
-	Proc	*palarm;		/* Next alarm time */
-	ulong	alarm;			/* Time of call */
-	int 	hasspin;		/* I hold a spin lock */
-	int	newtlb;			/* Pager has touched my tables so I must flush */
+	Rendez	*r;		/* rendezvous point slept on */
+	Rendez	sleep;		/* place for syssleep/debug */
+	int	notepending;	/* note issued but not acted on */
+	int	kp;		/* true if a kernel process */
+	Proc	*palarm;	/* Next alarm time */
+	ulong	alarm;		/* Time of call */
+	int	newtlb;		/* Pager has changed my pte's so I must flush */
 
-	ulong	rendtag;		/* Tag for rendezvous */ 
-	ulong	rendval;		/* Value for rendezvous */
-	Proc	*rendhash;		/* Hash list for tag values */
+	ulong	rendtag;	/* Tag for rendezvous */ 
+	ulong	rendval;	/* Value for rendezvous */
+	Proc	*rendhash;	/* Hash list for tag values */
 
 	ulong	twhen;
 	Rendez	*trend;
 	Proc	*tlink;
 	int	(*tfn)(void*);
+	void	(*kpfun)(void*);
+	void	*kparg;
+
+	FPsave	fpsave;		/* address of this is known by db */
+	int	scallnr;	/* sys call number - known by db */
+	Sargs	s;		/* address of this is known by db */
+	int	nerrlab;
+	Label	errlab[NERR];
+	char	error[ERRLEN];
+	char	elem[NAMELEN];	/* last name element from namec */
+	Chan	*slash;
+	Chan	*dot;
+
+	Note	note[NNOTE];
+	short	nnote;
+	short	notified;	/* sysnoted is due */
+	Note	lastnote;
+	int	(*notify)(void*, char*);
+
+	void	*ureg;		/* User registers for notes */
+	void	*dbgreg;	/* User registers for devproc */
+	ulong	svstatus;
+	ulong	svr1;
 
 	/*
 	 *  machine specific MMU
@@ -739,6 +821,7 @@ enum
 extern	Conf	conf;
 extern	char*	conffile;
 extern	int	cpuserver;
+extern	int	cpuserver;
 extern	Rune*	devchar;
 extern	Dev	devtab[];
 extern  char	eve[];
@@ -750,13 +833,13 @@ extern  IOQ	lineq;
 extern  IOQ	mouseq;
 extern  Ref	noteidalloc;
 extern	int	nrdy;
+extern	Palloc	palloc;
 extern  IOQ	printq;
 extern	char*	statename[];
 extern  Image	swapimage;
 extern	char	sysname[NAMELEN];
+extern	Pthash	syspt;
 extern	Talarm	talarm;
-extern	Palloc 	palloc;
-extern	int	cpuserver;
 
 enum
 {
@@ -780,6 +863,8 @@ enum
 
 	RXschal	= 0,
 	RXstick	= 1,
+
+	AUTHLEN	= 8,
 };
 
 /*

@@ -65,11 +65,16 @@ Chan *
 devattach(int tc, char *spec)
 {
 	Chan *c;
+	char buf[NAMELEN+4];
 
 	USED(spec);
 	c = newchan();
 	c->qid = (Qid){CHDIR, 0};
 	c->type = devno(tc, 0);
+	if(tc != 'M') {
+		sprint(buf, "#%C%s", tc, spec);
+		c->path = ptenter(&syspt, 0, buf);
+	}
 	return c;
 }
 
@@ -78,8 +83,10 @@ devclone(Chan *c, Chan *nc)
 {
 	if(c->flag & COPEN)
 		panic("clone of open file type %C\n", devchar[c->type]);
+
 	if(nc == 0)
 		nc = newchan();
+
 	nc->type = c->type;
 	nc->dev = c->dev;
 	nc->mode = c->mode;
@@ -91,6 +98,8 @@ devclone(Chan *c, Chan *nc)
 	nc->aux = c->aux;
 	nc->mchan = c->mchan;
 	nc->mqid = c->mqid;
+	nc->path = c->path;
+	incref(nc->path);
 	return nc;
 }
 
@@ -99,25 +108,30 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 {
 	long i;
 	Dir dir;
+	Path *op;
 
 	isdir(c);
 	if(name[0]=='.' && name[1]==0)
 		return 1;
-	for(i=0;; i++)
+	for(i=0;; i++) {
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:
-			strncpy(u->error, Enonexist, NAMELEN);
+			strncpy(up->error, Enonexist, NAMELEN);
 			return 0;
 		case 0:
 			continue;
 		case 1:
 			if(strcmp(name, dir.name) == 0){
 				c->qid = dir.qid;
+				op = c->path;
+				c->path = ptenter(&syspt, op, name);
+				decref(op);
 				return 1;
 			}
 			continue;
 		}
-	return 1;	/* not reached */
+	}
+	return 0;	/* not reached */
 }
 
 void
@@ -129,23 +143,23 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 	for(i=0;; i++)
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:
-			/*
-			 *  given a channel, we cannot derive the directory name
-			 *  that the channel was generated from since it was lost
-			 *  by namec.
-			 */
+		/*
+		 *  given a channel, we cannot derive the directory name
+		 *  that the channel was generated from since it was lost
+		 *  by namec.
+		 */
 			if(c->qid.path & CHDIR){
-				devdir(c, c->qid, ".", 0L, eve, CHDIR|0775, &dir);
+				devdir(c, c->qid, c->path->elem, i*DIRLEN, eve, CHDIR|0700, &dir);
 				convD2M(&dir, db);
 				return;
 			}
-			print("%s %s: devstat %C %lux\n", u->p->text, u->p->user,
-							devchar[c->type], c->qid.path);
+			print("%s %s: devstat %C %lux\n", up->text, up->user,
+						devchar[c->type], c->qid.path);
 			error(Enonexist);
 		case 0:
 			break;
 		case 1:
-			if(eqqid(c->qid, dir.qid)){
+			if(eqqid(c->qid, dir.qid)) {
 				if(c->flag&CMSG)
 					dir.mode |= CHMOUNT;
 				convD2M(&dir, db);
@@ -162,7 +176,7 @@ devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen)
 	Dir dir;
 
 	k = c->offset/DIRLEN;
-	for(m=0; m<n; k++)
+	for(m=0; m<n; k++) {
 		switch((*gen)(c, tab, ntab, k, &dir)){
 		case -1:
 			return m;
@@ -177,6 +191,8 @@ devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen)
 			d += DIRLEN;
 			break;
 		}
+	}
+
 	return m;
 }
 
@@ -188,7 +204,7 @@ devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 	ulong t, mode;
 	static int access[] = { 0400, 0200, 0600, 0100 };
 
-	for(i=0;; i++)
+	for(i=0;; i++) {
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:
 			goto Return;
@@ -196,12 +212,13 @@ devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 			break;
 		case 1:
 			if(eqqid(c->qid, dir.qid)) {
-				if(strcmp(u->p->user, dir.uid) == 0)	/* User */
+				if(strcmp(up->user, dir.uid) == 0)
 					mode = dir.mode;
-				else if(strcmp(u->p->user, eve) == 0)	/* eve is group */
+				else
+				if(strcmp(up->user, eve) == 0)
 					mode = dir.mode<<3;
 				else
-					mode = dir.mode<<6;		/* Other */
+					mode = dir.mode<<6;
 
 				t = access[omode&3];
 				if((t & mode) == t)
@@ -210,7 +227,8 @@ devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 			}
 			break;
 		}
-    Return:
+	}
+Return:
 	c->offset = 0;
 	if((c->qid.path&CHDIR) && omode!=OREAD)
 		error(Eperm);

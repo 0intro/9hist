@@ -84,8 +84,7 @@ tcpflushincoming(Ipconv *s)
 	seg.dest = s->psrc;
 	seg.flags = ACK;	
 	seg.seq = tcb->snd.ptr;
-	tcb->last_ack = tcb->rcv.nxt;
-	seg.ack = tcb->rcv.nxt;
+	seg.ack = tcb->last_ack = tcb->rcv.nxt;
 
 	sndrst(s->dst, Myip[Myself], 0, &seg);
 	localclose(s, 0);
@@ -308,10 +307,6 @@ tcpinput(Ipifc *ifc, Block *bp)
 		goto output;
 	}
 
-	/*
-	 *  keep looping till we've processed this packet plus any
-	 *  adjacent packets in the resequence queue
-	 */
 	for(;;) {
 		if(seg.flags & RST) {
 			if(tcb->state == Syn_received
@@ -414,12 +409,10 @@ tcpinput(Ipifc *ifc, Block *bp)
 
 				tcprcvwin(s);
 	
-				if(tcb->acktimer.state != TimerON)
-					tcpgo(&tcb->acktimer);
+				tcpgo(&tcb->acktimer);
 
-				if(tcb->rcv.nxt-tcb->last_ack > Streamhi/2)
+				if(tcb->max_snd <= tcb->rcv.nxt-tcb->last_ack)
 					tcb->flags |= FORCE;
-
 				break;
 			case Finwait2:
 				/* no process to read the data, send a reset */
@@ -465,22 +458,16 @@ tcpinput(Ipifc *ifc, Block *bp)
 			}
 		}
 
-		/*
-		 *  get next adjacent segment from the requence queue.
-		 *  dump/trim any overlapping segments
-		 */
-		for(;;) {
-			if(tcb->reseq == 0)
-				goto output;
-
+		while(tcb->reseq) {
 			if(seq_ge(tcb->rcv.nxt, tcb->reseq->seg.seq) == 0)
-				goto output;
+				break;
 
 			get_reseq(tcb, &tos, &seg, &bp, &length);
 
 			if(trim(tcb, &seg, &bp, &length) == 0)
 				break;
 		}
+		break;
 	}
 output:
 	tcpoutput(s);
@@ -582,7 +569,7 @@ update(Ipconv *s, Tcp *seg)
 int
 in_window(Tcpctl *tcb, int seq)
 {
-	return seq_within(seq, tcb->rcv.nxt, tcb->rcv.nxt+tcb->rcv.wnd-1);
+	return seq_within(seq, tcb->rcv.nxt, (int)(tcb->rcv.nxt+tcb->rcv.wnd-1));
 }
 
 void
@@ -707,8 +694,8 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 			accept++;
 		else
 		if(len != 0) {
-			if(in_window(tcb, seg->seq+len-1) || 
-			seq_within(tcb->rcv.nxt, seg->seq,seg->seq+len-1))
+			if(in_window(tcb, (int)(seg->seq+len-1)) || 
+			seq_within(tcb->rcv.nxt, seg->seq,(int)(seg->seq+len-1)))
 				accept++;
 		}
 	}
@@ -874,7 +861,7 @@ localclose(Ipconv *s, char reason[])
 }
 
 int
-seq_within(ulong x, ulong low, ulong high)
+seq_within(int x, int low, int high)
 {
 	if(low <= high){
 		if(low <= x && x <= high)
@@ -888,27 +875,27 @@ seq_within(ulong x, ulong low, ulong high)
 }
 
 int
-seq_lt(ulong x, ulong y)
+seq_lt(int x, int y)
 {
-	return x < y;
+	return (long)(x-y) < 0;
 }
 
 int
-seq_le(ulong x, ulong y)
+seq_le(int x, int y)
 {
-	return x <= y;
+	return (long)(x-y) <= 0;
 }
 
 int
-seq_gt(ulong x, ulong y)
+seq_gt(int x, int y)
 {
-	return x > y;
+	return (long)(x-y) > 0;
 }
 
 int
-seq_ge(ulong x, ulong y)
+seq_ge(int x, int y)
 {
-	return x >= y;
+	return (long)(x-y) >= 0;
 }
 
 void

@@ -22,34 +22,28 @@ enum	/* op */
 };
 
 static int	fpunimp(ulong);
-static ulong	branch(Ureg*, ulong, ulong);
+static ulong	branch(Ureg*, ulong);
 
 void
 fptrap(Ureg *ur)
 {
-	ulong iw, iw_4, npc;
-	static int counter;
+	ulong iw, npc;
 
-	if((u->fpsave.fpstatus&(1<<17)) == 0)
+	if((up->fpsave.fpstatus&(1<<17)) == 0)
 		return;
 
-if((counter&0xff) == 0)
+print("fpt: %d %s %lux\n", up->pid, up->text, up->fpsave.fpstatus);
 
-	if(tlbp(ur->pc) == 0)
-		panic("not in tlb %lux\n", ur->pc);
-	iw = *(ulong*)ur->pc;
-	iw_4 = iw;
-	if(ur->cause & (1<<31)){
-		if(tlbp(ur->pc+4) == 0)
-			panic("not in tlb %lux\n", ur->pc+4);
+	if(ur->cause & (1<<31))
 		iw = *(ulong*)(ur->pc+4);
-	}
+	else
+		iw = *(ulong*)ur->pc;
 
 	if(fpunimp(iw) == 0)
 		return;
 
 	if(ur->cause & (1<<31)){
-		npc = branch(ur, iw_4, u->fpsave.fpstatus);
+		npc = branch(ur, up->fpsave.fpstatus);
 		if(npc == 0)
 			return;
 		ur->pc = npc;
@@ -57,7 +51,7 @@ if((counter&0xff) == 0)
 	else
 		ur->pc += 4;
 
-	u->fpsave.fpstatus &= ~(1<<17);
+	up->fpsave.fpstatus = up->fpsave.fpstatus & ~(1<<17);
 }
 
 static void
@@ -115,8 +109,8 @@ fpunimp(ulong iw)
 	ft = (iw>>16) & ((1<<5)-1);
 	fs = (iw>>11) & ((1<<5)-1);
 	fd = (iw>>6) & ((1<<5)-1);
-	unpack(&u->fpsave, fmt, fs, &ss, &es);
-	unpack(&u->fpsave, fmt, ft, &st, &et);
+	unpack(&up->fpsave, fmt, fs, &ss, &es);
+	unpack(&up->fpsave, fmt, ft, &st, &et);
 	ed = 0;
 	maxe = 0;
 	maxm = 0;
@@ -132,11 +126,11 @@ fpunimp(ulong iw)
 	}
 	switch(op){
 	case ABS:
-		u->fpsave.fpreg[fd] &= ~0x80000000;
+		up->fpsave.fpreg[fd] &= ~0x80000000;
 		return 1;
 
 	case NEG:
-		u->fpsave.fpreg[fd] ^= 0x80000000;
+		up->fpsave.fpreg[fd] ^= 0x80000000;
 		return 1;
 
 	case SUB:
@@ -171,10 +165,10 @@ fpunimp(ulong iw)
 	default:	/* probably a compare */
 		return 0;
 	}
-	if(ed <= -(maxe-5)){	/* guess: underflow */
-		zeroreg(&u->fpsave, fmt, fd, sd);
+	if(ed <= -(maxe-4)){	/* guess: underflow */
+		zeroreg(&up->fpsave, fmt, fd, sd);
 		/* Set underflow exception and sticky */
-		u->fpsave.fpstatus |= (1<<3)|(1<<13);
+		up->fpsave.fpstatus |= (1<<3)|(1<<13);
 		return 1;
 	}
 	return 0;
@@ -194,10 +188,11 @@ reg(Ureg *ur, int regno)
 }
 
 static ulong
-branch(Ureg *ur, ulong iw, ulong fcr31)
+branch(Ureg *ur, ulong fcr31)
 {
-	ulong npc, rs, rt, rd, offset;
+	ulong iw, npc, rs, rt, rd, offset;
 
+	iw = *(ulong*)ur->pc;
 	rs = (iw>>21) & 0x1F;
 	if(rs)
 		rs = *reg(ur, rs);

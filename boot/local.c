@@ -2,30 +2,18 @@
 #include <libc.h>
 #include <../boot/boot.h>
 
-static char diskname[2*NAMELEN];
 static char *disk;
 static char *niob;
 
 void
 configlocal(Method *mp)
 {
-	char *p;
-	int n;
-
-	disk = mp->arg;			/* 1st try from config file */
-	if(disk && (niob = strchr(disk, ' ')))	/* assign = */
-		*niob++ = 0;
-	if(strncmp(argv0, "dksc(0,", 7) == 0){
-		p = strchr(argv0, ',');
-		n = strtoul(p+1, 0, 10);
-		sprint(diskname, "#w%d/sd%dfs", n, n);
-		disk = diskname;
-		/*print("argv0=\"%s\" --> disk = \"%s\"\n", argv0, disk);/**/
-	}
 	if(*sys == '/' || *sys == '#')
 		disk = sys;
-	if(disk)
-		setenv("bootdisk", disk);
+	else
+		disk = mp->arg;
+	if(niob = strchr(disk, ' '))	/* assign = */
+		*niob++ = 0;
 	USED(mp);
 }
 

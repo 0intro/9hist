@@ -13,21 +13,21 @@ fault(ulong addr, int read)
 	Segment *s;
 	char *sps;
 
-	sps = u->p->psstate;
-	u->p->psstate = "Fault";
+	sps = up->psstate;
+	up->psstate = "Fault";
 	spllo();
 
 	m->pfault++;
 	for(;;) {
-		s = seg(u->p, addr, 1);
+		s = seg(up, addr, 1);
 		if(s == 0) {
-			u->p->psstate = sps;
+			up->psstate = sps;
 			return -1;
 		}
 
 		if(!read && (s->type&SG_RONLY)) {
 			qunlock(&s->lk);
-			u->p->psstate = sps;
+			up->psstate = sps;
 			return -1;
 		}
 
@@ -35,14 +35,14 @@ fault(ulong addr, int read)
 			break;
 	}
 
-	u->p->psstate = sps;
+	up->psstate = sps;
 	return 0;
 }
 
 int
 fixfault(Segment *s, ulong addr, int read, int doputmmu)
 {
-	int type;
+	int i, type;
 	Pte **p, *etp;
 	ulong mmuphys=0, soff;
 	Page **pg, *lkp, *new;
@@ -80,11 +80,6 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 
-		lkp = *pg;
-		lock(lkp);
-		if(lkp->image)     
-			duppage(lkp);	
-		unlock(lkp);
 		goto done;
 
 	case SG_BSS:
@@ -155,8 +150,10 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		break;
 	}
 
-	if(s->flushme)
-		memset((*pg)->cachectl, PG_TXTFLUSH, sizeof(new->cachectl));
+	if(s->flushme){
+		for(i = 0; i < MAXMACH; i++)
+			(*pg)->cachectl[i] |= PG_TXTFLUSH;
+	}
 
 	qunlock(&s->lk);
 
@@ -203,7 +200,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	if(loadrec == 0) {			/* This is demand load */
 		c = s->image->c;
 		while(waserror()) {
-			if(strcmp(u->error, Eintr) == 0)
+			if(strcmp(up->error, Eintr) == 0)
 				continue;
 			kunmap(k);
 			putpage(new);
@@ -264,8 +261,8 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 void
 faulterror(char *s)
 {
-	if(u->nerrlab) {
-		postnote(u->p, 1, s, NDebug);
+	if(up->nerrlab) {
+		postnote(up, 1, s, NDebug);
 		error(s);
 	}
 	pexit(s, 0);
@@ -281,7 +278,7 @@ okaddr(ulong addr, ulong len, int write)
 
 	if((long)len >= 0) {
 		for(;;) {
-			s = seg(u->p, addr, 0);
+			s = seg(up, addr, 0);
 			if(s == 0 || (write && (s->type&SG_RONLY)))
 				break;
 
@@ -336,18 +333,20 @@ seg(Proc *p, ulong addr, int dolock)
 	Segment **s, **et, *n;
 
 	et = &p->seg[NSEG];
-	for(s = p->seg; s < et; s++)
-		if(n = *s){
-			if(addr >= n->base && addr < n->top) {
-				if(dolock == 0)
-					return n;
+	for(s = p->seg; s < et; s++) {
+		n = *s;
+		if(n == 0)
+			continue;
+		if(addr >= n->base && addr < n->top) {
+			if(dolock == 0)
+				return n;
 	
-				qlock(&n->lk);
-				if(addr >= n->base && addr < n->top)
-					return n;
-				qunlock(&n->lk);
-			}
+			qlock(&n->lk);
+			if(addr >= n->base && addr < n->top)
+				return n;
+			qunlock(&n->lk);
 		}
+	}
 
 	return 0;
 }

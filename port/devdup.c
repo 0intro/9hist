@@ -12,7 +12,7 @@ int
 dupgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
 	char buf[8];
-	Fgrp *fgrp = u->p->fgrp;
+	Fgrp *fgrp = up->fgrp;
 	Chan *f;
 	static int perm[] = { 0400, 0200, 0600, 0 };
 
@@ -75,7 +75,7 @@ dupopen(Chan *c, int omode)
 		return c;
 	}
 	fdtochan(c->qid.path, openmode(omode), 0, 0);	/* error check only */
-	f = u->p->fgrp->fd[c->qid.path];
+	f = up->fgrp->fd[c->qid.path];
 	close(c);
 	incref(f);
 	if(omode & OCEXEC)

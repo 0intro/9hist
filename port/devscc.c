@@ -63,9 +63,7 @@ enum
 
 	/* wr 11 */
 	TRxCOutBR=	2,
-	TxClockTRxC=	1<<3,
 	TxClockBR=	2<<3,
-	RxClockTRxC=	1<<5,
 	RxClockBR=	2<<5,
 	TRxCOI=		1<<2,
 
@@ -232,24 +230,6 @@ sccbits(SCC *sp, int n)
 	sccwrreg(sp, 3, 0);
 	sp->sticky[5] = (sp->sticky[5]&~Txbitmask) | tbits;
 	sccwrreg(sp, 5, 0);
-}
-
-/*
- *  set/clear external clock mode; the indigo uses the CTS pin,
- *  so we disable external interrupts.
- */
-void
-sccextclk(SCC *sp, int n)
-{
-	if(n){
-		sp->sticky[1] &= ~ExtIntEna;
-		sp->sticky[11] = TxClockTRxC | RxClockTRxC;
-	}else{
-		sp->sticky[1] |= ExtIntEna;
-		sp->sticky[11] = TxClockBR | RxClockBR | TRxCOutBR;
-	}
-	sccwrreg(sp, 1, 0);
-	sccwrreg(sp, 11, 0);
 }
 
 /*
@@ -506,13 +486,6 @@ sccspecial(int port, IOQ *oq, IOQ *iq, int baud)
 {
 	SCC *sp = scc[port];
 
-	/* let output drain */
-	if(sp->oq){
-		while(cangetc(sp->oq))
-			sleep(&sp->oq->r, cangetc, sp->oq);
-		tsleep(&sp->oq->r, cangetc, sp->oq, 50);
-	}
-
 	sp->special = 1;
 	sp->oq = oq;
 	sp->iq = iq;
@@ -612,9 +585,7 @@ sccoput(Queue *q, Block *bp)
 		nexterror();
 	}
 	if(bp->type == M_CTL){
-		if(*bp->rptr == '!')	/* do it now! */
-			++bp->rptr;
-		else while(cangetc(cq))	/* else let output drain */
+		while (cangetc(cq))	/* let output drain */
 			sleep(&cq->r, cangetc, cq);
 		n = strtoul((char *)(bp->rptr+1), 0, 0);
 		switch(*bp->rptr){
@@ -624,10 +595,6 @@ sccoput(Queue *q, Block *bp)
 				sccbreak(sp, 0);
 			else
 				sccsetbaud(sp, n);
-			break;
-		case 'C':
-		case 'c':
-			sccextclk(sp, n);
 			break;
 		case 'D':
 		case 'd':

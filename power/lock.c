@@ -50,9 +50,9 @@ lockinit(void)
 Page*
 lkpage(Segment *s, ulong va)
 {
-	uchar *p, *top;
-	Page *pg;
 	int i;
+	Page *pg;
+	uchar *p, *top;
 
 	USED(s);
 	lock(&semalloc.lock);

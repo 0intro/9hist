@@ -12,7 +12,7 @@
 int
 newfd(Chan *c)
 {
-	Fgrp *f = u->p->fgrp;
+	Fgrp *f = up->fgrp;
 	int i;
 
 	lock(f);
@@ -36,7 +36,7 @@ fdtochan(int fd, int mode, int chkmnt, int iref)
 	Fgrp *f;
 
 	c = 0;
-	f = u->p->fgrp;
+	f = up->fgrp;
 
 	lock(f);
 	if(fd<0 || NFD<=fd || (c = f->fd[fd])==0) {
@@ -90,12 +90,12 @@ syspipe(ulong *arg)
 	int fd[2];
 	Chan *c[2];
 	Dev *d;
-	Fgrp *f = u->p->fgrp;
+	Fgrp *f = up->fgrp;
 
 	validaddr(arg[0], 2*BY2WD, 1);
 	evenaddr(arg[0]);
 	d = &devtab[devno('|', 0)];
-	c[0] = (*d->attach)(0);
+	c[0] = namec("#|", Atodir, 0, 0);
 	c[1] = 0;
 	fd[0] = -1;
 	fd[1] = -1;
@@ -109,9 +109,9 @@ syspipe(ulong *arg)
 			f->fd[fd[1]]=0;
 		nexterror();
 	}
-	c[1] = (*d->clone)(c[0], 0);
-	(*d->walk)(c[0], "data");
-	(*d->walk)(c[1], "data1");
+	c[1] = clone(c[0], 0);
+	walk(c[0], "data", 1);
+	walk(c[1], "data1", 1);
 	c[0] = (*d->open)(c[0], ORDWR);
 	c[1] = (*d->open)(c[1], ORDWR);
 	fd[0] = newfd(c[0]);
@@ -127,7 +127,7 @@ sysdup(ulong *arg)
 {
 	int fd;
 	Chan *c, *oc;
-	Fgrp *f = u->p->fgrp;
+	Fgrp *f = up->fgrp;
 
 	/*
 	 * Close after dup'ing, so date > #d/1 works
@@ -184,7 +184,7 @@ fdclose(int fd, int flag)
 {
 	int i;
 	Chan *c;
-	Fgrp *f = u->p->fgrp;
+	Fgrp *f = up->fgrp;
 
 	lock(f);
 	c = f->fd[fd];
@@ -224,7 +224,7 @@ unionread(Chan *c, void *va, long n)
 	Chan *nc;
 	Pgrp *pg;
 
-	pg = u->p->pgrp;
+	pg = up->pgrp;
 	rlock(&pg->ns);
 
 	for(;;) {
@@ -419,30 +419,34 @@ syschdir(ulong *arg)
 	Chan *c;
 
 	validaddr(arg[0], 1, 0);
+
 	c = namec((char*)arg[0], Atodir, 0, 0);
-	close(u->dot);
-	u->dot = c;
+	close(up->dot);
+	up->dot = c;
 	return 0;
 }
 
 long
 bindmount(ulong *arg, int ismount)
 {
-	Chan *c0, *c1, *bc;
 	ulong flag;
-	long ret;
-	int fd;
+	int fd, ret;
+	Chan *c0, *c1, *bc;
 	struct{
 		Chan	*chan;
 		char	*spec;
+		char	recov;
 	}bogus;
 
 	flag = arg[2];
 	fd = arg[0];
 	if(flag>MMASK || (flag&MORDER)==(MBEFORE|MAFTER))
 		error(Ebadarg);
+
+	bogus.recov = flag&MRECOV;
+
 	if(ismount){
-		bc = fdtochan(fd, 2, 0, 1);
+		bc = fdtochan(fd, ORDWR, 0, 1);
 		if(waserror()) {
 			close(bc);
 			nexterror();
@@ -462,24 +466,25 @@ bindmount(ulong *arg, int ismount)
 		close(bc);
 	}
 	else {
+		bogus.spec = 0;
 		validaddr(arg[0], 1, 0);
 		c0 = namec((char*)arg[0], Aaccess, 0, 0);
 	}
+
 	if(waserror()){
 		close(c0);
 		nexterror();
 	}
+
 	validaddr(arg[1], 1, 0);
 	c1 = namec((char*)arg[1], Amount, 0, 0);
 	if(waserror()){
 		close(c1);
 		nexterror();
 	}
-	if((c0->qid.path^c1->qid.path) & CHDIR)
-		error(Emount);
-	if(flag && !(c0->qid.path&CHDIR))
-		error(Emount);
-	ret = mount(c0, c1, flag);
+
+	ret = mount(c0, c1, flag, bogus.spec);
+
 	poperror();
 	close(c1);
 	poperror();

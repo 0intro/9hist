@@ -18,8 +18,8 @@ IOQ	lineq;			/* lock to getc; interrupt putc's */
 IOQ	printq;
 KIOQ	kbdq;
 
-static Ref	ctl;			/* number of opens to the control file */
-static int	raw;			/* true if raw has been requested on a ctl file */
+static Ref	ctl;		/* number of opens to the control file */
+static int	raw;		/* true if ctl file is raw */
 
 char	sysname[NAMELEN];
 
@@ -178,13 +178,13 @@ pprint(char *fmt, ...)
 	Chan *c;
 	int n;
 
-	if(u->p->fgrp == 0)
+	if(up->fgrp == 0)
 		return 0;
 
-	c = u->p->fgrp->fd[2];
+	c = up->fgrp->fd[2];
 	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
 		return 0;
-	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
+	n = sprint(buf, "%s %d: ", up->text, up->pid);
 	n = doprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 
 	if(waserror())
@@ -323,7 +323,6 @@ enum{
 	Qdir,
 	Qauth,
 	Qauthcheck,
-	Qauthent,
 	Qclock,
 	Qcons,
 	Qconsctl,
@@ -351,7 +350,6 @@ enum{
 Dirtab consdir[]={
 	"authenticate",	{Qauth},	0,		0666,
 	"authcheck",	{Qauthcheck},	0,		0666,
-	"authenticator", {Qauthent},	0,		0666,
 	"clock",	{Qclock},	2*NUMSIZE,	0444,
 	"cons",		{Qcons},	0,		0660,
 	"consctl",	{Qconsctl},	0,		0220,
@@ -483,12 +481,9 @@ consclose(Chan *c)
 				raw = 0;
 			unlock(&ctl);
 		}
-		break;
 	case Qauth:
 	case Qauthcheck:
-	case Qauthent:
 		authclose(c);
-		break;
 	}
 }
 
@@ -564,7 +559,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			n = 6*NUMSIZE - k;
 		/* easiest to format in a separate buffer and copy out */
 		for(i=0; i<6 && NUMSIZE*i<k+n; i++){
-			l = u->p->time[i];
+			l = up->time[i];
 			if(i == TReal)
 				l = MACHP(0)->ticks - l;
 			l = TK2MS(l);
@@ -574,16 +569,16 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return n;
 
 	case Qpgrpid:
-		return readnum(offset, buf, n, u->p->pgrp->pgrpid, NUMSIZE);
+		return readnum(offset, buf, n, up->pgrp->pgrpid, NUMSIZE);
 
 	case Qnoteid:
-		return readnum(offset, buf, n, u->p->noteid, NUMSIZE);
+		return readnum(offset, buf, n, up->noteid, NUMSIZE);
 
 	case Qpid:
-		return readnum(offset, buf, n, u->p->pid, NUMSIZE);
+		return readnum(offset, buf, n, up->pid, NUMSIZE);
 
 	case Qppid:
-		return readnum(offset, buf, n, u->p->parentpid, NUMSIZE);
+		return readnum(offset, buf, n, up->parentpid, NUMSIZE);
 
 	case Qtime:
 		return readnum(offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
@@ -605,9 +600,6 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	case Qauth:
 		return authread(c, cbuf, n);
 
-	case Qauthent:
-		return authentread(c, cbuf, n);
-
 	case Qhostowner:
 		return readstr(offset, buf, n, eve);
 
@@ -615,7 +607,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return readstr(offset, buf, n, hostdomain);
 
 	case Quser:
-		return readstr(offset, buf, n, u->p->user);
+		return readstr(offset, buf, n, up->user);
 
 	case Qnull:
 		return 0;
@@ -813,9 +805,6 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	case Qauthcheck:
 		return authcheck(c, a, n);
 
-	case Qauthent:
-		return authentwrite(c, a, n);
-
 	case Qnull:
 		break;
 
@@ -851,7 +840,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			kickpager();
 			break;
 		}
-		if(cpuserver && strcmp(u->p->user, eve) != 0)
+		if(cpuserver && !iseve())
 			error(Eperm);
 		if(buf[0]<'0' || '9'<buf[0])
 			error(Ebadarg);

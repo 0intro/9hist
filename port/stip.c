@@ -139,7 +139,7 @@ ipetheroput(Queue *q, Block *bp)
 	if(bp->type != M_DATA){
 		/* Allow one setting of the ip address */
 		if(streamparse("setip", bp)) {
-			if(strncmp(eve, u->p->user, sizeof(eve)) != 0)
+			if(strncmp(eve, up->user, sizeof(eve)) != 0)
 				error(Eperm);
 			ptr = bp->rptr;
 			Myip[Myself] = ipparse((char *)ptr);
@@ -370,7 +370,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	ushort id;
 	Block *bl, **l, *last, *prev;
 	int ovlap, len, fragsize, pktposn;
-	int fend;
+	int end;
 
 	/* Check ethrnet has handed us a contiguous buffer */
 	if(bp->next)
@@ -453,10 +453,10 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	/* Check to see if succeeding segments overlap */
 	if(bp->next) {
 		l = &bp->next;
-		fend = BLKFRAG(bp)->foff + BLKFRAG(bp)->flen;
+		end = BLKFRAG(bp)->foff + BLKFRAG(bp)->flen;
 		/* Take completely covered segements out */
 		while(*l){
-			ovlap = fend - BLKFRAG(*l)->foff;
+			ovlap = end - BLKFRAG(*l)->foff;
 			if(ovlap <= 0)
 				break;
 			fragstat.succ++;

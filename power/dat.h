@@ -10,8 +10,6 @@ typedef struct MMU	MMU;
 typedef struct PMMU	PMMU;
 typedef struct Softtlb	Softtlb;
 typedef struct Ureg	Ureg;
-typedef struct User	User;
-
 /*
  *  parameters for sysproc.c
  */
@@ -46,6 +44,10 @@ struct Conf
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
+	ulong	ipif;		/* Ip protocol interfaces */
+	ulong	ip;		/* Ip conversations per interface */
+	ulong	arp;		/* Arp table size */
+	ulong	frag;		/* Ip fragment assemble queue size */
 	ulong	debugger;	/* use processor 1 as a kernel debugger */
 };
 
@@ -71,6 +73,14 @@ struct	FPsave
 struct PMMU
 {
 	int	pidonmach[MAXMACH];
+	/*
+	 * I/O point for hotrod interfaces.
+	 * This is the easiest way to allocate
+	 * them, but not the prettiest or most general.
+	 */
+	Cycmsg	*kcyc;
+	Cycmsg	*ucyc;
+	Cycmsg	*fcyc;
 };
 
 #include "../port/portdat.h"
@@ -83,19 +93,21 @@ struct Cycmsg
 	uchar	intr;			/* flag: interrupt has occurred */
 };
 
+/* First FOUR members offsets known by l.s */
 struct Mach
 {
-	int	machno;			/* physical id of processor NB. MUST BE FIRST */
-	Softtlb *stb;			/* Software tlb simulation NB. MUST BE SECOND */
-	ulong	splpc;			/* pc that called splhi() */
-	ulong	ticks;			/* of the clock since boot time */
+	int	machno;			/* physical id of processor */
+	Softtlb *stb;			/* Software tlb simulation  */
 	Proc	*proc;			/* current process on this processor */
+	ulong	splpc;			/* pc that called splhi() */
+	/* Ok to change from here */
+	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	char	pidhere[NTLBPID];	/* is this pid possibly in this mmu? */
 	int	lastpid;		/* last pid allocated on this machine */
-	Proc	*pidproc[NTLBPID];	/* process that owns this tlbpid on this mach */
+	Proc	*pidproc[NTLBPID];	/* tlb allocation table */
 	Page	*ufreeme;		/* address of upage of exited process */
 	Ureg	*ur;
 
@@ -169,45 +181,5 @@ struct
 
 #define	MACHP(n)	((Mach *)(MACHADDR+n*BY2PG))
 
-#define	NERR	15
-#define	NNOTE	5
-struct User
-{
-	Proc	*p;
-	FPsave	fpsave;			/* address of this is known by db */
-	int	scallnr;		/* sys call number - known by db */
-	Sargs	s;			/* address of this is known by db */
-	int	nerrlab;
-	Label	errlab[NERR];
-	char	error[ERRLEN];
-	char	elem[NAMELEN];		/* last name element from namec */
-	Chan	*slash;
-	Chan	*dot;
-	/*
-	 * Rest of structure controlled by devproc.c and friends.
-	 * qlock(&p->debug) to modify.
-	 */
-	Note	note[NNOTE];
-	short	nnote;
-	short	notified;		/* sysnoted is due */
-	Note	lastnote;
-	int	(*notify)(void*, char*);
-	void	*ureg;			/* User registers for notes */
-	void	*dbgreg;		/* User registers for debugging in proc */
-	ulong	svstatus;
-	ulong	svr1;
-	/*
-	 *  machine dependent User stuff
-	 */
-	/*
-	 * I/O point for hotrod interfaces.
-	 * This is the easiest way to allocate
-	 * them, but not the prettiest or most general.
-	 */
-	Cycmsg	kcyc;
-	Cycmsg	ucyc;
-	Cycmsg	fcyc;
-};
-
 extern register Mach	*m;
-extern register User	*u;
+extern register Proc	*up;

@@ -42,7 +42,7 @@ settime(int islocal)
 		if(f < 0)
 			return;
 		if(mount(f, "/n/boot", MREPL, "") < 0){
-warning("settime mount");
+			warning("settime mount");
 			close(f);
 			return;
 		}
@@ -66,6 +66,7 @@ warning("settime mount");
 	if(write(f, dirbuf, strlen(dirbuf)) < 0)
 		warning("can't set #c/time");
 	close(f);
+	print("\n");
 }
 
 #define SEC2MIN 60L

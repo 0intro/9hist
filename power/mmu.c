@@ -4,28 +4,17 @@
 #include	"dat.h"
 #include	"fns.h"
 
-/*
- * Called splhi, not in Running state
- */
 void
-mapstack(Proc *p)
+mmuswitch(Proc *p)
 {
-	short tp;
-	ulong tlbvirt, tlbphys;
-
 	if(p->newtlb) {
 		memset(p->pidonmach, 0, sizeof p->pidonmach);
 		p->newtlb = 0;
 	}
+	if(p->pidonmach[m->machno] == 0)
+		newtlbpid(p);
 
-	tp = p->pidonmach[m->machno];
-	if(tp == 0)
-		tp = newtlbpid(p);
-
-	tlbvirt = USERADDR | PTEPID(tp);
-	tlbphys = p->upage->pa | PTEWRITE|PTEVALID|PTEGLOBL;
-	puttlbx(0, tlbvirt, tlbphys);
-	u = (User*)USERADDR;
+	putcontext(p->pidonmach[m->machno]);
 }
 
 void
@@ -76,7 +65,6 @@ void
 putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 {
 	short tp;
-	Proc *p;
 	char *ctl;
 
 	splhi();
@@ -88,10 +76,9 @@ putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 		*ctl = PG_NOFLUSH;
 	}
 
-	p = u->p;
-	tp = p->pidonmach[m->machno];
+	tp = up->pidonmach[m->machno];
 	if(tp == 0)
-		tp = newtlbpid(p);
+		tp = newtlbpid(up);
 
 	tlbvirt |= PTEPID(tp);
 	putstlb(tlbvirt, tlbphys);
@@ -151,21 +138,14 @@ void
 flushmmu(void)
 {
 	splhi();
-	u->p->newtlb = 1;
-	mapstack(u->p);
+	up->newtlb = 1;
+	mmuswitch(up);
 	spllo();
 }
 
 void
 clearmmucache(void)
 {
-}
-
-void
-invalidateu(void)
-{
-	puttlbx(0, KZERO | PTEPID(0), 0);
-	putstlb(KZERO | PTEPID(0), 0);
 }
 
 void

@@ -106,7 +106,7 @@ pager(void *junk)
 	ep = &p[conf.nproc];
 
 loop:
-	u->p->psstate = "Idle";
+	up->psstate = "Idle";
 	sleep(&swapalloc.r, needpages, 0);
 
 	for(;;) {
@@ -133,10 +133,10 @@ loop:
 					case SG_BSS:
 					case SG_STACK:
 					case SG_SHARED:
-						u->p->psstate = "Pageout";
+						up->psstate = "Pageout";
 						pageout(p, s);
 						if(ioptr != 0) {
-							u->p->psstate = "I/O";
+							up->psstate = "I/O";
 							executeio();
 						}
 					}

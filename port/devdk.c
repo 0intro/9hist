@@ -820,7 +820,7 @@ dkcloneline(Chan *c)
 			lp->state = Lopened;
 
 			/* current user becomes owner */
-			netown(lp, u->p->user, 0);
+			netown(lp, up->user, 0);
 
 			qunlock(&dp->netlock);
 			return lp->lineno;
@@ -976,7 +976,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 */
 	if(strchr(addr, '\n'))
 		error(Ebadarg);
-	if(strlen(addr)+strlen(u->p->user)+2 >= sizeof(dialstr))
+	if(strlen(addr)+strlen(up->user)+2 >= sizeof(dialstr))
 		error(Ebadarg);
 	strcpy(dialstr, addr);
 	bang = strchr(dialstr, '!');
@@ -990,7 +990,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 		t_val = T_SRV;
 		d_val = D_DIAL;
 		strcat(dialstr, "\n");
-		strcat(dialstr, u->p->user);
+		strcat(dialstr, up->user);
 		strcat(dialstr, "\n");
 		break;
 	case Announce:

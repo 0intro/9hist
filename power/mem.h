@@ -20,9 +20,9 @@
 /*
  * Time
  */
-#define HZ		100
-#define	MS2HZ		(1000/HZ)		/* millisec per clock tick */
-#define	TK2SEC(t)	((t)/HZ)		/* ticks to seconds */
+#define HZ		20
+#define	MS2HZ		50			/* millisec per clock tick */
+#define	TK2SEC(t)	((t)/20)		/* ticks to seconds */
 #define	TK2MS(t)	((t)*MS2HZ)		/* ticks to milliseconds */
 #define	MS2TK(t)	((t)/MS2HZ)		/* milliseconds to ticks */
 
@@ -73,17 +73,16 @@
  */
 
 #define	MACH		25		/* R25 is m-> */
-#define	USER		24		/* R24 is u-> */
-#define	MPID		0xBF000000	/* long; low 3 bits identify mp bus slot */
-#define WBFLUSH		0xBC000000	/* D-CACHE data; used for write buffer flush */
+#define	USER		24		/* R24 is up-> */
+#define	MPID		0xBF000000	/* long; low 3 bits mp bus slot */
+#define WBFLUSH		0xBC000000	/* D-CACHE data; write buffer flush */
 
+#define UREGSIZE	0xA0		/* Sizeof(Ureg)+space for retpc & ur */
 /*
  * Fundamental addresses
  */
 
 #define	MACHADDR	0x80014000
-#define	USERADDR	0xC0000000
-#define	UREGADDR	(USERADDR+BY2PG-4-0xA0)
 /*
  * MMU
  */
@@ -93,6 +92,8 @@
 #define KSEG1	0xA0000000
 #define	KSEG2	0xC0000000
 #define	KSEGM	0xE0000000	/* mask to check which seg */
+
+#define KSTACK		4096	/* Size of kernel stack */
 
 #define	PTEGLOBL	(1<<8)
 #define	PTEVALID	(1<<9)
@@ -119,7 +120,7 @@
 #define	UZERO		KUSEG			/* base of user address space */
 #define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
 #define	USTKTOP		KZERO			/* byte just beyond user stack */
-#define	TSTKTOP		(USERADDR+USTKSIZE)	/* top of temporary stack */
+#define	TSTKTOP		(0xC0000000+USTKSIZE)	/* top of temporary stack */
 #define TSTKSIZ 	500
 #define	KZERO		KSEG0			/* base of kernel address space */
 #define	KTZERO		(KZERO+0x20000)		/* first address in kernel text */
