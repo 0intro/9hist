@@ -94,9 +94,10 @@ kickpager(void)
 void
 pager(void *junk)
 {
-	Proc *p, *ep;
-	Segment *s;
 	int i;
+	Image *img;
+	Segment *s;
+	Proc *p, *ep;
 
 	if(waserror()) 
 		panic("pager: os error\n");
@@ -115,7 +116,8 @@ loop:
 			p = proctab(0);
 
 		/* don't swap out programs from devroot.c */
-		if(devchar[p->seg[SG_TEXT]->image->c->type] == '/')
+		img = p->seg[SG_TEXT]->image;
+		if(img && devchar[img->c->type] == '/')
 			continue;
 
 		if(p->state == Dead || p->kp)

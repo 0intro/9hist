@@ -56,11 +56,9 @@ Chan*	mntchan(void);
 
 enum
 {
-	Tagspace = 1,
-	Tagfls = 0x8000,
-	Tagend = 0xfffe,
-
-	ALIGN = 256,		/* Vme block mode alignment */
+	Tagspace	= 1,
+	Tagfls		= 0x8000,
+	Tagend		= 0xfffe,
 };
 
 void
@@ -862,7 +860,7 @@ mntchk(Chan *c)
 		error(Eshutdown);
 
 	/*
-	 * Try and get the channel back
+	 * Try and get the channel back after a crash
 	 */
 	if((c->flag&CRECOV) && m->recprog == 0)
 		recoverchan(m, c);
