@@ -325,10 +325,6 @@ struct Proc
 	Seg	seg[NSEG];
 	ulong	bssend;			/* initial top of bss seg */
 	ulong	pid;
-	Lock	kidlock;		/* access to kid and sib */
-	Proc	*pop;			/* some ascendant */
-	Proc	*kid;			/* some descendant */
-	Proc	*sib;			/* non-ascendant relatives (circular list) */
 	int	nchild;
 	QLock	wait;			/* exiting children to be waited for */
 	ulong	waitmsg;
@@ -361,7 +357,7 @@ struct MMUCache
 	MMU	mmu[NMMU];
 };
 
-#define	NERR	15
+#define	NERR	20
 #define	NNOTE	5
 #define	NFD	100
 struct User

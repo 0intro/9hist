@@ -112,20 +112,6 @@ sysfork(ulong *arg)
 		if(c = u->fd[n])	/* assign = */
 			incref(c);
 	/*
-	 * Committed.  Link into hierarchy
-	 */
-	lock(&p->kidlock);
-	lock(&u->p->kidlock);
-	if(u->p->kid == 0){
-		p->sib = p;
-		u->p->kid = p;
-	}else{
-		p->sib = u->p->kid->sib;
-		u->p->kid->sib = p;
-	}
-	unlock(&u->p->kidlock);
-	unlock(&p->kidlock);
-	/*
 	 * Sched
 	 */
 	if(setlabel(&p->sched)){
@@ -133,7 +119,6 @@ sysfork(ulong *arg)
 		restore();
 		return 0;
 	}
-	p->pop = u->p;
 	p->parent = u->p;
 	p->parentpid = u->p->pid;
 	p->pgrp = u->p->pgrp;

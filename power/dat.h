@@ -316,10 +316,6 @@ struct Proc
 	Page	*upage;			/* BUG: should be unlinked from page list */
 	Seg	seg[NSEG];
 	ulong	pid;
-	Lock	kidlock;		/* access to kid and sib */
-	Proc	*pop;			/* some ascendant */
-	Proc	*kid;			/* some descendant */
-	Proc	*sib;			/* non-ascendant relatives (circular list) */
 	int	nchild;
 	QLock	wait;			/* exiting children to be waited for */
 	ulong	waitmsg;
@@ -339,7 +335,7 @@ struct Proc
 
 };
 
-#define	NERR	15
+#define	NERR	20
 #define	NFD	100
 #define	NNOTE	5
 struct User

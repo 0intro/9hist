@@ -281,9 +281,6 @@ loop:
 		unlock(&procalloc);
 		p->mach = 0;
 		p->qnext = 0;
-		p->kid = 0;
-		p->sib = 0;
-		p->pop = 0;
 		p->nchild = 0;
 		p->child = 0;
 		p->exiting = 0;
@@ -350,7 +347,7 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	 */
 	p = u->p;
 	if(r->p)
-		print("double sleep %d %d\n", r->p->pid, p->pid);
+		print("double sleep %lux %d %d\n", r, r->p->pid, p->pid);
 	p->r = r;
 	p->wokeup = 0;
 	p->state = Wakeme;
@@ -567,50 +564,7 @@ pexit(char *s, int freemem)
 		close(u->dot);
 	}
 
-	/*
-	 * Rearrange inheritance hierarchy
-	 * 1. my children's pop is now my pop
-	 */
-	lock(&c->kidlock);
-	p = c->pop;
-	if(k = c->kid)		/* assign = */
-		do{
-			k->pop = p;
-			k = k->sib;
-		}while(k != c->kid);
-
-	/*
-	 * 2. cut me from pop's tree
-	 */
-	if(p == 0)	/* init process only; fix pops */
-		goto done;
-	lock(&p->kidlock);
-	k = p->kid;
-	while(k->sib != c)
-		k = k->sib;
-	if(k == c)
-		p->kid = 0;
-	else{
-		if(p->kid == c)
-			p->kid = c->sib;
-		k->sib = c->sib;
-	}
-
-	/*
-	 * 3. pass my children (pop's grandchildren) to pop
-	 */
-	if(k = c->kid){		/* assign = */
-		if(p->kid == 0)
-			p->kid = k;
-		else{
-			l = k->sib;
-			k->sib = p->kid->sib;
-			p->kid->sib = l;
-		}
-	}
-	unlock(&p->kidlock);
     done:
-	unlock(&c->kidlock);
 
 	lock(&procalloc);	/* sched() can't do this */
 	lock(&c->debug);	/* sched() can't do this */

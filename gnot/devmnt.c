@@ -49,7 +49,8 @@ struct Mnthdr
 {
 	Mnthdr	*next;		/* in free list or writers list */
 	Mnthdr	*prev;		/* in writers list only */
-	int	writing;	/* flag: in writers list */
+	short	active;
+	short	flushing;	/* a Tflush has been sent */
 	Fcall	thdr;
 	Fcall	rhdr;
 	Rendez	r;
@@ -122,6 +123,7 @@ loop:
 	lock(&mnthdralloc);
 	if(mh = mnthdralloc.free){		/* assign = */
 		mnthdralloc.free = mh->next;
+		mh->flushing = 0;
 		unlock(&mnthdralloc);
 		return mh;
 	}
@@ -138,6 +140,9 @@ loop:
 void
 mhfree(Mnthdr *mh)
 {
+	if(mh->flushing)
+		return;
+	mh->active = 0;
 	lock(&mnthdralloc);
 	mh->next = mnthdralloc.free;
 	mnthdralloc.free = mh;
@@ -601,22 +606,49 @@ mntwunlink(MntQ *q, Mnthdr *w)		/* queue is locked and w is a writer */
 		if(q->writer)
 			q->writer->prev = 0;
 	}
-	w->writing = 0;
+}
+
+/*
+ * m->q is unlocked.  Send Tflush message to flush omh->tag.
+ * Cut off all errors.   Caller will free omh
+ */
+void
+mntflush(Mnt *m, Mnthdr *omh)	/* queue is unlocked */
+{
+	Mnthdr *mh;
+
+	if(omh->thdr.type == Tflush)
+		return;
+
+	mh = mhalloc();
+	if(waserror()){
+		omh->flushing = 0;
+		mhfree(mh);
+		return;		/* no more errors please */
+	}
+	mh->thdr.type = Tflush;
+	mh->thdr.oldtag = omh->thdr.tag;
+	mntxmit(m, mh);
+	omh->flushing = 0;
+	mhfree(mh);
+	poperror();
 }
 
 void
-mnterrdequeue(MntQ *q, Mnthdr *mh)	/* queue is unlocked */
+mnterrdequeue(Mnt *m, Mnthdr *mh)	/* queue is unlocked */
 {
 	Mnthdr *w;
+	MntQ *q;
 
+	mh->flushing = 1;
+	q = m->q;
 	qlock(q);
 	/* take self from queue if necessary */
 	if(q->reader == u->p){	/* advance a writer to reader */
 		w = q->writer;
 		if(w){
+			mntwunlink(q, w);
 			q->reader = w->p;
-			q->writer = w->next;
-			q->writer->prev = 0;
 			wakeup(&w->r);
 		}else{
 			q->reader = 0;
@@ -625,7 +657,7 @@ mnterrdequeue(MntQ *q, Mnthdr *mh)	/* queue is unlocked */
 	}else
 		mntwunlink(q, mh);
 	qunlock(q);
-
+	mntflush(m, mh);
 }
 
 int
@@ -641,11 +673,11 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	Mntbuf *mbw, *t;
 	Mnthdr *w, *ow;
 	MntQ *q;
-	int qlocked, tag;
+	int qlocked, tag, written;
 
 	mh->mbr = mballoc();
 	mbw = mballoc();
-	if(waserror()){
+	if(waserror()){			/* 1 */
 		mbfree(mh->mbr);
 		mbfree(mbw);
 		nexterror();
@@ -663,7 +695,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		goto Normal;
 
 	incref(q);
-	if(waserror()){
+	if(waserror()){		/* 2 */
 		mqfree(q);
 		nexterror();
 	}
@@ -677,7 +709,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	 */
 	n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
 	mqfree(q);
-	poperror();
+	poperror();		/* 2 */
 
 	if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
 		print("format error in mntxmit\n");
@@ -712,7 +744,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
 	mbfree(mh->mbr);
 	mbfree(mbw);
-	poperror();
+	poperror();		/* 1 */
 	return;
 
     Normal:
@@ -720,13 +752,14 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	incref(q);
 	qlock(q);
 	qlocked = 1;
-	if(waserror()){
+	if(waserror()){		/* 2 */
 		if(qlocked)
 			qunlock(q);
 		mqfree(q);
 		nexterror();
 	}
 	mh->readreply = 0;
+	mh->active = 1;
 	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n) != n){
 		print("short write in mntxmit\n");
 		error(Eshortmsg);
@@ -736,14 +769,15 @@ mntxmit(Mnt *m, Mnthdr *mh)
     Read:
 		qunlock(q);
 		qlocked = 0;
-		if(waserror()){
-			mnterrdequeue(q, mh);
+		if(waserror()){		/* 3 */
+			mnterrdequeue(m, mh);
 			nexterror();
 		}
 		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
-		poperror();
+		poperror();		/* 3 */
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
-			mnterrdequeue(q, mh);
+			print("bad reply message\n");
+			mnterrdequeue(m, mh);
 			error(Ebadmsg);
 		}
 		/*
@@ -755,13 +789,12 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		if(tag == mh->thdr.tag){	/* it's mine */
 			q->reader = 0;
 			if(w = q->writer){	/* advance a writer to reader */
+				mntwunlink(q, w);
 				q->reader = w->p;
-				q->writer = w->next;
-				if(q->writer)
-					q->writer->prev = 0;
 				w->readreply = 1;
 				wakeup(&w->r);
 			}
+			mh->active = 0;
 			qunlock(q);
 			qlocked = 0;
 			goto Respond;
@@ -774,10 +807,8 @@ mntxmit(Mnt *m, Mnthdr *mh)
 			goto Read;
 		}
 		w = &mnthdralloc.arena[tag];
-		if(!w->writing){
-			print("reply not writing\n");
+		if(w->flushing || !w->active)	/* nothing to do; mntflush will clean up */
 			goto Read;
-		}
 		t = mh->mbr;
 		mh->mbr = w->mbr;
 		w->mbr = t;
@@ -791,14 +822,13 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		/* put self in queue */
 		mh->next = q->writer;
 		mh->prev = 0;
-		mh->writing = 1;
 		if(q->writer)
 			q->writer->prev = mh;
 		q->writer = mh;
 		qunlock(q);
 		qlocked = 0;
 		if(waserror()){		/* interrupted sleep */
-			mnterrdequeue(q, mh);
+			mnterrdequeue(m, mh);
 			nexterror();
 		}
 		sleep(&mh->r, mntreadreply, mh);
@@ -807,6 +837,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		qlocked = 1;
 		if(q->reader == u->p)	/* i got promoted */
 			goto Read;
+		mh->active = 0;
 		qunlock(q);
 		qlocked = 0;
 		goto Respond;
@@ -814,11 +845,14 @@ mntxmit(Mnt *m, Mnthdr *mh)
 
     Respond:
 	mqfree(q);
-	poperror();
+	poperror();		/* 2 */
 	if(mh->rhdr.type == Rerror){
 		if(m->mntpt)
 			errors(mh->rhdr.ename);
 		error(Eshutdown);
+	}else if(mh->rhdr.type != mh->thdr.type+1){
+		print("bad type %d not %d in mntxmit\n", mh->rhdr.type, mh->thdr.type+1);
+		error(Ebadmsg);
 	}
 	/*
 	 * Copy out on read
@@ -830,7 +864,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	}
 	mbfree(mh->mbr);
 	mbfree(mbw);
-	poperror();
+	poperror();		/* 1 */
 }
 
 mntdump()
