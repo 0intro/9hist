@@ -283,7 +283,7 @@ vgactl(char *arg)
 		if(*cp)
 			cp++;
 		y = strtoul(cp, &cp, 0);
-		if(y == 0 || y > 1280)
+		if(y == 0 || y > 2048)
 			error(Ebadarg);
 
 		if(*cp)
