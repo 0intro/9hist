@@ -422,14 +422,19 @@ Block*
 adjustblock(Block* bp, int len)
 {
 	int n;
+	Block *nbp;
 
 	if(len < 0){
 		freeb(bp);
 		return nil;
 	}
 
-	if(bp->rp+len > bp->lim)
-		return copyblock(bp, len);
+	if(bp->rp+len > bp->lim){
+		nbp = copyblock(bp, len);
+		freeblist(bp);
+
+		return nbp;
+	}
 
 	n = BLEN(bp);
 	if(len > n)

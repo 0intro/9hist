@@ -19,14 +19,13 @@ static ulong storage;
 static int
 setclgd542xpage(int page)
 {
-	uchar gr9, grB;
+	uchar gr9;
 	int opage;
 
 	if(vgaxi(Seqx, 0x07) & 0xF0)
 		page = 0;
 	gr9 = vgaxi(Grx, 0x09);
-	grB = vgaxi(Grx, 0x0B);
-	if(grB & 0x20){
+	if(vgaxi(Grx, 0x0B) & 0x20){
 		vgaxo(Grx, 0x09, page<<2);
 		opage = gr9>>2;
 	}
@@ -44,52 +43,6 @@ clgd542xpage(int page)
 	lock(&clgd542xlock);
 	setclgd542xpage(page);
 	unlock(&clgd542xlock);
-}
-
-static int
-clgd542xlinear(ulong* mem, ulong* size, ulong* align)
-{
-	ulong baseaddr;
-	static Pcidev *p;
-
-	if(*size != 16*MB)
-		return 0;
-	if(*align == 0)
-		*align = 16*MB;
-	else if(*align & (16*MB-1))
-		return 0;
-
-	*mem = 0;
-
-	/*
-	 * This obviously isn't good enough on a system with
-	 * more than one PCI card from Cirrus.
-	 */
-	if(p == 0 && (p = pcimatch(p, 0x1013, 0)) == 0)
-		return 0;
-
-	switch(p->did){
-
-	case 0xA0:
-	case 0xA8:
-	case 0xAC:
-		break;
-
-	default:
-		return 0;
-	}
-
-	/*
-	 * This doesn't work if the card is on the other side of a
-	 * a bridge. Need to coordinate with PCI support.
-	 */
-	if((baseaddr = upamalloc(0, *size, *align)) == 0)
-		return 0;
-	*mem = baseaddr;
-	baseaddr = PADDR(baseaddr);
-	pcicfgw32(p, PciBAR0, baseaddr);
-
-	return *mem;
 }
 
 static void
@@ -120,8 +73,8 @@ enable(void)
 	 * Cursor colours.  
 	 */
 	vgaxo(Seqx, 0x12, sr12|0x02);
-	setcolor(0x00, Pwhite<<(32-6), Pwhite<<(32-6), Pwhite<<(32-6));
-	setcolor(0x0F, Pblack<<(32-6), Pblack<<(32-6), Pblack<<(32-6));
+	setcolor(0x00, Pblack<<(32-6), Pblack<<(32-6), Pblack<<(32-6));
+	setcolor(0x0F, Pwhite<<(32-6), Pwhite<<(32-6), Pwhite<<(32-6));
 	vgaxo(Seqx, 0x12, sr12);
 
 	mem = 0;
@@ -173,35 +126,10 @@ enable(void)
 	unlock(&clgd542xlock);
 }
 
-static uchar*
-buggery(int on)
-{
-	static uchar gr9, grA, grB;
-	uchar *p;
-
-	p = 0;
-	if(on){
-		gr9 = vgaxi(Grx, 0x09);
-		grA = vgaxi(Grx, 0x0A);
-		grB = vgaxi(Grx, 0x0B);
-
-		vgaxo(Grx, 0x0B, 0x21|grB);
-		vgaxo(Grx, 0x09, storage>>14);
-		p = ((uchar*)gscreen.base) + (storage & 0x3FFF);
-	}
-	else{
-		vgaxo(Grx, 0x09, gr9);
-		vgaxo(Grx, 0x0A, grA);
-		vgaxo(Grx, 0x0B, grB);
-	}
-
-	return p;
-}
-
 static void
 initcursor(Cursor* c, int xo, int yo, int index)
 {
-	uchar *p;
+	uchar *p, seq07;
 	uint p0, p1;
 	int opage, x, y;
 
@@ -209,22 +137,20 @@ initcursor(Cursor* c, int xo, int yo, int index)
 	 * Is linear addressing turned on? This will determine
 	 * how we access the cursor storage.
 	 */
+	seq07 = vgaxi(Seqx, 0x07);
 	opage = 0;
-	if(vgaxi(Seqx, 0x07) & 0xF0)
-		p = ((uchar*)gscreen.base) + storage;
-	else{
-#ifdef notdef
-		p = buggery(1);
-#else
+	p = ((uchar*)gscreen.base);
+	if(!(seq07 & 0xF0)){
 		opage = setclgd542xpage(storage>>16);
-		p = ((uchar*)gscreen.base) + (storage & 0xFFFF);
-#endif /* notdef */
+		p += (storage & 0xFFFF);
 	}
+	else
+		p += storage;
 	p += index*1024;
 
 	for(y = yo; y < 16; y++){
-		p0 = c->clr[2*y];
-		p1 = c->clr[2*y+1];
+		p0 = c->set[2*y];
+		p1 = c->set[2*y+1];
 		if(xo){
 			p0 = (p0<<xo)|(p1>>(8-xo));
 			p1 <<= xo;
@@ -255,11 +181,7 @@ initcursor(Cursor* c, int xo, int yo, int index)
 		y++;
 	}
 
-#ifdef notdef
-	buggery(0);
-#endif /* notdef */
-
-	if(!(vgaxi(Seqx, 0x07) & 0xF0))
+	if(!(seq07 & 0xF0))
 		setclgd542xpage(opage);
 }
 
@@ -345,7 +267,7 @@ static Hwgc clgd542xhwgc = {
 static Vgac clgd542x = {
 	"clgd542x",
 	clgd542xpage,
-	clgd542xlinear,
+	0,
 
 	0,
 };
