@@ -448,11 +448,13 @@ hufftab(Decode *dec, Huff *h, char *hb, ulong *bitcount, int maxleaf, int maxbit
 	 */
 	for(b = maxbits; b > flatbits; b--){
 		code = h->maxcode[b];
+		if(code == -1)
+			break;
 		mincode = code + 1 - bitcount[b];
 		mincode >>= b - flatbits;
 		code >>= b - flatbits;
-		for(; code >= mincode; code--)
-			h->flat[code] = (b << 8) | 0xff;
+		for(; mincode <= code; mincode++)
+			h->flat[mincode] = (b << 8) | 0xff;
 	}
 
 	for(i = 0; i < maxleaf; i++){
