@@ -341,12 +341,11 @@ echo(char *buf, int n)
 			continue;
 		}
 
-		if(ctrlt != 2){
-			ctrlt = 0;
+		if(ctrlt != 2)
 			continue;
-		}
 
 		/* ^T escapes */
+		ctrlt = 0;
 		switch(*p){
 		case 's':
 			dumpstack();
@@ -370,9 +369,10 @@ echo(char *buf, int n)
 			consdebug();
 			return;
 		case 'p':
-			x = spllo();
-			procdump();
-			splx(x);
+			//x = spllo();
+			//procdump();
+			//splx(x);
+print("procdump temporarily disabled\n");
 			return;
 		case 'q':
 			scheddump();
@@ -385,7 +385,6 @@ echo(char *buf, int n)
 			exit(0);
 			break;
 		}
-		ctrlt = 0;
 	}
 
 	qproduce(kbdq, buf, n);

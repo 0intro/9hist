@@ -125,12 +125,39 @@ struct	Buf
 	ulong	phys;
 	Buf*	next;
 };
+
 struct	AQueue
 {
 	Lock;
 	Buf*	first;
 	Buf*	last;
 };
+
+static	struct
+{
+	QLock;
+	Rendez	vous;
+	int	bufinit;	/* boolean if buffers allocated */
+	int	curcount;	/* how much data in current buffer */
+	int	active;		/* boolean dma running */
+	int	intr;		/* boolean an interrupt has happened */
+	int	amode;		/* Aclosed/Aread/Awrite for /audio */
+	int	rivol[Nvol];		/* right/left input/output volumes */
+	int	livol[Nvol];
+	int	rovol[Nvol];
+	int	lovol[Nvol];
+	int	major;		/* SB16 major version number (sb 4) */
+	int	minor;		/* SB16 minor version number */
+	ulong	totcount;	/* how many bytes processed since open */
+	vlong	tottime;	/* time at which totcount bytes were processed */
+
+	Buf	buf[Nbuf];	/* buffers and queues */
+	AQueue	empty;
+	AQueue	full;
+	Buf*	current;
+	Buf*	filling;
+} input, output;
+
 static	struct
 {
 	QLock;
@@ -181,7 +208,7 @@ static	struct
 /*
  * Grab control of the IIC/L3 shared pins
  */
-static inline void L3_acquirepins(void)
+static void L3_acquirepins(void)
 {
 	GPSR = (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
 	GPDR |=  (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
@@ -190,7 +217,7 @@ static inline void L3_acquirepins(void)
 /*
  * Release control of the IIC/L3 shared pins
  */
-static inline void L3_releasepins(void)
+static void L3_releasepins(void)
 {
 	GPDR &= ~(GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
 	GPCR = (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
@@ -211,7 +238,7 @@ static void __init L3_init(void)
  * Get a bit. The clock is high on entry and on exit. Data is read after
  * the clock low time has expired.
  */
-static inline int L3_getbit(void)
+static int L3_getbit(void)
 {
 	int data;
 
@@ -230,7 +257,7 @@ static inline int L3_getbit(void)
  * Send a bit. The clock is high on entry and on exit. Data is sent only
  * when the clock is low (I2C compatibility).
  */
-static inline void L3_sendbit(int bit)
+static void L3_sendbit(int bit)
 {
 	GPCR = GPIO_L3_SCLK_o;
 
@@ -358,181 +385,8 @@ static int L3_read(char addr, char * data, int len)
 	return bytes;
 }
 
-static	void	swab(uchar*);
-
-static	char	Emajor[]	= "soundblaster not responding/wrong version";
 static	char	Emode[]		= "illegal open mode";
 static	char	Evolume[]	= "illegal volume specifier";
-
-static	int
-sbcmd(int val)
-{
-	int i, s;
-
-	for(i=1<<16; i!=0; i--) {
-		s = inb(blaster.wstatus);
-		if((s & 0x80) == 0) {
-			outb(blaster.write, val);
-			return 0;
-		}
-	}
-/*	print("#A: sbcmd (0x%.2x) timeout\n", val);	/**/
-	return 1;
-}
-
-static	int
-sbread(void)
-{
-	int i, s;
-
-	for(i=1<<16; i!=0; i--) {
-		s = inb(blaster.rstatus);
-		if((s & 0x80) != 0) {
-			return inb(blaster.read);
-		}
-	}
-/*	print("#A: sbread did not respond\n");	/**/
-	return -1;
-}
-
-static int
-ess1688w(int reg, int val)
-{
-	if(sbcmd(reg) || sbcmd(val))
-		return 1;
-
-	return 0;
-}
-
-static int
-ess1688r(int reg)
-{
-	if(sbcmd(0xC0) || sbcmd(reg))
-		return -1;
-
-	return sbread();
-}
-
-static	int
-mxcmd(int addr, int val)
-{
-
-	outb(blaster.mixaddr, addr);
-	outb(blaster.mixdata, val);
-	return 1;
-}
-
-static	int
-mxread(int addr)
-{
-	int s;
-
-	outb(blaster.mixaddr, addr);
-	s = inb(blaster.mixdata);
-	return s;
-}
-
-static	void
-mxcmds(int s, int v)
-{
-
-	if(v > 100)
-		v = 100;
-	if(v < 0)
-		v = 0;
-	mxcmd(s, (v*255)/100);
-}
-
-static	void
-mxcmdt(int s, int v)
-{
-
-	if(v > 100)
-		v = 100;
-	if(v <= 0)
-		mxcmd(s, 0);
-	else
-		mxcmd(s, 255-100+v);
-}
-
-static	void
-mxcmdu(int s, int v)
-{
-
-	if(v > 100)
-		v = 100;
-	if(v <= 0)
-		v = 0;
-	mxcmd(s, 128-50+v);
-}
-
-static	void
-mxvolume(void)
-{
-	int *left, *right;
-	int source;
-
-	if(audio.amode == Aread){
-		left = audio.livol;
-		right = audio.rivol;
-	}else{
-		left = audio.lovol;
-		right = audio.rovol;
-	}
-
-	ilock(&blaster);
-
-	mxcmd(0x30, 255);		/* left master */
-	mxcmd(0x31, 255);		/* right master */
-	mxcmd(0x3f, 0);		/* left igain */
-	mxcmd(0x40, 0);		/* right igain */
-	mxcmd(0x41, 0);		/* left ogain */
-	mxcmd(0x42, 0);		/* right ogain */
-
-	mxcmds(0x32, left[Vaudio]);
-	mxcmds(0x33, right[Vaudio]);
-
-	mxcmds(0x34, left[Vsynth]);
-	mxcmds(0x35, right[Vsynth]);
-
-	mxcmds(0x36, left[Vcd]);
-	mxcmds(0x37, right[Vcd]);
-
-	mxcmds(0x38, left[Vline]);
-	mxcmds(0x39, right[Vline]);
-
-	mxcmds(0x3a, left[Vmic]);
-	mxcmds(0x3b, left[Vspeaker]);
-
-	mxcmdu(0x44, left[Vtreb]);
-	mxcmdu(0x45, right[Vtreb]);
-
-	mxcmdu(0x46, left[Vbass]);
-	mxcmdu(0x47, right[Vbass]);
-
-	source = 0;
-	if(left[Vsynth])
-		source |= 1<<6;
-	if(right[Vsynth])
-		source |= 1<<5;
-	if(left[Vaudio])
-		source |= 1<<4;
-	if(right[Vaudio])
-		source |= 1<<3;
-	if(left[Vcd])
-		source |= 1<<2;
-	if(right[Vcd])
-		source |= 1<<1;
-	if(left[Vmic])
-		source |= 1<<0;
-	if(audio.amode == Aread)
-		mxcmd(0x3c, 0);		/* output switch */
-	else
-		mxcmd(0x3c, source);
-	mxcmd(0x3d, source);		/* input left switch */
-	mxcmd(0x3e, source);		/* input right switch */
-	iunlock(&blaster);
-}
 
 static	Buf*
 getbuf(AQueue *q)
@@ -560,388 +414,6 @@ putbuf(AQueue *q, Buf *b)
 		q->first = b;
 	q->last = b;
 	iunlock(q);
-}
-
-/*
- * move the dma to the next buffer
- */
-static	void
-contindma(void)
-{
-	Buf *b;
-
-	if(!audio.active)
-		goto shutdown;
-
-	b = audio.current;
-	if(audio.amode == Aread) {
-		if(b)	/* shouldn't happen */
-			putbuf(&audio.full, b);
-		b = getbuf(&audio.empty);
-	} else {
-		if(b)	/* shouldn't happen */
-			putbuf(&audio.empty, b);
-		b = getbuf(&audio.full);
-	}
-	audio.current = b;
-	if(b == 0)
-		goto shutdown;
-
-	if(dmasetup(blaster.dma, b->virt, Bufsize, audio.amode == Aread) >= 0)
-		return;
-	print("#A: dmasetup fail\n");
-	putbuf(&audio.empty, b);
-
-shutdown:
-	dmaend(blaster.dma);
-	sbcmd(0xd9);				/* exit at end of count */
-	sbcmd(0xd5);				/* pause */
-	audio.curcount = 0;
-	audio.active = 0;
-}
-
-/*
- * cause sb to get an interrupt per buffer.
- * start first dma
- */
-static	void
-sb16startdma(void)
-{
-	ulong count;
-	int speed;
-
-	ilock(&blaster);
-	dmaend(blaster.dma);
-	if(audio.amode == Aread) {
-		sbcmd(0x42);			/* input sampling rate */
-		speed = audio.livol[Vspeed];
-	} else {
-		sbcmd(0x41);			/* output sampling rate */
-		speed = audio.lovol[Vspeed];
-	}
-	sbcmd(speed>>8);
-	sbcmd(speed);
-
-	count = (Bufsize >> 1) - 1;
-	if(audio.amode == Aread)
-		sbcmd(0xbe);			/* A/D, autoinit */
-	else
-		sbcmd(0xb6);			/* D/A, autoinit */
-	sbcmd(0x30);				/* stereo, 16 bit */
-	sbcmd(count);
-	sbcmd(count>>8);
-
-	audio.active = 1;
-	audio.tottime = todget(nil);
-	contindma();
-	iunlock(&blaster);
-}
-
-static int
-ess1688reset(void)
-{
-	int i;
-
-	outb(blaster.reset, 3);
-	delay(1);			/* >3 υs */
-	outb(blaster.reset, 0);
-	delay(1);
-
-	i = sbread();
-	if(i != 0xAA) {
-		print("#A: no response 0x%.2x\n", i);
-		return 1;
-	}
-
-	if(sbcmd(0xC6)){		/* extended mode */
-		print("#A: barf 3\n");
-		return 1;
-	}
-
-	return 0;
-}
-
-static	void
-ess1688startdma(void)
-{
-	ulong count;
-	int speed, x;
-
-	ilock(&blaster);
-	dmaend(blaster.dma);
-
-	if(audio.amode == Awrite)
-		ess1688reset();
-	if(audio.amode == Aread)
-		sbcmd(0xD3);			/* speaker off */
-
-	/*
-	 * Set the speed.
-	 */
-	if(audio.amode == Aread)
-		speed = audio.livol[Vspeed];
-	else
-		speed = audio.lovol[Vspeed];
-	if(speed < 4000)
-		speed = 4000;
-	else if(speed > 48000)
-		speed = 48000;
-
-	if(speed > 22000)
-		  x = 0x80|(256-(795500+speed/2)/speed);
-	else
-		  x = 128-(397700+speed/2)/speed;
-	ess1688w(0xA1, x & 0xFF);
-
-	speed = (speed * 9) / 20;
-	x = 256 - 7160000 / (speed * 82);
-	ess1688w(0xA2, x & 0xFF);
-
-	if(audio.amode == Aread)
-		ess1688w(0xB8, 0x0E);		/* A/D, autoinit */
-	else
-		ess1688w(0xB8, 0x04);		/* D/A, autoinit */
-	x = ess1688r(0xA8) & ~0x03;
-	ess1688w(0xA8, x|0x01);			/* 2 channels */
-	ess1688w(0xB9, 2);			/* demand mode, 4 bytes per request */
-
-	if(audio.amode == Awrite)
-		ess1688w(0xB6, 0);
-	ess1688w(0xB7, 0x71);
-	ess1688w(0xB7, 0xBC);
-
-	x = ess1688r(0xB1) & 0x0F;
-	ess1688w(0xB1, x|0x50);
-	x = ess1688r(0xB2) & 0x0F;
-	ess1688w(0xB2, x|0x50);
-	if(audio.amode == Awrite)
-		sbcmd(0xD1);			/* speaker on */
-
-	count = -Bufsize;
-	ess1688w(0xA4, count & 0xFF);
-	ess1688w(0xA5, (count>>8) & 0xFF);
-	x = ess1688r(0xB8);
-	ess1688w(0xB8, x|0x05);
-
-	audio.active = 1;
-	audio.tottime = todget(nil);
-	contindma();
-	iunlock(&blaster);
-}
-
-/*
- * if audio is stopped,
- * start it up again.
- */
-static	void
-pokeaudio(void)
-{
-	if(!audio.active)
-		blaster.startdma();
-}
-
-static void
-sb16intr(void)
-{
-	int stat, dummy;
-
-	stat = mxread(0x82) & 7;		/* get irq status */
-	if(stat) {
-		dummy = 0;
-		if(stat & 2) {
-			ilock(&blaster);
-			dummy = inb(blaster.clri16);
-			audio.totcount += Bufsize;
-			audio.tottime = todget(nil);
-			contindma();
-			iunlock(&blaster);
-			audio.intr = 1;
-			wakeup(&audio.vous);
-		}
-		if(stat & 1) {
-			dummy = inb(blaster.clri8);
-		}
-		if(stat & 4) {
-			dummy = inb(blaster.clri401);
-		}
-		USED(dummy);
-	}
-}
-
-static void
-ess1688intr(void)
-{
-	int dummy;
-
-	if(audio.active){
-		ilock(&blaster);
-		audio.totcount += Bufsize;
-		audio.tottime = todget(nil);
-		contindma();
-		dummy = inb(blaster.clri8);
-		iunlock(&blaster);
-		audio.intr = 1;
-		wakeup(&audio.vous);
-		USED(dummy);
-	}
-	else
-		print("#A: unexpected ess1688 interrupt\n");
-}
-
-void
-audiosbintr(void)
-{
-	/*
-	 * Carrera interrupt interface.
-	 */
-	blaster.intr();
-}
-
-static void
-pcaudiosbintr(Ureg*, void*)
-{
-	/*
-	 * x86 interrupt interface.
-	 */
-	blaster.intr();
-}
-
-void
-audiodmaintr(void)
-{
-/*	print("#A: dma interrupt\n");	/**/
-}
-
-static int
-anybuf(void*)
-{
-	return audio.intr;
-}
-
-/*
- * wait for some output to get
- * empty buffers back.
- */
-static void
-waitaudio(void)
-{
-
-	audio.intr = 0;
-	pokeaudio();
-	tsleep(&audio.vous, anybuf, 0, 10*1000);
-	if(audio.intr == 0) {
-/*		print("#A: audio timeout\n");	/**/
-		audio.active = 0;
-		pokeaudio();
-	}
-}
-
-static void
-sbbufinit(void)
-{
-	int i;
-	void *p;
-
-	for(i=0; i<Nbuf; i++) {
-		p = xspanalloc(Bufsize, CACHELINESZ, 64*1024);
-		dcflush(p, Bufsize);
-		audio.buf[i].virt = UNCACHED(uchar, p);
-		audio.buf[i].phys = (ulong)PADDR(p);
-	}
-}
-
-static	void
-setempty(void)
-{
-	int i;
-
-	ilock(&blaster);
-	audio.empty.first = 0;
-	audio.empty.last = 0;
-	audio.full.first = 0;
-	audio.full.last = 0;
-	audio.current = 0;
-	audio.filling = 0;
-	for(i=0; i<Nbuf; i++)
-		putbuf(&audio.empty, &audio.buf[i]);
-	audio.totcount = 0;
-	audio.tottime = 0LL;
-	iunlock(&blaster);
-}
-
-static	void
-resetlevel(void)
-{
-	int i;
-
-	for(i=0; volumes[i].name; i++) {
-		audio.lovol[i] = volumes[i].ilval;
-		audio.rovol[i] = volumes[i].irval;
-		audio.livol[i] = volumes[i].ilval;
-		audio.rivol[i] = volumes[i].irval;
-	}
-}
-
-static int
-ess1688(ISAConf* sbconf)
-{
-	int i, major, minor;
-
-	/*
-	 * Try for ESS1688.
-	 */
-	sbcmd(0xE7);			/* get version */
-	major = sbread();
-	minor = sbread();
-	if(major != 0x68 || minor != 0x8B){
-		print("#A: model 0x%.2x 0x%.2x; not ESS1688 compatible\n", major, minor);
-		return 1;
-	}
-
-	ess1688reset();
-
-	switch(sbconf->irq){
-	case 2:
-	case 9:
-		i = 0x50|(0<<2);
-		break;
-	case 5:
-		i = 0x50|(1<<2);
-		break;
-	case 7:
-		i = 0x50|(2<<2);
-		break;
-	case 10:
-		i = 0x50|(3<<2);
-		break;
-	default:
-		print("#A: bad ESS1688 irq %lud\n", sbconf->irq);
-		return 1;
-	}
-	ess1688w(0xB1, i);
-
-	switch(sbconf->dma){
-	case 0:
-		i = 0x50|(1<<2);
-		break;
-	case 1:
-		i = 0xF0|(2<<2);
-		break;
-	case 3:
-		i = 0x50|(3<<2);
-		break;
-	default:
-		print("#A: bad ESS1688 dma %lud\n", sbconf->dma);
-		return 1;
-	}
-	ess1688w(0xB2, i);
-
-	ess1688reset();
-
-	blaster.startdma = ess1688startdma;
-	blaster.intr = ess1688intr;
-
-	return 0;
 }
 
 static void

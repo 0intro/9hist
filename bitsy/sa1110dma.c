@@ -39,7 +39,7 @@ enum {
 
 struct {
 	Lock;
-	Rendez	r;
+	Rendez	r[6];
 	int		channels;
 } dma;
 
@@ -48,9 +48,9 @@ struct dmaregs {
 	ulong	dcsr_set;
 	ulong	dcsr_clr;
 	ulong	dcsr_rd;
-	ulong	dstrtA;
+	void*	dstrtA;
 	ulong	dxcntA;
-	ulong	dstrtB;
+	void*	dstrtB;
 	ulong	dxcntB;
 } *dmaregs;
 
@@ -76,7 +76,7 @@ dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, void *
 			((burstsize==8)?1:0)<<BS |
 			((datumsize==2)?1:0)<<DW |
 			device<<DS |
-			0x80000000 | (port << 6);
+			0x80000000 | ((ulong)port << 6);
 		return i;
 	}
 	unlock(&dma);
@@ -84,9 +84,7 @@ dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, void *
 }
 
 void
-dmafree(i) {
-	int i;
-
+dmafree(int i) {
 	lock(&dma);
 	dma.channels &= ~(1<<i);
 	unlock(&dma);
@@ -94,29 +92,50 @@ dmafree(i) {
 
 static int
 dmaready(void *dcsr) {
-
-	return = *(ulong*)dcsr & ((1<<DONEA)|(1<<DONEB));
+	return *(int*)dcsr & ((1<<DONEA)|(1<<DONEB));
 }
 
-int
+ulong
 dmastart(int chan, void *addr, int count) {
 	ulong ab;
 
-	while ((ab = dmaready(&dma[chan].dcsr_rd)) == 0) {
-		sleep(&dma.r, dmaready, &dma[chan].dcsr_rd);
+	while ((ab = dmaready(&dmaregs[chan].dcsr_rd)) == 0) {
+		sleep(&dma.r[chan], dmaready, &dmaregs[chan].dcsr_rd);
 	}
 	cachewb();
 	if (ab & (1<<DONEA)) {
-		dma[chan].dcsr_clr |= 1<<DONEA | 1<<STARTA;
-		dma[chan].dstrtA = addr;
-		dma[chan].dxcntA = count-1;
-		dma[chan].dcsr_set |= 1<<RUN | 1<<IE | 1<<STARTA;
+		dmaregs[chan].dcsr_clr |= 1<<DONEA | 1<<STRTA;
+		dmaregs[chan].dstrtA = addr;
+		dmaregs[chan].dxcntA = count-1;
+		dmaregs[chan].dcsr_set |= 1<<RUN | 1<<IE | 1<<STRTA;
+		return 1<<DONEA;
 	} else {
-		dma[chan].dcsr_clr |= 1<<DONEB | 1<<STARTB;
-		dma[chan].dstrtB = addr;
-		dma[chan].dxcntB = count-1;
-		dma[chan].dcsr_set |= 1<<RUN | 1<<IE | 1<<STARTB;
+		dmaregs[chan].dcsr_clr |= 1<<DONEB | 1<<STRTB;
+		dmaregs[chan].dstrtB = addr;
+		dmaregs[chan].dxcntB = count-1;
+		dmaregs[chan].dcsr_set |= 1<<RUN | 1<<IE | 1<<STRTB;
+		return 1<<DONEB;
 	}
+}
+
+ulong
+dmadone(int chan, ulong op) {
+	ulong dcsr;
+
+	dcsr = dmaregs[chan].dcsr_rd;
+	if (dcsr & 1<<ERROR)
+		pprint("DMA error, chan %d, status 0x%lux\n", chan, dcsr);
+	return dcsr & (op | 1<<ERROR);
+}
+
+void
+dmawait(int chan, ulong op) {
+	ulong dcsr;
+
+	while (((dcsr = dmaregs[chan].dcsr_rd) & (op | 1<<ERROR)) == 0)
+		sleep(&dma.r[chan], dmaready, &dmaregs[chan].dcsr_rd);
+	if (dcsr & 1<<ERROR)
+		pprint("DMA error, chan %d, status 0x%lux\n", chan, dcsr);
 }
 
 /*
@@ -125,7 +144,10 @@ dmastart(int chan, void *addr, int count) {
 static void
 dmaintr(Ureg*, void *x)
 {
-	for (i = 0; i < NDMA; i++) {
+	int i;
 
+	for (i = 0; i < NDMA; i++) {
+		if (dmaregs[i].dcsr_rd & (1<<DONEA | 1<<DONEB | 1<<ERROR))
+			wakeup(&dma.r[i]);
 	}
 }

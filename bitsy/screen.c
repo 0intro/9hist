@@ -16,9 +16,9 @@
 #define	MINX	8
 
 enum {
-	Wid		= 320,
-	Ht		= 240,
-	Pal0		= 0x2000,	/* 16-bit pixel data in active mode (12 in passive) */
+	Wid		= 240,
+	Ht		= 320,
+	Pal0	= 0x2000,	/* 16-bit pixel data in active mode (12 in passive) */
 
 	hsw		= 0x00,
 	elw		= 0x0e,
@@ -126,25 +126,25 @@ static Memimage xgscreen =
 	0,					/* flags */
 };
 
+struct{
+	Point	pos;
+	int	bwid;
+}out;
+
 Memimage *gscreen;
 Memimage *conscol;
 Memimage *back;
 
 Memsubfont	*memdefont;
 
-struct{
-	Point	pos;
-	int	bwid;
-}out;
+Lock		screenlock;
 
-Lock	screenlock;
-
-Point	ZP = {0, 0};
-
-static Rectangle window;
-static Point curpos;
-static int h, w;
-int drawdebug;
+Point		ZP = {0, 0};
+ushort		*vscreen;	/* virtual screen */
+Rectangle	window;
+Point		curpos;
+int			h, w;
+int			drawdebug;
 
 static	ulong	rep(ulong, int);
 static	void	screenwin(void);
@@ -164,8 +164,8 @@ lcdinit(void)
 {
 	lcd->dbar1 = framebuf->palette;
 	lcd->lccr3 = pcd<<PCD | 0<<ACB | 0<<API | 1<<VSP | 1<<HSP | 0<<PCP | 0<<OEP;
-	lcd->lccr2 = (Ht-1)<<LPP | vsw<<VSW | efw<<EFW | bfw<<BFW;
-	lcd->lccr1 = (Wid-16)<<PPL | hsw<<HSW | elw<<ELW | blw<<BLW;
+	lcd->lccr2 = (Wid-1)<<LPP | vsw<<VSW | efw<<EFW | bfw<<BFW;
+	lcd->lccr1 = (Ht-16)<<PPL | hsw<<HSW | elw<<ELW | blw<<BLW;
 	lcd->lccr0 = 1<<LEN | 0<<CMS | 0<<SDS | 1<<LDM | 1<<BAM | 1<<ERM | 1<<PAS | 0<<BLE | 0<<DPD | 0<<PDD;
 }
 
@@ -197,7 +197,7 @@ screeninit(void)
 	framebuf = xspanalloc(sizeof *framebuf, 0x100, 0);
 	/* the following works because main memory is direct mapped */
 
-iprint("framebuf %lux\n", framebuf);
+	vscreen = xalloc(sizeof(ushort)*Wid*Ht);
 
 	framebuf->palette[0] = Pal0;
 
@@ -205,17 +205,15 @@ iprint("framebuf %lux\n", framebuf);
 	lcdinit();
 
 	gscreen = &xgscreen;
-	xgdata.bdata = (uchar *)framebuf->pixel;
+	xgdata.bdata = (uchar *)vscreen;
 	xgdata.ref = 1;
 
 	i = 0;
-	while (i < Wid*Ht*1/3)	framebuf->pixel[i++] = 0xf800;	/* red */
-	while (i < Wid*Ht*2/3)	framebuf->pixel[i++] = 0xffff;	/* white */
-	while (i < Wid*Ht*3/3)	framebuf->pixel[i++] = 0x001f;	/* blue */
-	for(i = 0; i < Wid*Ht; i += Wid)
-		framebuf->pixel[i] = 0xffff;	/* white */
-	for(i = Wid-1; i < Wid*Ht; i += Wid)
-		framebuf->pixel[i] = 0x001f;	/* blue */
+	while (i < Wid*Ht*1/3)	vscreen[i++] = 0xf800;	/* red */
+	while (i < Wid*Ht*2/3)	vscreen[i++] = 0xffff;	/* white */
+	while (i < Wid*Ht*3/3)	vscreen[i++] = 0x001f;	/* blue */
+
+	flushmemscreen(gscreen->r);
 
 	memimageinit();
 	memdefont = getmemdefont();
@@ -228,12 +226,17 @@ iprint("framebuf %lux\n", framebuf);
 }
 
 void
-flushmemscreen(Rectangle)
+flushmemscreen(Rectangle r)
 {
-	/* no-op, screen is direct mapped */
+	int x, y;
+
+	for (x = r.min.x; x < r.max.x; x++)
+		for (y = r.min.y; y < r.max.y; y++)
+			framebuf->pixel[(x+1)*Ht-y-1] = vscreen[y*Wid+x];
+	cachewb();
 }
 
-/* 
+/*
  * export screen to devdraw
  */
 uchar*
@@ -243,9 +246,9 @@ attachscreen(Rectangle *r, ulong *chan, int* d, int *width, int *softscreen)
 	*d = gscreen->depth;
 	*chan = gscreen->chan;
 	*width = gscreen->width;
-	*softscreen = 0;
+	*softscreen = 1;
 
-	return (uchar*)gscreen->data->bdata;
+	return (uchar*)vscreen;
 }
 
 void
@@ -304,6 +307,7 @@ screenwin(void)
 	Point p, q;
 	char *greet;
 	Memimage *orange;
+	Rectangle r;
 
 	memsetchan(gscreen, RGB16);
 
@@ -320,10 +324,10 @@ screenwin(void)
 	w = memdefont->info[' '].width;
 	h = memdefont->height;
 
-	window = Rect(4, 4, 320-4, 240-60);
+	r = Rect(4, 4, Wid-4, Ht-60);
 
-	memimagedraw(gscreen, window, memblack, ZP, memopaque, ZP);
-	window = insetrect(window, 4);
+	memimagedraw(gscreen, r, memblack, ZP, memopaque, ZP);
+	window = insetrect(r, 4);
 	memimagedraw(gscreen, window, memwhite, ZP, memopaque, ZP);
 
 	memimagedraw(gscreen, Rect(window.min.x, window.min.y,
@@ -335,6 +339,7 @@ screenwin(void)
 	p = addpt(window.min, Pt(10, 0));
 	q = memsubfontwidth(memdefont, greet);
 	memimagestring(gscreen, p, conscol, ZP, memdefont, greet);
+	flushmemscreen(r);
 	window.min.y += h+6;
 	curpos = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
@@ -374,6 +379,7 @@ screenputc(char *buf)
 		*xp++ = curpos.x;
 		r = Rect(curpos.x, curpos.y, curpos.x+pos*w, curpos.y + h);
 		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
+		flushmemscreen(r);
 		curpos.x += pos*w;
 		break;
 	case '\b':
@@ -382,6 +388,7 @@ screenputc(char *buf)
 		xp--;
 		r = Rect(*xp, curpos.y, curpos.x, curpos.y + h);
 		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
+		flushmemscreen(r);
 		curpos.x = *xp;
 		break;
 	case '\0':
@@ -397,6 +404,7 @@ screenputc(char *buf)
 		r = Rect(curpos.x, curpos.y, curpos.x+w, curpos.y + h);
 		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
 		memimagestring(gscreen, curpos, conscol, ZP, memdefont, buf);
+		flushmemscreen(r);
 		curpos.x += w;
 	}
 }
@@ -412,8 +420,10 @@ scroll(void)
 	r = Rpt(window.min, Pt(window.max.x, window.max.y-o));
 	p = Pt(window.min.x, window.min.y+o);
 	memimagedraw(gscreen, r, gscreen, p, nil, p);
+	flushmemscreen(r);
 	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
 	memimagedraw(gscreen, r, back, ZP, nil, ZP);
+	flushmemscreen(r);
 
 	curpos.y -= o;
 }

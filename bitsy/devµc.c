@@ -137,7 +137,7 @@ int
 		case BLtouch:
 			if(len == 4) {
 				if (samseq++ > 10)
-					pentrackxy((p[0]<<8)|p[1], (p[2]<<8)|p[3]);
+					pentrackxy((p[2]<<8)|p[3], (p[0]<<8)|p[1]);
 			} else {
 				samseq = 0;
 				pentrackxy(-1, -1);

@@ -10,6 +10,12 @@ int	cistrncmp(char*, char*, int);
 void	clockinit(void);
 #define	coherence()
 void	delay(int);
+void	dmainit(void);
+int		dmaalloc(int, int, int, int, int, void *);
+void	dmafree(int);
+ulong	dmastart(int, void *, int);
+ulong	dmadone(int, ulong);
+void	dmawait(int, ulong);
 void	evenaddr(ulong);
 void	flushmmu(void);
 int		fpiarm(Ureg *ur);
