@@ -142,7 +142,7 @@ fault(Ureg *ur, int user, int code)
 			/*
 			 * Add to mod list
 			 */
-			pte = newmod();
+			pte = newmod(o);
 o->nmod++;
 			pte->proc = u->p;
 			pte->page = opte->page;

@@ -1,6 +1,7 @@
 #define UNCACHED	0xA0000000
 #define	IO2(t,x)	((t *)(UNCACHED|0x17000000|(x)))
 #define VMEA24SUP(t, x)	((t *)(UNCACHED|0x13000000|(x)))
+#define VMEA32SUP(t, x)	((t *)(UNCACHED|0x30000000|(x)))
 #define	SYNCBUS(t,x)	((t *)(UNCACHED|0x1E000000|(x)))
 #define	SBSEM		SYNCBUS(ulong, 0)
 #define	SBSEMTOP	SYNCBUS(ulong, 0x400000)

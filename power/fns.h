@@ -100,7 +100,7 @@ Chan	*namec(char*, int, int, ulong);
 void	nexterror(void);
 Alarm	*newalarm(void);
 Chan	*newchan(void);
-PTE	*newmod(void);
+PTE	*newmod(Orig*);
 Mount	*newmount(void);
 Orig	*neworig(ulong, ulong, int, Chan*);
 Page	*newpage(int, Orig*, ulong);

@@ -382,7 +382,7 @@ o->nmod = 0;
 }
 
 PTE*
-newmod(void)
+newmod(Orig *o)
 {
 	PTEA *pte;
 
@@ -397,7 +397,7 @@ loop:
 	unlock(&modalloc);
 	print("no mods\n");
 DEBUG();
-panic("mods");
+panic("mods %lux %d %d", o->va, o->npte, o->nmod);
 	if(u == 0)
 		panic("newmod");
 	u->p->state = Wakeme;
@@ -423,7 +423,7 @@ forkmod(Seg *old, Seg *new, Proc *p)
 	while(pte){
 if(pte->page==0) panic("forkmod zero page");
 if(pte->proc != u->p) panic("forkmod wrong page");
-		npte = newmod();
+		npte = newmod(o);
 o->nmod++;
 		npte->proc = p;
 		npte->page = pte->page;

@@ -75,7 +75,8 @@ pipeattach(char *spec)
 	}
 	p = pipealloc.free;
 	pipealloc.free = p->next;
-	p->ref = 1;
+	if(incref(p) != 1)
+		panic("pipeattach");
 	unlock(&pipealloc);
 
 	c->qid = CHDIR|STREAMQID(2*(p - pipealloc.pipe), 0);
@@ -89,7 +90,8 @@ pipeclone(Chan *c, Chan *nc)
 
 	p = &pipealloc.pipe[STREAMID(c->qid)/2];
 	nc = devclone(c, nc);
-	incref(p);
+	if(incref(p) <= 1)
+		panic("pipeclone");
 	return nc;
 }
 
