@@ -374,18 +374,17 @@ boot(int ask)
 	
 	print("success\n");
 
+	if(netdev){
+		char buf[64];
+		sprint(buf, "/net/%s", net);
+		bind(netdev, buf, MREPL);
+		bind(netdev, "/net/net", MREPL);
+	}
 	if(net){
-		char buf[128];
-
-		fd = create("#e/bootnet", 1, 0666);
-		if(fd >= 0){
-			if(write(fd, net, strlen(net)) != strlen(net))
-				error("writing bootnet");
-			close(fd);
-			sprint(buf, "/net/%s", net);
-			if(bind(netdev, buf, MREPL) < 0)
-				error("binding bootnet");
-		}
+		char buf[64];
+		sprint(buf, "/lib/netaddr.%s", net);
+		print("binding %s onto /lib/netaddr.net\n", buf);
+		bind(buf, "/lib/netaddr.net", MREPL);
 	}
 
 	if(ask)

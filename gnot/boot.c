@@ -200,14 +200,8 @@ main(int argc, char *argv[])
 	
 	print("success\n");
 
-	f = create("#e/bootnet", 1, 0666);
-	if(f >= 0){
-		if(write(f, "dk", 2) != 2)
-			error("writing bootnet");
-		close(f);
-		if(bind("#kdk", "/net/dk", MREPL) < 0)
-			error("binding bootnet");
-	}
+	bind("#k", "/net/net", MREPL);
+	bind("#k", "/net/dk", MREPL);
 
 	if(strchr(bootline, ' '))
 		execl("/68020/init", "init", "-m", 0);
