@@ -125,9 +125,9 @@ enum{
 };
 
 Dirtab bitdir[]={
-	"bitblt",	Qbitblt,	0,			0600,
-	"mouse",	Qmouse,		0,			0600,
-	"screen",	Qscreen,	0,			0400,
+	"bitblt",	{Qbitblt},	0,			0600,
+	"mouse",	{Qmouse},	0,			0600,
+	"screen",	{Qscreen},	0,			0400,
 };
 
 #define	NBIT	(sizeof bitdir/sizeof(Dirtab))
@@ -181,7 +181,7 @@ Chan*
 bitclone(Chan *c, Chan *nc)
 {
 	nc = devclone(c, nc);
-	if(c->qid != CHDIR)
+	if(c->qid.path != CHDIR)
 		incref(&bit);
 }
 
@@ -200,14 +200,14 @@ bitstat(Chan *c, char *db)
 Chan *
 bitopen(Chan *c, int omode)
 {
-	if(c->qid == CHDIR){
+	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
-			error(0, Eperm);
-	}else if(c->qid == Qbitblt){
+			error(Eperm);
+	}else if(c->qid.path == Qbitblt){
 		lock(&bit);
 		if(bit.ref){
 			unlock(&bit);
-			error(0, Einuse);
+			error(Einuse);
 		}
 		bit.lastid = -1;
 		bit.lastfid = -1;
@@ -227,19 +227,19 @@ bitopen(Chan *c, int omode)
 void
 bitcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 bitremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 bitwstat(Chan *c, char *db)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
@@ -249,7 +249,7 @@ bitclose(Chan *c)
 	GBitmap *bp;
 	GFont *fp;
 
-	if(c->qid!=CHDIR && (c->flag&COPEN)){
+	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
 		lock(&bit);
 		if(--bit.ref == 0){
 			for(i=1,bp=&bit.map[1]; i<conf.nbitmap; i++,bp++)
@@ -284,10 +284,10 @@ bitread(Chan *c, void *va, long n)
 	Fontchar *i;
 	GBitmap *src;
 
-	if(c->qid & CHDIR)
+	if(c->qid.path & CHDIR)
 		return devdirread(c, va, n, bitdir, NBIT, devgen);
 
-	switch(c->qid){
+	switch(c->qid.path){
 	case Qmouse:
 		/*
 		 * mouse:
@@ -296,7 +296,7 @@ bitread(Chan *c, void *va, long n)
 		 * 	point		8
 		 */
 		if(n < 10)
-			error(0, Ebadblt);
+			error(Ebadblt);
 	    Again:
 		while(mouse.changed == 0)
 			sleep(&mouse.r, mousechanged, 0);
@@ -331,7 +331,7 @@ bitread(Chan *c, void *va, long n)
 			 *	fontchars	6*(defont->n+1)
 			 */
 			if(n < 18)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			p[0] = 'I';
 			p[1] = gscreen.ldepth;
 			PLONG(p+2, gscreen.r.min.x);
@@ -363,7 +363,7 @@ bitread(Chan *c, void *va, long n)
 			 *	bitmap id	2
 			 */
 			if(n < 3)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			p[0] = 'A';
 			PSHORT(p+1, bit.lastid);
 			bit.lastid = -1;
@@ -377,7 +377,7 @@ bitread(Chan *c, void *va, long n)
 			 *	font id		2
 			 */
 			if(n < 3)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			p[0] = 'K';
 			PSHORT(p+1, bit.lastfid);
 			bit.lastfid = -1;
@@ -391,14 +391,14 @@ bitread(Chan *c, void *va, long n)
 			 */
 			src = &bit.map[bit.rid];
 			if(src->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			off = 0;
 			if(bit.rid == 0)
 				off = 1;
 			miny = bit.rminy;
 			maxy = bit.rmaxy;
 			if(miny>maxy || miny<src->r.min.y || maxy>src->r.max.y)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			ws = 1<<(3-src->ldepth);	/* pixels per byte */
 			/* set l to number of bytes of incoming data per scan line */
 			if(src->r.min.x >= 0)
@@ -409,7 +409,7 @@ bitread(Chan *c, void *va, long n)
 				l = (t+src->r.max.x+ws-1)/ws;
 			}
 			if(n < l*(maxy-miny))
-				error(0, Ebadblt);
+				error(Ebadblt);
 			if(off)
 				cursoroff(1);
 			n = 0;
@@ -426,12 +426,12 @@ bitread(Chan *c, void *va, long n)
 			bit.rid = -1;
 			break;
 		}
-		error(0, Ebadblt);
+		error(Ebadblt);
 
 	case Qscreen:
 		if(c->offset==0){
 			if(n < 5*12)
-				error(0, Eio);
+				error(Eio);
 			sprint(va, "%11d %11d %11d %11d %11d ",
 				gscreen.ldepth, gscreen.r.min.x,
 				gscreen.r.min.y, gscreen.r.max.x,
@@ -459,7 +459,7 @@ bitread(Chan *c, void *va, long n)
 		break;
 
 	default:
-		error(0, Egreg);
+		error(Egreg);
 	}
 
 	return n;
@@ -480,11 +480,11 @@ bitwrite(Chan *c, void *va, long n)
 	GBitmap *bp, *src, *dst;
 	GFont *f;
 
-	if(c->qid == CHDIR)
-		error(0, Eisdir);
+	if(c->qid.path == CHDIR)
+		error(Eisdir);
 
-	if(c->qid != Qbitblt)
-		error(0, Egreg);
+	if(c->qid.path != Qbitblt)
+		error(Egreg);
 
 	isoff = 0;
 	if(waserror()){
@@ -498,7 +498,7 @@ bitwrite(Chan *c, void *va, long n)
 		switch(*p){
 		default:
 			pprint("bitblt request 0x%x\n", *p);
-			error(0, Ebadblt);
+			error(Ebadblt);
 
 		case 'a':
 			/*
@@ -509,13 +509,13 @@ bitwrite(Chan *c, void *va, long n)
 			 * next read returns allocated bitmap id
 			 */
 			if(m < 18)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = *(p+1);
 			if(v!=0 && v!=1)	/* BUG */
-				error(0, Ebadblt);
+				error(Ebadblt);
 			ws = 1<<(5-v);	/* pixels per word */
 			if(bit.free == 0)
-				error(0, Enobitmap);
+				error(Enobitmap);
 			rect.min.x = GLONG(p+2);
 			rect.min.y = GLONG(p+6);
 			rect.max.x = GLONG(p+10);
@@ -531,7 +531,7 @@ bitwrite(Chan *c, void *va, long n)
 			if(bit.wfree+2+nw > bit.words+bit.nwords){
 				bitcompact();
 				if(bit.wfree+2+nw > bit.words+bit.nwords)
-					error(0, Enobitstore);
+					error(Enobitstore);
 			}
 			bp = bit.free;
 			bit.free = (GBitmap*)(bp->base);
@@ -566,11 +566,11 @@ bitwrite(Chan *c, void *va, long n)
 			 *	code		2
 			 */
 			if(m < 31)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth < 0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			off = 0;
 			if(v == 0)
 				off = 1;
@@ -579,7 +579,7 @@ bitwrite(Chan *c, void *va, long n)
 			v = GSHORT(p+11);
 			src = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || src->ldepth < 0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			if(v == 0)
 				off = 1;
 			rect.min.x = GLONG(p+13);
@@ -616,7 +616,7 @@ bitwrite(Chan *c, void *va, long n)
 				break;
 			}
 			if(m < 73)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			curs.offset.x = GLONG(p+1);
 			curs.offset.y = GLONG(p+5);
 			memcpy(curs.clr, p+9, 2*16);
@@ -637,11 +637,11 @@ bitwrite(Chan *c, void *va, long n)
 			 *	id		2
 			 */
 			if(m < 3)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			bitfree(dst);
 			m -= 3;
 			p += 3;
@@ -654,11 +654,11 @@ bitwrite(Chan *c, void *va, long n)
 			 *	id		2
 			 */
 			if(m < 3)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			f = &bit.font[v];
 			if(v<0 || v>=conf.nfont || f->bits==0)
-				error(0, Ebadfont);
+				error(Ebadfont);
 			f->bits = 0;
 			m -= 3;
 			p += 3;
@@ -687,14 +687,14 @@ bitwrite(Chan *c, void *va, long n)
 			 * next read returns allocated font id
 			 */
 			if(m < 7)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			if(v<0 || v>NINFO || m<7+6*(v+1))	/* BUG */
-				error(0, Ebadblt);
+				error(Ebadblt);
 			for(i=1; i<conf.nfont; i++)
 				if(bit.font[i].bits == 0)
 					goto fontfound;
-			error(0, Enofont);
+			error(Enofont);
 		fontfound:
 			f = &bit.font[i];
 			f->n = v;
@@ -703,7 +703,7 @@ bitwrite(Chan *c, void *va, long n)
 			v = GSHORT(p+5);
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			m -= 7;
 			p += 7;
 			fcp = f->info;
@@ -733,11 +733,11 @@ bitwrite(Chan *c, void *va, long n)
 			 *	code		2
 			 */
 			if(m < 22)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			off = 0;
 			if(v == 0)
 				off = 1;
@@ -767,11 +767,11 @@ bitwrite(Chan *c, void *va, long n)
 			 *	code		2
 			 */
 			if(m < 14)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			off = 0;
 			if(v == 0)
 				off = 1;
@@ -797,15 +797,15 @@ bitwrite(Chan *c, void *va, long n)
 			 *	maxy		4
 			 */
 			if(m < 11)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			src = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || src->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			miny = GLONG(p+3);
 			maxy = GLONG(p+7);
 			if(miny>maxy || miny<src->r.min.y || maxy>src->r.max.y)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			bit.rid = v;
 			bit.rminy = miny;
 			bit.rmaxy = maxy;
@@ -824,11 +824,11 @@ bitwrite(Chan *c, void *va, long n)
 			 * 	string		n (null terminated)
 			 */
 			if(m < 16)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			off = 0;
 			if(v == 0)
 				off = 1;
@@ -837,13 +837,13 @@ bitwrite(Chan *c, void *va, long n)
 			v = GSHORT(p+11);
 			f = &bit.font[v];
 			if(v<0 || v>=conf.nfont || f->bits==0 || f->bits->ldepth<0)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+13);
 			p += 15;
 			m -= 15;
 			q = memchr(p, 0, m);
 			if(q == 0)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			if(off && !isoff){
 				cursoroff(1);
 				isoff = 1;
@@ -864,11 +864,11 @@ bitwrite(Chan *c, void *va, long n)
 			 *	fcode		2
 			 */
 			if(m < 23)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			off = 0;
 			if(v == 0)
 				off = 1;
@@ -879,7 +879,7 @@ bitwrite(Chan *c, void *va, long n)
 			v = GSHORT(p+19);
 			src = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || src->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			v = GSHORT(p+21);
 			x = src->r.min.x;
 			y = src->r.min.y;
@@ -955,18 +955,18 @@ bitwrite(Chan *c, void *va, long n)
 			 *	data		bytewidth*(maxy-miny)
 			 */
 			if(m < 11)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
-				error(0, Ebadbitmap);
+				error(Ebadbitmap);
 			off = 0;
 			if(v == 0)
 				off = 1;
 			miny = GLONG(p+3);
 			maxy = GLONG(p+7);
 			if(miny>maxy || miny<dst->r.min.y || maxy>dst->r.max.y)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			ws = 1<<(3-dst->ldepth);	/* pixels per byte */
 			/* set l to number of bytes of incoming data per scan line */
 			if(dst->r.min.x >= 0)
@@ -979,7 +979,7 @@ bitwrite(Chan *c, void *va, long n)
 			p += 11;
 			m -= 11;
 			if(m < l*(maxy-miny))
-				error(0, Ebadblt);
+				error(Ebadblt);
 			if(off && !isoff){
 				cursoroff(1);
 				isoff = 1;
@@ -1001,7 +1001,7 @@ bitwrite(Chan *c, void *va, long n)
 			 *	pt		8
 			 */
 			if(m < 9)
-				error(0, Ebadblt);
+				error(Ebadblt);
 			pt1.x = GLONG(p+1);
 			pt1.y = GLONG(p+5);
 			mouse.xy = pt1;
@@ -1015,18 +1015,6 @@ bitwrite(Chan *c, void *va, long n)
 	if(isoff)
 		cursoron(1);
 	return n;
-}
-
-void
-bituserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-void
-biterrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
 }
 
 void
@@ -1046,7 +1034,7 @@ id2bit(int k)
 	GBitmap *bp;
 	bp = &bit.map[k];
 	if(k<0 || k>=conf.nbitmap || bp->ldepth < 0)
-		error(0, Ebadbitmap);
+		error(Ebadbitmap);
 	return bp;
 }
 

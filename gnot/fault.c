@@ -161,7 +161,7 @@ fault(Ureg *ur, FFrame *f)
 			k = kmap(pg);
 			qlock(o->chan);
 			if(waserror()){
-				print("demand load i/o error %d\n", u->error.code);
+				print("demand load i/o error %s\n", u->error);
 				kunmap(k);
 				qunlock(o->chan);
 				pg->o = 0;
@@ -171,7 +171,7 @@ fault(Ureg *ur, FFrame *f)
 			o->chan->offset = (addr-o->va) + o->minca;
 			l = (char*)VA(k);
 			if((*devtab[o->chan->type].read)(o->chan, l, n) != n)
-				error(0, Eioload);
+				error(Eioload);
 			qunlock(o->chan);
 			if(n<BY2PG)
 				memset(l+n, 0, BY2PG-n);
@@ -291,7 +291,7 @@ validaddr(ulong addr, ulong len, int write)
     Err:
 		pprint("invalid address in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 		postnote(u->p, 1, "sys: bad address", NDebug);
-		error(0, Ebadarg);
+		error(Ebadarg);
 	}
     Again:
 	s = seg(u->p, addr);

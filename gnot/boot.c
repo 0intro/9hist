@@ -1,7 +1,6 @@
 #include <u.h>
 #include <libc.h>
-
-#include "fcall.h"
+#include <fcall.h>
 
 Fcall	hdr;
 char	buf[100];
@@ -14,7 +13,7 @@ void	sendmsg(int, char*);
 
 main(int argc, char *argv[])
 {
-	int cfd, fd, n, fu, f;
+	int cfd, fd, n, fu, f, i;
 	char buf[256];
 	int p[2];
 
@@ -100,14 +99,23 @@ main(int argc, char *argv[])
 	 *  open a datakit channel and call ken, leave the
 	 *  incon ctl channel open
 	 */
-	fd = open("#k/2/data", 2);
-	if(fd < 0)
-		error("opening #k/2/data");
-	cfd = open("#k/2/ctl", 2);
-	if(cfd < 0)
-		error("opening #k/2/ctl");
-	sprint(buf, "connect %s", bootserver);
-	sendmsg(cfd, buf);
+	for(i = 0; ; i++){
+		fd = open("#k/2/data", 2);
+		if(fd < 0)
+			error("opening #k/2/data");
+		cfd = open("#k/2/ctl", 2);
+		if(cfd < 0)
+			error("opening #k/2/ctl");
+		sprint(buf, "connect %s", bootserver);
+		n = strlen(buf);
+		if(write(cfd, buf, n) == n)
+			break;
+		if(i == 5)
+			error("dialing");
+		print("error dialing, retrying ...\n");
+		close(fd);
+		close(cfd);
+	}
 	print("connected to %s\n", bootserver);
 	close(cfd);
 
@@ -116,6 +124,7 @@ main(int argc, char *argv[])
 	 */
 	print("nop...");
 	hdr.type = Tnop;
+	hdr.tag = ~0;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n)
 		error("write nop");
@@ -134,7 +143,7 @@ main(int argc, char *argv[])
 
 	print("session...");
 	hdr.type = Tsession;
-	hdr.lang = 'v';
+	hdr.tag = ~0;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n)
 		error("write session");
@@ -143,12 +152,12 @@ main(int argc, char *argv[])
 		error("read session");
 	if(convM2S(buf, &hdr, n) == 0)
 		error("format session");
+	if(hdr.type == Rerror){
+		print("error %s;", hdr.ename);
+		error(hdr.ename);
+	}
 	if(hdr.type != Rsession)
 		error("not Rsession");
-	if(hdr.err){
-		print("error %d;", hdr.err);
-		error("remote error");
-	}
 
 	print("post...");
 	sprint(buf, "#s/%s", "bootes");
@@ -171,7 +180,7 @@ main(int argc, char *argv[])
 	print("mount...");
 	if(bind("/", "/", MREPL) < 0)
 		error("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
+	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
 		error("mount");
 	print("success\n");
 	if(strchr(bootline, ' '))
@@ -196,7 +205,7 @@ error(char *s)
 {
 	char buf[64];
 
-	errstr(0, buf);
+	errstr(buf);
 	fprint(2, "boot: %s: %s\n", s, buf);
 	exits(0);
 }

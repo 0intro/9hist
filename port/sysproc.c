@@ -183,7 +183,7 @@ sysexec(ulong *arg)
 	n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec));
 	if(n < 2)
     Err:
-		error(0, Ebadexec);
+		error(Ebadexec);
 	if(n==sizeof(Exec) && exec.magic==V_MAGIC){
 		if((exec.text&KZERO)
 		|| (ulong)exec.entry < UTZERO+sizeof(Exec)
@@ -223,7 +223,7 @@ sysexec(ulong *arg)
 	d = (t + exec.data) & ~(BY2PG-1);
 	b = (t + exec.data + exec.bss + (BY2PG-1)) & ~(BY2PG-1);
 	if((t|d|b) & KZERO)
-		error(0, Ebadexec);
+		error(Ebadexec);
 
 	/*
 	 * Args: pass 1: count
@@ -446,41 +446,19 @@ syswait(ulong *arg)
 }
 
 long
-syslasterr(ulong *arg)
+sysdeath(ulong *arg)
 {
-	Error *e;
-
-	validaddr(arg[0], sizeof u->error, 1);
-	evenaddr(arg[0]);
-	e = (Error *)arg[0];
-	memcpy(e, &u->error, sizeof u->error);
-	memset(&u->error, 0, sizeof u->error);
-	e->type = devchar[e->type];
-	return 0;
+	pprint("deprecated system call");
+	pexit("Suicide", 0);
 }
 
 long
 syserrstr(ulong *arg)
 {
-	Error *e, err;
 	char buf[ERRLEN];
 
-	validaddr(arg[1], ERRLEN, 1);
-	e = &err;
-	if(arg[0]){
-		validaddr(arg[0], sizeof u->error, 0);
-		memcpy(e, (Error*)arg[0], sizeof(Error));
-		e->type = devno(e->type, 1);
-		if(e->type == -1){
-			e->type = 0;
-			e->code = Egreg+1;	/* -> "no such error" */
-		}
-	}else{
-		memcpy(e, &u->error, sizeof(Error));
-		memset(&u->error, 0, sizeof(Error));
-	}
-	(*devtab[e->type].errstr)(e, buf);
-	memcpy((char*)arg[1], buf, sizeof buf);
+	validaddr(arg[0], ERRLEN, 1);
+	memcpy((char*)arg[0], u->error, ERRLEN);
 	return 0;
 }
 
@@ -515,7 +493,7 @@ long
 sysnoted(ulong *arg)
 {
 	if(u->notified == 0)
-		error(0, Egreg);
+		error(Egreg);
 	return 0;
 }
 
@@ -526,6 +504,6 @@ long
 sysbrk_(ulong *arg)
 {
 	if(segaddr(&u->p->seg[BSEG], u->p->seg[BSEG].minva, arg[0]) == 0)
-		error(0, Esegaddr);
+		error(Esegaddr);
 	return 0;
 }

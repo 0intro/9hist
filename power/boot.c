@@ -1,6 +1,5 @@
 #include <u.h>
 #include <libc.h>
-
 #include <fcall.h>
 
 #define DEFSYS "bitbootes"
@@ -175,6 +174,7 @@ boot(int ask)
     Mesg:
 	print("nop...");
 	hdr.type = Tnop;
+	hdr.tag = ~0;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n){
 		print("n = %d\n", n);
@@ -196,10 +196,14 @@ boot(int ask)
 		prerror("not Rnop");
 		return;
 	}
+	if(hdr.tag != ~0){
+		prerror("tag not ~0");
+		return;
+	}
 
 	print("session...");
 	hdr.type = Tsession;
-	hdr.lang = 'v';
+	hdr.tag = ~0;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n){
 		prerror("write session");
@@ -214,13 +218,16 @@ boot(int ask)
 		prerror("format session");
 		return;
 	}
-	if(hdr.type != Rsession){
-		prerror("not Rsession");
+	if(hdr.tag != ~0){
+		prerror("tag not ~0");
 		return;
 	}
-	if(hdr.err){
-		print("error %d;", hdr.err);
-		prerror("remote error");
+	if(hdr.type == Rerror){
+		fprint(2, "boot: error %s\n", hdr.ename);
+		return;
+	}
+	if(hdr.type != Rsession){
+		prerror("not Rsession");
 		return;
 	}
 
@@ -244,7 +251,7 @@ boot(int ask)
 	print("mount...");
 	if(bind("/", "/", MREPL) < 0)
 		error("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
+	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
 		error("mount");
 	print("success\n");
 	close(fd);
@@ -264,7 +271,7 @@ prerror(char *s)
 {
 	char buf[64];
 
-	errstr(0, buf);
+	errstr(buf);
 	fprint(2, "boot: %s: %s\n", s, buf);
 }
 
@@ -276,7 +283,7 @@ error(char *s)
 {
 	char buf[64];
 
-	errstr(0, buf);
+	errstr(buf);
 	fprint(2, "boot: %s: %s\n", s, buf);
 	exits(0);
 }

@@ -162,13 +162,13 @@ hsvmeattach(char *spec)
 
 	i = strtoul(spec, 0, 0);
 	if(i >= Nhsvme)
-		error(0, Ebadarg);
+		error(Ebadarg);
 	hp = &hsvme[i];
 	hsvmerestart(hp);
 
 	c = devattach('h', spec);
 	c->dev = i;
-	c->qid = CHDIR;
+	c->qid.path = CHDIR;
 	return c;
 }
 
@@ -193,9 +193,9 @@ hsvmestat(Chan *c, char *dp)
 Chan*
 hsvmeopen(Chan *c, int omode)
 {
-	if(c->qid == CHDIR){
+	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
-			error(0, Eperm);
+			error(Eperm);
 	}else
 		streamopen(c, &hsvmeinfo);
 	c->mode = openmode(omode);
@@ -207,13 +207,13 @@ hsvmeopen(Chan *c, int omode)
 void	 
 hsvmecreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 hsvmeclose(Chan *c)
 {
-	if(c->qid != CHDIR)
+	if(c->qid.path != CHDIR)
 		streamclose(c);
 }
 
@@ -232,25 +232,13 @@ hsvmewrite(Chan *c, void *buf, long n)
 void	 
 hsvmeremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 hsvmewstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void
-hsvmeuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-void	 
-hsvmeerrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
+	error(Eperm);
 }
 
 /*

@@ -45,7 +45,7 @@ srvalloc(int mode){
 	e = calloc(1, sizeof(Entry));
 	e->dir.atime = e->dir.mtime = seconds();
 	lock(&qidlock);	/* for qid allocation */
-	e->dir.qid = mode | nextqid++;
+	e->dir.qid = (Qid){mode|nextqid++, 0};
 	unlock(&qidlock);
 	return e;
 }
@@ -97,9 +97,7 @@ srvwalk(Chan *c, char *name)
 		unlock(dir);
 	}
 	if(e==0){
-		u->error.code = Enonexist;
-		u->error.type = 0;
-		u->error.dev = 0;
+		strncpy(u->error, errstrtab[Enonexist], NAMELEN);
 		return 0;
 	}
 	c->qid = e->dir.qid;
@@ -122,22 +120,22 @@ srvopen(Chan *c, int omode)
 	Entry *e;
 	Chan *f;
 
-	if(c->qid & CHDIR){
+	if(c->qid.path & CHDIR){
 		if(omode != OREAD)
-			error(0, Eisdir);
+			error(Eisdir);
 		c->mode = omode;
 		c->flag |= COPEN;
 		c->offset = 0;
 		return c;
 	}
 	if((e=c->aux) == 0)
-		error(0, Egreg);
+		error(Egreg);
 	if((f=e->chan) == 0)
-		error(0, Eshutdown);
+		error(Eshutdown);
 	if(omode & OTRUNC)
-		error(0, Eperm);
+		error(Eperm);
 	if(omode!=f->mode && f->mode!=ORDWR)
-		error(0, Eperm);
+		error(Eperm);
 	close(c);
 	incref(f);
 	return f;
@@ -157,12 +155,12 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 	}
 	for(e=parent->entries; e; e=e->next)
 		if(strcmp(name, e->dir.name) == 0)
-			error(0, Einuse);
+			error(Einuse);
 	e = srvalloc(perm & CHDIR);
 	e->parent = parent;
 	strcpy(e->dir.name, name);
 	e->dir.mode = perm & parent->dir.mode;
-	e->dir.gid = parent->dir.gid;
+	strcpy(e->dir.gid, parent->dir.gid);
 	if(e->next = parent->entries)	/* assign = */
 		e->next->back = &e->next;
 	e->back = &parent->entries;
@@ -183,7 +181,7 @@ srvremove(Chan *c)
 
 	e = c->aux;
 	if(e->parent == 0)
-		error(0, Eperm);
+		error(Eperm);
 	lock(e->parent);
 	if(waserror()){
 		unlock(e->parent);
@@ -191,10 +189,10 @@ srvremove(Chan *c)
 	}
 	if(e->dir.mode & CHDIR){
 		if (e->entries != 0)
-			error(0, Eperm);
+			error(Eperm);
 	}else{
 		if(e->chan == 0)
-			error(0, Eshutdown);
+			error(Eshutdown);
 		close(e->chan);
 	}
 	if(*e->back = e->next)	/* assign = */
@@ -207,7 +205,7 @@ srvremove(Chan *c)
 void
 srvwstat(Chan *c, char *dp)
 {
-	error(0, Egreg);
+	error(Egreg);
 }
 
 void
@@ -244,7 +242,7 @@ srvread(Chan *c, void *va, long n)
 	if(n <= 0)
 		return 0;
 	if(offset%DIRLEN || n%DIRLEN)
-		error(0, Ebaddirread);
+		error(Ebaddirread);
 	lock(dir);
 	for(e=dir->entries; e; e=e->next)
 		if(offset <= 0){
@@ -274,9 +272,9 @@ srvwrite(Chan *c, void *va, long n)
 		nexterror();
 	}
 	if(e->chan)
-		error(0, Egreg);
+		error(Egreg);
 	if(n >= sizeof buf)
-		error(0, Egreg);
+		error(Egreg);
 	memcpy(buf, va, n);	/* so we can NUL-terminate */
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
@@ -286,16 +284,4 @@ srvwrite(Chan *c, void *va, long n)
 	unlock(e);
 	poperror();
 	return n;
-}
-
-void
-srverrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
-}
-
-void
-srvuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
 }

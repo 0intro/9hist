@@ -9,7 +9,6 @@
 
 #include	"fcall.h"
 
-
 typedef struct Mnt	Mnt;
 typedef struct Mnthdr	Mnthdr;
 typedef struct MntQ	MntQ;
@@ -194,7 +193,7 @@ mntdev(int dev, int noerr)
 		}
 	if(noerr)
 		return 0;
-	error(0, Eshutdown);
+	error(Eshutdown);
 }
 
 void
@@ -214,9 +213,12 @@ mntreset(void)
 	mntbufalloc.free = mb;
 
 	mh = ialloc(conf.nmnthdr*sizeof(Mnthdr), 0);
-	for(i=0; i<conf.nmnthdr-1; i++)
+	for(i=0; i<conf.nmnthdr-1; i++){
 		mh[i].next = &mh[i+1];
+		mh[i].thdr.tag = i;
+	}
 	mh[i].next = 0;
+	mh[i].thdr.tag = i;
 	mnthdralloc.free = mh;
 
 	mq = ialloc(conf.nmntdev*sizeof(MntQ), 0);
@@ -233,7 +235,7 @@ mntinit(void)
 }
 
 Chan*
-mntattach(char *spec)
+mntattach(char *crud)
 {
 	int i;
 	Mnt *m, *mm;
@@ -243,10 +245,10 @@ mntattach(char *spec)
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
+		char	*auth;
 	}bogus;
 
-	bogus = *((struct bogus *)spec);
-	spec = bogus.spec;
+	bogus = *((struct bogus *)crud);
 
 	m = mnt;
 	for(i=0; i<conf.nmntdev; i++,m++){
@@ -255,7 +257,7 @@ mntattach(char *spec)
 			goto Found;
 		unlock(m);
 	}
-	error(0, Enomntdev);
+	error(Enomntdev);
 
     Found:
 	m->ref = 1;
@@ -263,7 +265,7 @@ mntattach(char *spec)
 	lock(&mntid);
 	m->mntid = ++mntid.id;
 	unlock(&mntid);
-	c = devattach('M', spec);
+	c = devattach('M', bogus.spec);
 	c->dev = m->mntid;
 	m->mntpt = c;
 	cm = bogus.chan;
@@ -297,7 +299,8 @@ mntattach(char *spec)
 	mh->thdr.type = Tattach;
 	mh->thdr.fid = c->fid;
 	memcpy(mh->thdr.uname, u->p->pgrp->user, NAMELEN);
-	strcpy(mh->thdr.aname, spec);
+	strcpy(mh->thdr.aname, bogus.spec);
+	strcpy(mh->thdr.auth, bogus.auth);
 	mntxmit(m, mh);
 	c->qid = mh->rhdr.qid;
 	c->mchan = m->q->msg;
@@ -537,7 +540,7 @@ mntread(Chan *c, void *buf, long n)
 	uchar *b;
 
 	n = mntreadwrite(c, buf, n, Tread);
-	if(c->qid & CHDIR){
+	if(c->qid.path & CHDIR){
 		b = (uchar*)buf;
 		for(i=n-DIRLEN; i>=0; i-=DIRLEN){
 			b[DIRLEN-4] = devchar[c->type];
@@ -582,60 +585,6 @@ mntwstat(Chan *c, char *dp)
 	poperror();
 }
 
-void	 
-mnterrstr(Error *e, char *buf)
-{
-	Mnt *m;
-	Mnthdr *mh;
-	char *def="mounted device shut down";
-
-	m = mntdev(e->dev, 1);
-	if(m == 0){
-		strcpy(buf, def);
-		return;
-	}
-	mh = mhalloc();
-	if(waserror()){
-		strcpy(buf, def);
-		mhfree(mh);
-		nexterror();
-	}
-	mh->thdr.type = Terrstr;
-	mh->thdr.fid = 0;
-	mh->thdr.err = e->code;
-	mntxmit(m, mh);
-	strcpy(buf, (char*)mh->rhdr.ename);
-	mhfree(mh);
-	poperror();
-}
-
-void	 
-mntuserstr(Error *e, char *buf)
-{
-	Mnt *m;
-	Mnthdr *mh;
-	char *def="mounted device shut down";
-
-	m = mntdev(e->dev, 1);
-	if(m == 0){
-		strcpy(buf, def);
-		return;
-	}
-	mh = mhalloc();
-	if(waserror()){
-		strcpy(buf, def);
-		mhfree(mh);
-		nexterror();
-	}
-	mh->thdr.type = Tuserstr;
-	mh->thdr.fid = 0;
-	mh->thdr.uid = e->code;
-	mntxmit(m, mh);
-	strcpy(buf, (char*)mh->rhdr.uname);
-	mhfree(mh);
-	poperror();
-}
-
 void
 mnterrdequeue(MntQ *q, Mnthdr *mh)		/* queue is unlocked */
 {
@@ -670,18 +619,19 @@ mnterrdequeue(MntQ *q, Mnthdr *mh)		/* queue is unlocked */
 	qunlock(q);
 
 }
+
 int
 mntreadreply(void *a)
 {
 	return ((Mnthdr *)a)->readreply;
 }
+
 void
 mntxmit(Mnt *m, Mnthdr *mh)
 {
 	ulong n;
 	Mntbuf *mbw;
 	Mnthdr *w, *ow;
-	Chan *mntpt;
 	MntQ *q;
 	int qlocked;
 
@@ -695,7 +645,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	n = convS2M(&mh->thdr, mbw->buf);
 	q = m->q;
 	if(q == 0)
-		error(0, Eshutdown);
+		error(Eshutdown);
 #ifdef	BIT3
 	/*
 	 * Bit3 does its own multiplexing.  (Well, the file server does.)
@@ -711,7 +661,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	}
 	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n) != n){
 		print("short write in mntxmit\n");
-		error(0, Eshortmsg);
+		error(Eshortmsg);
 	}
 
 	/*
@@ -723,25 +673,28 @@ mntxmit(Mnt *m, Mnthdr *mh)
 
 	if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
 		print("format error in mntxmit\n");
-		error(0, Ebadmsg);
+		error(Ebadmsg);
 	}
 
 	/*
 	 * Various checks
 	 */
+	if(mh->rhdr.tag != mh->thdr.tag){
+		print("tag mismatch %d %d\n", mh->rhdr.tag, mh->thdr.tag);
+		error(Ebadmsg);
+	}
+	if(mh->rhdr.type == Rerror){
+		if(m->mntpt)
+			errors(mh->rhdr.ename);
+		error(Eshutdown);
+	}
 	if(mh->rhdr.type != mh->thdr.type+1){
 		print("type mismatch %d %d\n", mh->rhdr.type, mh->thdr.type+1);
-		error(0, Ebadmsg);
+		error(Ebadmsg);
 	}
 	if(mh->rhdr.fid != mh->thdr.fid){
 		print("fid mismatch %d %d type %d\n", mh->rhdr.fid, mh->thdr.fid, mh->rhdr.type);
-		error(0, Ebadmsg);
-	}
-	if(mh->rhdr.err){
-		mntpt = m->mntpt;	/* unsafe, but Errors are unsafe anyway */
-		if(mntpt)
-			error(mntpt, mh->rhdr.err);
-		error(0, Eshutdown);
+		error(Ebadmsg);
 	}
 
 	/*
@@ -768,7 +721,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	mh->readreply = 0;
 	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n) != n){
 		print("short write in mntxmit\n");
-		error(0, Eshortmsg);
+		error(Eshortmsg);
 	}
 	if(q->reader == 0){		/* i will read */
 		q->reader = u->p;
@@ -783,15 +736,14 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		poperror();
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
 			mnterrdequeue(q, mh);
-			error(0, Ebadmsg);
+			error(Ebadmsg);
 		}
 		/*
 		 * Response might not be mine
 		 */
 		qlock(q);
 		qlocked = 1;
-		if(mh->rhdr.fid == mh->thdr.fid
-		&& mh->rhdr.type == mh->thdr.type+1){	/* it's mine */
+		if(mh->rhdr.tag == mh->thdr.tag){	/* it's mine */
 			q->reader = 0;
 			if(w = q->writer){	/* advance a writer to reader */
 				q->reader = w->p;
@@ -807,8 +759,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		 * Hand response to correct recipient
 		 */
 		for(ow=0,w=q->writer; w; ow=w,w=w->next)
-			if(mh->rhdr.fid == w->thdr.fid
-			&& mh->rhdr.type == w->thdr.type+1){
+			if(mh->rhdr.tag == w->thdr.tag){
 				Mntbuf *t;
 				t = mh->mbr;
 				mh->mbr = w->mbr;
@@ -849,18 +800,17 @@ mntxmit(Mnt *m, Mnthdr *mh)
     Respond:
 	mqfree(q);
 	poperror();
-	if(mh->rhdr.err){
-		mntpt = m->mntpt;	/* unsafe, but Errors are unsafe anyway */
-		if(mntpt)
-			error(mntpt, mh->rhdr.err);
-		error(0, Eshutdown);
+	if(mh->rhdr.type == Rerror){
+		if(m->mntpt)
+			errors(mh->rhdr.ename);
+		error(Eshutdown);
 	}
 	/*
 	 * Copy out on read
 	 */
 	if(mh->thdr.type == Tread){
 		if(mh->rhdr.count > mh->thdr.count)
-			error(0, Ebadcnt);
+			error(Ebadcnt);
 		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
 	}
 	mbfree(mh->mbr);

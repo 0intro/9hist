@@ -94,7 +94,7 @@ fault(Ureg *ur, int user, int code)
 			pg = newpage(1, o, addr);
 			qlock(o->chan);
 			if(waserror()){
-				print("demand load i/o error %d\n", u->error.code);
+				print("demand load i/o error %s\n", u->error);
 				qunlock(o->chan);
 				pg->o = 0;
 				pg->ref--;
@@ -103,7 +103,7 @@ fault(Ureg *ur, int user, int code)
 			o->chan->offset = (addr-o->va) + o->minca;
 			l = (char*)(pg->pa|KZERO);
 			if((*devtab[o->chan->type].read)(o->chan, l, n) != n)
-				error(0, Eioload);
+				error(Eioload);
 			qunlock(o->chan);
 			poperror();
 			/* BUG: if was first page of bss, move to data */
@@ -143,7 +143,6 @@ fault(Ureg *ur, int user, int code)
 			 * Add to mod list
 			 */
 			pte = newmod(o);
-o->nmod++;
 			pte->proc = u->p;
 			pte->page = opte->page;
 			pte->page->ref++;
@@ -219,7 +218,7 @@ validaddr(ulong addr, ulong len, int write)
     Err:
 		pprint("invalid address in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 		postnote(u->p, 1, "sys: bad address", NDebug);
-		error(0, Ebadarg);
+		error(Ebadarg);
 	}
     Again:
 	s = seg(u->p, addr);
@@ -242,7 +241,7 @@ evenaddr(ulong addr)
 {
 	if(addr & 3){
 		postnote(u->p, 1, "sys: odd address", NDebug);
-		error(0, Ebadarg);
+		error(Ebadarg);
 	}
 }
 

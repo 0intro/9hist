@@ -83,7 +83,6 @@ struct Alarm
 #define	CHDIR	0x80000000L
 #define	CHAPPEND 0x40000000L
 #define	CHEXCL	0x20000000L
-#define	QPATH	0x0000FFFFL
 struct Chan
 {
 	QLock;				/* general access */
@@ -96,17 +95,17 @@ struct Chan
 	ushort	dev;
 	ushort	mode;			/* read/write */
 	ushort	flag;
-	ulong	qid;
+	Qid	qid;
 	Mount	*mnt;			/* mount point that derived Chan */
 	ulong	mountid;
 	int	fid;			/* for devmnt */
 	union {
 		Stream	*stream;	/* for stream channels */
 		void	*aux;
-		ulong	pgrpid;		/* for #p/notepg */
+		Qid	pgrpid;		/* for #p/notepg */
 	};
 	Chan	*mchan;			/* channel to mounted server */
-	ulong	mqid;			/* qid of root of mount point */
+	Qid	mqid;			/* qid of root of mount point */
 };
 
 struct	FPsave
@@ -170,14 +169,12 @@ struct Dev
 	long	 (*write)(Chan*, void*, long);
 	void	 (*remove)(Chan*);
 	void	 (*wstat)(Chan*, char*);
-	void	 (*errstr)(Error*, char*);
-	void	 (*userstr)(Error*, char*);
 };
 
 struct Dirtab
 {
 	char	name[NAMELEN];
-	ulong	qid;
+	Qid	qid;
 	long	length;
 	long	perm;
 };
@@ -259,9 +256,9 @@ struct Orig
 	PTE	*pte;
 	Chan	*chan;			/* channel deriving segment (if open) */
 	ushort	type;			/* of channel (which could be non-open) */
-	ulong	qid;
+	Qid	qid;
 	Chan	*mchan;
-	ulong	mqid;
+	Qid	mqid;
 	ulong	minca;			/* base of region in chan */
 	ulong	maxca;			/* end of region in chan */
 };
@@ -372,7 +369,7 @@ struct User
 	Proc	*p;
 	int	nerrlab;
 	Label	errlab[NERR];
-	Error	error;
+	char	error[ERRLEN];
 	FPsave	fpsave;			/* address of this is known by vdb */
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
@@ -601,5 +598,7 @@ extern	Dev	devtab[];
 extern	char	devchar[];
 extern	FPsave	initfp;
 extern	Mach	mach0;
+extern	char	user[NAMELEN];
+extern	char	*errstrtab[];
 
 extern  void	(*kprofp)(ulong);

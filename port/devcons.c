@@ -315,17 +315,17 @@ enum{
 };
 
 Dirtab consdir[]={
-	"cons",		Qcons,		0,	0600,
-	"cputime",	Qcputime,	72,	0600,
-	"log",		Qlog,		BY2PG-8,	0600,
-	"null",		Qnull,		0,	0600,
-/*	"panic",	Qpanic,		0,	0666, /**/
-	"pgrpid",	Qpgrpid,	12,	0600,
-	"pid",		Qpid,		12,	0600,
-	"ppid",		Qppid,		12,	0600,
-	"time",		Qtime,		12,	0600,
-	"user",		Quser,		0,	0600,
-	"vmereset",	Qvmereset,	0,	0600,
+	"cons",		{Qcons},	0,	0600,
+	"cputime",	{Qcputime},	72,	0600,
+	"log",		{Qlog},		BY2PG-8,	0600,
+	"null",		{Qnull},	0,	0600,
+/*	"panic",	{Qpanic},	0,	0666, /**/
+	"pgrpid",	{Qpgrpid},	12,	0600,
+	"pid",		{Qpid},		12,	0600,
+	"ppid",		{Qppid},	12,	0600,
+	"time",		{Qtime},	12,	0600,
+	"user",		{Quser},	0,	0600,
+	"vmereset",	{Qvmereset},	0,	0600,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
@@ -405,12 +405,12 @@ consstat(Chan *c, char *dp)
 Chan*
 consopen(Chan *c, int omode)
 {
-	if(c->qid==Quser && omode==(OWRITE|OTRUNC)){
+	if(c->qid.path==Quser && omode==(OWRITE|OTRUNC)){
 		/* truncate? */
 		if(strcmp(u->p->pgrp->user, "bootes") == 0)	/* BUG */
 			u->p->pgrp->user[0] = 0;
 		else
-			error(0, Eperm);
+			error(Eperm);
 	}
 	return devopen(c, omode, consdir, NCONS, devgen);
 }
@@ -418,7 +418,7 @@ consopen(Chan *c, int omode)
 void
 conscreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
@@ -439,7 +439,7 @@ consread(Chan *c, void *buf, long n)
 
 	if(n <= 0)
 		return n;
-	switch(c->qid&~CHDIR){
+	switch(c->qid.path & ~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, consdir, NCONS, devgen);
 
@@ -535,7 +535,7 @@ conswrite(Chan *c, void *va, long n)
 	long l, m;
 	char *a = va;
 
-	switch(c->qid){
+	switch(c->qid.path){
 	case Qcons:
 		/*
 		 * Damn. Can't page fault in putstrn, so copy the data locally.
@@ -564,7 +564,7 @@ conswrite(Chan *c, void *va, long n)
 
 	case Quser:
 		if(u->p->pgrp->user[0])		/* trying to overwrite /dev/user */
-			error(0, Eperm);
+			error(Eperm);
 		if(c->offset >= NAMELEN-1)
 			return 0;
 		if(c->offset+n >= NAMELEN-1)
@@ -577,19 +577,19 @@ conswrite(Chan *c, void *va, long n)
 	case Qpgrpid:
 	case Qpid:
 	case Qppid:
-		error(0, Eperm);
+		error(Eperm);
 
 	case Qnull:
 		break;
 
 	case Qvmereset:
 		if(strcmp(u->p->pgrp->user, "bootes") != 0)
-			error(0, Eperm);
+			error(Eperm);
 		vmereset();
 		break;
 
 	default:
-		error(0, Egreg);
+		error(Egreg);
 	}
 	return n;
 }
@@ -597,25 +597,13 @@ conswrite(Chan *c, void *va, long n)
 void
 consremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 conswstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void
-conserrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
-}
-
-void
-consuserstr(Error *e, char *buf)
-{
-	strcpy(buf, u->p->pgrp->user);
+	error(Eperm);
 }
 
 /*

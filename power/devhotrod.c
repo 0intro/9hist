@@ -60,7 +60,7 @@ hotrodgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 {
 	if(i || c->dev>=Nhotrod)
 		return -1;
-	devdir(c, 0, hotrod[c->dev].name, sizeof(Device), 0666, dp);
+	devdir(c, (Qid){0,0}, hotrod[c->dev].name, sizeof(Device), 0666, dp);
 	return 1;
 }
 
@@ -100,7 +100,7 @@ hotrodattach(char *spec)
 
 	i = strtoul(spec, 0, 0);
 	if(i >= Nhotrod)
-		error(0, Ebadarg);
+		error(Ebadarg);
 
 	hp = &hotrod[i];
 	if(hp->kprocstarted == 0)
@@ -108,7 +108,8 @@ hotrodattach(char *spec)
 
 	c = devattach('H', spec);
 	c->dev = i;
-	c->qid = CHDIR;
+	c->qid.path = CHDIR;
+	c->qid.vers = 0;
 	return c;
 }
 
@@ -146,9 +147,9 @@ hotrodopen(Chan *c, int omode)
 	dp->mem[256*1024/sizeof(ulong)] = (((ulong)&hp->pbuf) - KZERO) | (SLAVE<<28);
 #endif
 
-	if(c->qid == CHDIR){
+	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
-			error(0, Eperm);
+			error(Eperm);
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
@@ -159,7 +160,7 @@ hotrodopen(Chan *c, int omode)
 void	 
 hotrodcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
@@ -179,14 +180,14 @@ hotrodread(Chan *c, void *buf, long n)
 	ulong *to;
 	ulong *end;
 
-	if(c->qid&CHDIR)
+	if(c->qid.path & CHDIR)
 		return devdirread(c, buf, n, 0, 0, hotrodgen);
 
 	/*
 	 *  allow full word access only
 	 */
 	if((c->offset&(sizeof(ulong)-1)) || (n&(sizeof(ulong)-1)))
-		error(0, Ebadarg);
+		error(Ebadarg);
 
 	hp = &hotrod[c->dev];
 	dp = hp->addr;
@@ -225,7 +226,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 	 *  allow full word access only
 	 */
 	if((c->offset&(sizeof(ulong)-1)) || (n&(sizeof(ulong)-1)))
-		error(0, Ebadarg);
+		error(Ebadarg);
 
 	hp = &hotrod[c->dev];
 	dp = hp->addr;
@@ -250,25 +251,13 @@ hotrodwrite(Chan *c, void *buf, long n)
 void	 
 hotrodremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 hotrodwstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void
-hotroduserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-void	 
-hotroderrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
+	error(Eperm);
 }
 
 void

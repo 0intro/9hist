@@ -62,7 +62,7 @@ bootopen(Chan *c, int omode)
 void	 
 bootcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 /*
@@ -81,7 +81,7 @@ bootread(Chan *c, void *buf, long n)
 		return devdirread(c, buf, n, bootdir, NBOOT, devgen);
 	}
 
-	error(0, Egreg);
+	error(Egreg);
 }
 
 long	 
@@ -99,36 +99,24 @@ bootwrite(Chan *c, void *buf, long n)
 			memcpy((char*)c->offset, buf, n);
 			return n;
 		}
-		error(0, Ebadarg);
+		error(Ebadarg);
 
 	case Qboot:
 		pc = *(ulong*)buf;
 		splhi();
 		gotopc(pc);
 	}
-	error(0, Ebadarg);
+	error(Ebadarg);
 }
 
 void	 
 bootremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 bootwstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void
-bootuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-void	 
-booterrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
+	error(Eperm);
 }

@@ -69,10 +69,10 @@ bit3clone(Chan *c, Chan *nc)
 int	 
 bit3walk(Chan *c, char *name)
 {
-	if(c->qid != CHDIR)
+	if(c->qid.path != CHDIR)
 		return 0;
 	if(strcmp(name, "bit3") == 0){
-		c->qid = 1;
+		c->qid.path = 1;
 		return 1;
 	}
 	return 0;
@@ -82,7 +82,7 @@ void
 bit3stat(Chan *c, char *dp)
 {
 	print("bit3stat\n");
-	error(0, Egreg);
+	error(Egreg);
 }
 
 Chan*
@@ -91,12 +91,12 @@ bit3open(Chan *c, int omode)
 	Bit3msg *bp;
 
 	bp = &((User*)(u->p->upage->pa|KZERO))->kbit3;
-	if(c->qid!=1 || omode!=ORDWR)
-		error(0, Eperm);
+	if(c->qid.path!=1 || omode!=ORDWR)
+		error(Eperm);
 	qlock(&bit3);
 	if(bit3.open){
 		qunlock(&bit3);
-		error(0, Einuse);
+		error(Einuse);
 	}
 	bit3send(bp, RESET, 0, 0);
 	bit3.open = 1;
@@ -110,7 +110,7 @@ bit3open(Chan *c, int omode)
 void	 
 bit3create(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
@@ -135,22 +135,24 @@ bit3read(Chan *c, void *buf, long n)
 	Bit3msg *bp;
 	int docpy;
 
-	switch(c->qid){
+	switch(c->qid.path){
 	case 1:
 		if(n > sizeof bit3.buf)
-			error(0, Egreg);
+			error(Egreg);
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
 			/*
 			 *  use supplied buffer, no need to lock for reply
 			 */
 			bp = &((User*)(u->p->upage->pa|KZERO))->kbit3;
 			bp->rcount = 0;
+qlock(&bit3.buflock); /* BUG */
 			qlock(&bit3);
 			bit3send(bp, READ, buf, n);
 			qunlock(&bit3);
 			do
 				n = bp->rcount;
 			while(n == 0);
+qunlock(&bit3.buflock); /* BUG */
 		}else{
 			/*
 			 *  use bit3 buffer.  lock the buffer till the reply
@@ -158,7 +160,6 @@ bit3read(Chan *c, void *buf, long n)
 			bp = &((User*)(u->p->upage->pa|KZERO))->ubit3;
 			bp->rcount = 0;
 			qlock(&bit3.buflock);
-
 			qlock(&bit3);
 			bit3send(bp, READ, bit3.buf, n);
 			qunlock(&bit3);
@@ -166,12 +167,11 @@ bit3read(Chan *c, void *buf, long n)
 				n = bp->rcount;
 			while(n == 0);
 			memcpy(buf, bit3.buf, n);
-
 			qunlock(&bit3.buflock);
 		}
 		return n;
 	}
-	error(0, Egreg);
+	error(Egreg);
 	return 0;
 }
 
@@ -180,10 +180,10 @@ bit3write(Chan *c, void *buf, long n)
 {
 	Bit3msg *bp;
 
-	switch(c->qid){
+	switch(c->qid.path){
 	case 1:
 		if(n > sizeof bit3.buf)
-			error(0, Egreg);
+			error(Egreg);
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
 			bp = &((User*)(u->p->upage->pa|KZERO))->kbit3;
 			qlock(&bit3);
@@ -203,30 +203,18 @@ bit3write(Chan *c, void *buf, long n)
 		}
 		return n;
 	}
-	error(0, Egreg);
+	error(Egreg);
 	return 0;
 }
 
 void	 
 bit3remove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 bit3wstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void
-bit3userstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-void	 
-bit3errstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
+	error(Eperm);
 }

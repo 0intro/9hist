@@ -250,7 +250,7 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 	sched();
 	if(u->p->wokeup){
 		u->p->wokeup = 0;
-		error(0, Eintr);
+		error(Eintr);
 	}
 }
 
@@ -265,7 +265,7 @@ tsleep(Rendez *r, int (*f)(void*), void *arg, int ms)
 	cancel(a);
 	if(u->p->wokeup){
 		u->p->wokeup = 0;
-		error(0, Eintr);
+		error(Eintr);
 	}
 }
 
@@ -540,7 +540,7 @@ again:
 	while(canlock(&p->wait.use)){
 		if(p->nchild == 0){
 			qunlock(&p->wait);
-			error(0, Enochild);
+			error(Enochild);
 		}
 		p->state = Inwait;
 		qunlock(&p->wait);

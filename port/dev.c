@@ -4,7 +4,6 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"errno.h"
-
 #define	DEVTAB
 #include	"devtab.h"
 
@@ -25,13 +24,13 @@ devno(int c, int user)
 }
 
 void
-devdir(Chan *c, long qid, char *n, long length, long perm, Dir *db)
+devdir(Chan *c, Qid qid, char *n, long length, long perm, Dir *db)
 {
 	strcpy(db->name, n);
 	db->qid = qid;
 	db->type = devchar[c->type];
 	db->dev = c->dev;
-	if(qid & CHDIR)
+	if(qid.path & CHDIR)
 		db->mode = CHDIR|perm;
 	else
 		db->mode = perm;
@@ -39,8 +38,8 @@ devdir(Chan *c, long qid, char *n, long length, long perm, Dir *db)
 	db->mtime = db->atime;
 	db->hlength = 0;
 	db->length = length;
-	db->uid = 0;
-	db->gid = 0;
+	memcpy(db->uid, user, NAMELEN);
+	memcpy(db->gid, user, NAMELEN);
 }
 
 int
@@ -59,7 +58,7 @@ devattach(int tc, char *spec)
 	Chan *c;
 
 	c = newchan();
-	c->qid = CHDIR;
+	c->qid = (Qid){CHDIR, 0};
 	c->type = devno(tc, 0);
 	return c;
 }
@@ -95,9 +94,7 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 	for(i=0;; i++)
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:
-			u->error.type = 0;
-			u->error.dev = 0;
-			u->error.code = Enonexist;
+			strncpy(u->error, errstrtab[Enonexist], NAMELEN);
 			return 0;
 		case 0:
 			continue;
@@ -123,7 +120,7 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 			 * devices with interesting directories usually don't get
 			 * here, which is good because we've lost the name by now.
 			 */
-			if(c->qid & CHDIR){
+			if(c->qid.path & CHDIR){
 				devdir(c, c->qid, ".", 0L, CHDIR|0700, &dir);
 				convD2M(&dir, db);
 				return;
@@ -132,7 +129,7 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 		case 0:
 			break;
 		case 1:
-			if(c->qid == dir.qid){
+			if(eqqid(c->qid, dir.qid)){
 				convD2M(&dir, db);
 				return;
 			}
@@ -180,17 +177,17 @@ devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 		case 0:
 			break;
 		case 1:
-			if(c->qid == dir.qid){
+			if(eqqid(c->qid, dir.qid)){
 				if((access[omode&3] & dir.mode) == access[omode&3])
 					goto Return;
-				error(0, Eperm);
+				error(Eperm);
 			}
 			break;
 		}
     Return:
 	c->offset = 0;
-	if((c->qid&CHDIR) && omode!=OREAD)
-		error(0, Eperm);
+	if((c->qid.path&CHDIR) && omode!=OREAD)
+		error(Eperm);
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	return c;

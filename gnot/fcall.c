@@ -1,12 +1,12 @@
 #include	<u.h>
-#include	"lib.h"
-#include	"fcall.h"
+#include	<libc.h>
+#include	<fcall.h>
 
 #define	CHAR(x)		*p++ = f->x
 #define	SHORT(x)	p[0] = f->x; p[1] = f->x>>8; p += 2
 #define	LONG(x)		p[0] = f->x; p[1] = f->x>>8; p[2] = f->x>>16; p[3] = f->x>>24; p += 4
 #define	VLONG(x)	p[0] = f->x; p[1] = f->x>>8; p[2] = f->x>>16; p[3] = f->x>>24;\
-			p[4] = 0; p[5] = 0; p[6] = 0; p[7] = 0; p += 8
+				p[4] = 0; p[5] = 0; p[6] = 0; p[7] = 0; p += 8
 #define	STRING(x,n)	memcpy(p, f->x, n); p += n
 
 int
@@ -16,24 +16,28 @@ convS2M(Fcall *f, char *ap)
 
 	p = (uchar*)ap;
 	CHAR(type);
+	SHORT(tag);
 	switch(f->type)
 	{
 	default:
-		print("bad type: %d\n", f->type);
+		print("fcall: bad type: %d\n", f->type);
 		return 0;
 
 	case Tnop:
-	case Rnop:
 		break;
 
 	case Tsession:
-		CHAR(lang);
+		break;
+
+	case Tflush:
+		SHORT(oldtag);
 		break;
 
 	case Tattach:
 		SHORT(fid);
 		STRING(uname, sizeof(f->uname));
 		STRING(aname, sizeof(f->aname));
+		STRING(auth, sizeof(f->auth));
 		break;
 
 	case Tclone:
@@ -42,7 +46,6 @@ convS2M(Fcall *f, char *ap)
 		break;
 
 	case Twalk:
-	case Tremove:
 		SHORT(fid);
 		STRING(name, sizeof(f->name));
 		break;
@@ -59,29 +62,28 @@ convS2M(Fcall *f, char *ap)
 		CHAR(mode);
 		break;
 
-	case Toread:
 	case Tread:
 		SHORT(fid);
 		VLONG(offset);
 		SHORT(count);
 		break;
 
-	case Towrite:
-		SHORT(fid);
-		VLONG(offset);
-		SHORT(count);
-		STRING(data, f->count);
-		break;
-
 	case Twrite:
 		SHORT(fid);
 		VLONG(offset);
 		SHORT(count);
-		p++;
+		p++;	/* pad(1) */
 		STRING(data, f->count);
 		break;
 
 	case Tclunk:
+		SHORT(fid);
+		break;
+
+	case Tremove:
+		SHORT(fid);
+		break;
+
 	case Tstat:
 		SHORT(fid);
 		break;
@@ -90,77 +92,76 @@ convS2M(Fcall *f, char *ap)
 		SHORT(fid);
 		STRING(stat, sizeof(f->stat));
 		break;
-
-	case Terrstr:
-		SHORT(fid);
-		SHORT(err);
-		break;
-
-	case Tuserstr:
-		SHORT(fid);
-		SHORT(uid);
-		break;
 /*
  */
+	case Rnop:
+		break;
+
 	case Rsession:
-		SHORT(err);
+		break;
+
+	case Rerror:
+		STRING(ename, sizeof(f->ename));
+		break;
+
+	case Rflush:
+		break;
+
+	case Rattach:
+		SHORT(fid);
+		LONG(qid.path);
+		LONG(qid.vers);
 		break;
 
 	case Rclone:
-	case Rclunk:
-	case Rremove:
-	case Rwstat:
 		SHORT(fid);
-		SHORT(err);
 		break;
 
 	case Rwalk:
-	case Rattach:
-	case Ropen:
-	case Rcreate:
 		SHORT(fid);
-		SHORT(err);
-		LONG(qid);
+		LONG(qid.path);
+		LONG(qid.vers);
 		break;
 
-	case Roread:
+	case Ropen:
 		SHORT(fid);
-		SHORT(err);
-		SHORT(count);
-		STRING(data, f->count);
+		LONG(qid.path);
+		LONG(qid.vers);
+		break;
+
+	case Rcreate:
+		SHORT(fid);
+		LONG(qid.path);
+		LONG(qid.vers);
 		break;
 
 	case Rread:
 		SHORT(fid);
-		SHORT(err);
 		SHORT(count);
-		p++;
+		p++;	/* pad(1) */
 		STRING(data, f->count);
 		break;
 
-	case Rowrite:
 	case Rwrite:
 		SHORT(fid);
-		SHORT(err);
 		SHORT(count);
+		break;
+
+	case Rclunk:
+		SHORT(fid);
+		break;
+
+	case Rremove:
+		SHORT(fid);
 		break;
 
 	case Rstat:
 		SHORT(fid);
-		SHORT(err);
 		STRING(stat, sizeof(f->stat));
 		break;
 
-	case Rerrstr:
+	case Rwstat:
 		SHORT(fid);
-		SHORT(err);
-		STRING(ename, sizeof(f->ename));
-		break;
-
-	case Ruserstr:
-		SHORT(fid);
-		SHORT(err);
-		STRING(uname, sizeof(f->uname));
 		break;
 	}
 	return p - (uchar*)ap;
@@ -173,14 +174,14 @@ convD2M(Dir *f, char *ap)
 
 	p = (uchar*)ap;
 	STRING(name, sizeof(f->name));
-	LONG(qid);
-	p += 4;
+	STRING(uid, sizeof(f->uid));
+	STRING(gid, sizeof(f->gid));
+	LONG(qid.path);
+	LONG(qid.vers);
 	LONG(mode);
 	LONG(atime);
 	LONG(mtime);
 	VLONG(length);
-	SHORT(uid);
-	SHORT(gid);
 	SHORT(type);
 	SHORT(dev);
 	return p - (uchar*)ap;
@@ -195,9 +196,9 @@ convD2M(Dir *f, char *ap)
 #define	CHAR(x)		f->x = *p++
 #define	SHORT(x)	f->x = (p[0] | (p[1]<<8)); p += 2
 #define	LONG(x)		f->x = (p[0] | (p[1]<<8) |\
-			(p[2]<<16) | (p[3]<<24)); p += 4
+				(p[2]<<16) | (p[3]<<24)); p += 4
 #define	VLONG(x)	f->x = (p[0] | (p[1]<<8) |\
-			(p[2]<<16) | (p[3]<<24)); p += 8
+				(p[2]<<16) | (p[3]<<24)); p += 8
 #define	STRING(x,n)	memcpy(f->x, p, n); p += n
 
 int
@@ -207,24 +208,28 @@ convM2S(char *ap, Fcall *f, int n)
 
 	p = (uchar*)ap;
 	CHAR(type);
+	SHORT(tag);
 	switch(f->type)
 	{
 	default:
-		print("bad type: %d\n", f->type);
+		print("fcall: bad type: %d\n", f->type);
 		return 0;
 
 	case Tnop:
-	case Rnop:
 		break;
 
 	case Tsession:
-		CHAR(lang);
+		break;
+
+	case Tflush:
+		SHORT(oldtag);
 		break;
 
 	case Tattach:
 		SHORT(fid);
 		STRING(uname, sizeof(f->uname));
 		STRING(aname, sizeof(f->aname));
+		STRING(auth, sizeof(f->auth));
 		break;
 
 	case Tclone:
@@ -233,7 +238,6 @@ convM2S(char *ap, Fcall *f, int n)
 		break;
 
 	case Twalk:
-	case Tremove:
 		SHORT(fid);
 		STRING(name, sizeof(f->name));
 		break;
@@ -250,29 +254,28 @@ convM2S(char *ap, Fcall *f, int n)
 		CHAR(mode);
 		break;
 
-	case Toread:
 	case Tread:
 		SHORT(fid);
 		VLONG(offset);
 		SHORT(count);
 		break;
 
-	case Towrite:
-		SHORT(fid);
-		VLONG(offset);
-		SHORT(count);
-		f->data = (char*)p; p += f->count;
-		break;
-
 	case Twrite:
 		SHORT(fid);
 		VLONG(offset);
 		SHORT(count);
-		p++;
+		p++;	/* pad(1) */
 		f->data = (char*)p; p += f->count;
 		break;
 
 	case Tclunk:
+		SHORT(fid);
+		break;
+
+	case Tremove:
+		SHORT(fid);
+		break;
+
 	case Tstat:
 		SHORT(fid);
 		break;
@@ -281,76 +284,76 @@ convM2S(char *ap, Fcall *f, int n)
 		SHORT(fid);
 		STRING(stat, sizeof(f->stat));
 		break;
-
-	case Terrstr:
-		SHORT(fid);
-		SHORT(err);
-		break;
-
-	case Tuserstr:
-		SHORT(fid);
-		SHORT(uid);
+/*
+ */
+	case Rnop:
 		break;
 
 	case Rsession:
-		SHORT(err);
+		break;
+
+	case Rerror:
+		STRING(ename, sizeof(f->ename));
+		break;
+
+	case Rflush:
+		break;
+
+	case Rattach:
+		SHORT(fid);
+		LONG(qid.path);
+		LONG(qid.vers);
 		break;
 
 	case Rclone:
-	case Rclunk:
-	case Rremove:
-	case Rwstat:
 		SHORT(fid);
-		SHORT(err);
 		break;
 
 	case Rwalk:
-	case Rattach:
-	case Ropen:
-	case Rcreate:
 		SHORT(fid);
-		SHORT(err);
-		LONG(qid);
+		LONG(qid.path);
+		LONG(qid.vers);
 		break;
 
-	case Roread:
+	case Ropen:
 		SHORT(fid);
-		SHORT(err);
-		SHORT(count);
-		f->data = (char*)p; p += f->count;
+		LONG(qid.path);
+		LONG(qid.vers);
+		break;
+
+	case Rcreate:
+		SHORT(fid);
+		LONG(qid.path);
+		LONG(qid.vers);
 		break;
 
 	case Rread:
 		SHORT(fid);
-		SHORT(err);
 		SHORT(count);
-		p++;
+		p++;	/* pad(1) */
 		f->data = (char*)p; p += f->count;
 		break;
 
-	case Rowrite:
 	case Rwrite:
 		SHORT(fid);
-		SHORT(err);
 		SHORT(count);
+		break;
+
+	case Rclunk:
+		SHORT(fid);
+		break;
+
+	case Rremove:
+		SHORT(fid);
 		break;
 
 	case Rstat:
 		SHORT(fid);
-		SHORT(err);
 		STRING(stat, sizeof(f->stat));
 		break;
 
-	case Rerrstr:
+	case Rwstat:
 		SHORT(fid);
-		SHORT(err);
-		STRING(ename, sizeof(f->ename));
-		break;
-
-	case Ruserstr:
-		SHORT(fid);
-		SHORT(err);
-		STRING(uname, sizeof(f->uname));
 		break;
 	}
 	if((uchar*)ap+n == p)
@@ -365,14 +368,14 @@ convM2D(char *ap, Dir *f)
 
 	p = (uchar*)ap;
 	STRING(name, sizeof(f->name));
-	LONG(qid);
-	p += 4;
+	STRING(uid, sizeof(f->uid));
+	STRING(gid, sizeof(f->gid));
+	LONG(qid.path);
+	LONG(qid.vers);
 	LONG(mode);
 	LONG(atime);
 	LONG(mtime);
 	VLONG(length);
-	SHORT(uid);
-	SHORT(gid);
 	SHORT(type);
 	SHORT(dev);
 	return p - (uchar*)ap;

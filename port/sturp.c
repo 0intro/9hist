@@ -156,7 +156,7 @@ urpopen(Queue *q, Stream *s)
 	if(up == &urp[conf.nurp]){
 		q->ptr = 0;
 		WR(q)->ptr = 0;
-		error(0, Egreg);
+		error(Egreg);
 	}
 
 	q->ptr = q->other->ptr = up;

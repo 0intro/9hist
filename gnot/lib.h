@@ -74,30 +74,30 @@ extern	long	end;
 #define	OCEXEC	32	/* or'ed in, close on exec */
 #define	ORCLOSE	64	/* or'ed in, remove on close */
 
-typedef struct Error	Error;
+typedef struct Qid	Qid;
 typedef struct Dir	Dir;
 typedef struct Waitmsg	Waitmsg;
 
-struct Error
+#define	ERRLEN	64
+#define	DIRLEN	116
+#define	NAMELEN	28
+
+struct Qid
 {
-	int	type;
-	int	dev;
-	int	code;
+	ulong	path;
+	ulong	vers;
 };
 
-#define	ERRLEN	64
-#define	DIRLEN	64
-#define	NAMELEN	28
 struct Dir
 {
 	char	name[NAMELEN];
-	long	qid;
-	long	mode;
+	char	uid[NAMELEN];
+	char	gid[NAMELEN];
+	Qid	qid;
+	ulong	mode;
 	long	atime;
 	long	mtime;
 	Length;
-	short	uid;
-	short	gid;
 	short	type;
 	short	dev;
 };

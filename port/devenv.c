@@ -155,7 +155,7 @@ compactenv(Env *e, ulong n)
 	envalloc.vfree = p1;
 	if(envalloc.end-envalloc.vfree < n){
 		print("env compact failed\n");
-		error(0, Enoenv);
+		error(Enoenv);
 	}
 }
 
@@ -173,7 +173,7 @@ copyenv(Env *e, int trunc)
 	ne = envalloc.efree;
 	if(!ne){
 		print("out of envs\n");
-		error(0, Enoenv);
+		error(Enoenv);
 	}
 	envalloc.efree = ne->next;
 	lock(ne);
@@ -224,7 +224,7 @@ envgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 			ans = 0;
 		else{
 			lock(e);
-			devdir(c, s+1, e->name, e->val? e->val->len : 0, 0666, dp);
+			devdir(c, (Qid){s+1,0}, e->name, e->val? e->val->len : 0, 0666, dp);
 			unlock(e);
 			ans = 1;
 		}
@@ -244,10 +244,10 @@ envclone(Chan *c, Chan *nc)
 {
 	Pgrp *pg;
 
-	if(!(c->qid&CHDIR)){
+	if(!(c->qid.path&CHDIR)){
 		pg = u->p->pgrp;
 		lock(pg);
-		pg->etab[c->qid-1].chref++;
+		pg->etab[c->qid.path-1].chref++;
 		unlock(pg);
 	}
 	return devclone(c, nc);
@@ -259,10 +259,10 @@ envwalk(Chan *c, char *name)
 	Pgrp *pg;
 
 	if(devwalk(c, name, 0, 0, envgen)){
-		if(!(c->qid&CHDIR)){
+		if(!(c->qid.path&CHDIR)){
 			pg = u->p->pgrp;
 			lock(pg);
-			pg->etab[c->qid-1].chref++;
+			pg->etab[c->qid.path-1].chref++;
 			unlock(pg);
 			return 1;
 		}
@@ -284,15 +284,15 @@ envopen(Chan *c, int omode)
 	Pgrp *pg;
 
 	if(omode & (OWRITE|OTRUNC)){
-		if(c->qid & CHDIR)
-			error(0, Eperm);
+		if(c->qid.path & CHDIR)
+			error(Eperm);
 		pg = u->p->pgrp;
 		lock(pg);
-		ep = &pg->etab[c->qid-1];
+		ep = &pg->etab[c->qid.path-1];
 		e = ep->env;
 		if(!e){
 			unlock(pg);
-			error(0, Egreg);
+			error(Egreg);
 		}
 		lock(&envalloc);
 		lock(e);
@@ -333,8 +333,8 @@ envcreate(Chan *c, char *name, int omode, ulong perm)
 	Pgrp *pg;
 	int i;
 
-	if(c->qid != CHDIR)
-		error(0, Eperm);
+	if(c->qid.path != CHDIR)
+		error(Eperm);
 	pg = u->p->pgrp;
 	lock(pg);
 	lock(&envalloc);
@@ -346,7 +346,7 @@ envcreate(Chan *c, char *name, int omode, ulong perm)
 	e = envalloc.efree;
 	if(e == 0){
 		print("out of envs\n");
-		error(0,Enoenv);
+		error(Enoenv);
 	}
 	envalloc.efree = e->next;
 	e->next = 0;
@@ -358,11 +358,11 @@ envcreate(Chan *c, char *name, int omode, ulong perm)
 				break;
 		if(i == pg->nenv){
 			print("out of pgroup envs\n");
-			error(0, Enoenv);
+			error(Enoenv);
 		}
 	}else
 		i = pg->nenv++;
-	c->qid = i+1;
+	c->qid.path = i+1;
 	pg->etab[i].env = e;
 	pg->etab[i].chref = 1;
 	unlock(&envalloc);
@@ -380,15 +380,15 @@ envremove(Chan *c)
 	Envp *ep;
 	Pgrp *pg;
 
-	if(c->qid & CHDIR)
-		error(0, Eperm);
+	if(c->qid.path & CHDIR)
+		error(Eperm);
 	pg = u->p->pgrp;
 	lock(pg);
-	ep = &pg->etab[c->qid-1];
+	ep = &pg->etab[c->qid.path-1];
 	e = ep->env;
 	if(!e){
 		unlock(pg);
-		error(0, Enonexist);
+		error(Enonexist);
 	}
 	ep->env = 0;
 	ep->chref--;
@@ -401,7 +401,7 @@ envwstat(Chan *c, char *db)
 {	int dumpenv(void);
 	dumpenv();  /*DEBUG*/
 	print("envwstat\n");
-	error(0, Egreg);
+	error(Egreg);
 }
 
 void
@@ -409,11 +409,11 @@ envclose(Chan * c)
 {
 	Pgrp *pg;
 
-	if(c->qid & CHDIR)
+	if(c->qid.path & CHDIR)
 		return;
 	pg = u->p->pgrp;
 	lock(pg);
-	pg->etab[c->qid-1].chref--;
+	pg->etab[c->qid.path-1].chref--;
 	unlock(pg);
 }
 
@@ -444,14 +444,14 @@ envread(Chan *c, void *va, long n)
 	Pgrp *pg;
 	char *a = va;
 
-	if(c->qid & CHDIR)
+	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, envgen);
 	pg = u->p->pgrp;
 	lock(pg);
-	e = pg->etab[c->qid-1].env;
+	e = pg->etab[c->qid.path-1].env;
 	if(!e){
 		unlock(pg);
-		error(0, Eio);
+		error(Eio);
 	}
 	lock(e);
 	ev = e->val;
@@ -481,10 +481,10 @@ envwrite(Chan *c, void *va, long n)
 		return 0;
 	pg = u->p->pgrp;
 	lock(pg);
-	e = pg->etab[c->qid-1].env; /* caller checks for CHDIR */
+	e = pg->etab[c->qid.path-1].env; /* caller checks for CHDIR */
 	if(!e){
 		unlock(pg);
-		error(0, Eio);
+		error(Eio);
 	}
 	lock(&envalloc);
 	lock(e);
@@ -500,7 +500,7 @@ envwrite(Chan *c, void *va, long n)
 	ev = e->val;
 	vn = ev? ev->len : 0;
 	if(c->offset > vn)
-		error(0, Egreg); /* perhaps should zero fill */
+		error(Egreg); /* perhaps should zero fill */
 	memcpy(ev->dat+c->offset, a, n);
 	e->val->len = c->offset+n;
 	poperror();
@@ -543,16 +543,3 @@ dumpenv(void)
 			i += ev->n*sizeof(Envval);
 	print(" %d free enval chars\n", i+((char *)envalloc.end-(char*)envalloc.vfree));
 }
-
-void
-envuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-void
-enverrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
-}
-

@@ -197,25 +197,25 @@ noted(Ureg **urp)
 #include "/sys/src/libc/680209sys/sys.h"
 
 typedef long Syscall(ulong*);
-Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, syslasterr, syswait;
+Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, sysdeath, syswait;
 Syscall	sysopen, sysclose, sysread, syswrite, sysseek, syserrstr, sysaccess, sysstat, sysfstat;
-Syscall sysdup, syschdir, sysforkpgrp, sysbind, sysmount, syspipe, syscreate, sysuserstr;
-Syscall	sysbrk_, sysremove, syswstat, sysfwstat, sysnotify, sysnoted, sysfilsys;
+Syscall sysdup, syschdir, sysforkpgrp, sysbind, sysmount, syspipe, syscreate;
+Syscall	sysbrk_, sysremove, syswstat, sysfwstat, sysnotify, sysnoted;
 
 Syscall *systab[]={
 	sysr1,
-	sysaccess,
+	syserrstr,
 	sysbind,
 	syschdir,
 	sysclose,
 	sysdup,
-	syserrstr,
+	sysdeath,
 	sysexec,
 	sysexits,
 	sysfork,
 	sysforkpgrp,
 	sysfstat,
-	syslasterr,
+	sysdeath,
 	sysmount,
 	sysopen,
 	sysread,
@@ -226,14 +226,14 @@ Syscall *systab[]={
 	syswrite,
 	syspipe,
 	syscreate,
-	sysuserstr,
+	sysdeath,
 	sysbrk_,
 	sysremove,
 	syswstat,
 	sysfwstat,
 	sysnotify,
 	sysnoted,
-	sysfilsys,
+	sysdeath,	/* sysfilsys */
 };
 
 long
@@ -274,15 +274,15 @@ syscall(Ureg *aur)
 			msg = "sys: bad sys call";
 	    Bad:
 			postnote(u->p, 1, msg, NDebug);
-			error(0, Ebadarg);
+			error(Ebadarg);
 		}
 		if(sp & (BY2WD-1)){
 			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 			msg = "sys: odd stack";
 			goto Bad;
 		}
-		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))
-			validaddr(sp, 4*BY2WD, 0);
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-5*BY2WD))
+			validaddr(sp, 5*BY2WD, 0);
 		ret = (*systab[r0])((ulong*)(sp+BY2WD));
 	}
 	u->nerrlab = 0;
@@ -296,19 +296,22 @@ syscall(Ureg *aur)
 	return ret;
 }
 
+#include "errstr.h"
+
 void
-error(Chan *c, int code)
+error(int code)
 {
-	if(c){
-		u->error.type = c->type;
-		u->error.dev = c->dev;
-	}else{
-		u->error.type = 0;
-		u->error.dev = 0;
-	}
-	u->error.code = code;
+	strncpy(u->error, errstrtab[code], NAMELEN);
 	nexterror();
 }
+
+void
+errors(char *err)
+{
+	strncpy(u->error, err, NAMELEN);
+	nexterror();
+}
+
 
 void
 nexterror(void)

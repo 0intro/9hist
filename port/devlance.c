@@ -626,16 +626,17 @@ lanceinit(void)
 	 */
 	for(i=0; i<Ntypes; i++) {
 		sprint(lancedir[i].name, "%d", i);
-		lancedir[i].qid = CHDIR|STREAMQID(i, Lchanqid);
+		lancedir[i].qid.path = CHDIR|STREAMQID(i, Lchanqid);
+		lancedir[i].qid.vers = 0;
 		lancedir[i].length = 0;
 		lancedir[i].perm = 0600;
 	}
 	strcpy(lancedir[Ntypes].name, "trace");
-	lancedir[Ntypes].qid = Ltraceqid;
+	lancedir[Ntypes].qid.path = Ltraceqid;
 	lancedir[Ntypes].length = 0;
 	lancedir[Ntypes].perm = 0600;
 	strcpy(lancedir[Ntypes+1].name, "stats");
-	lancedir[Ntypes+1].qid = Lstatsqid;
+	lancedir[Ntypes+1].qid.path = Lstatsqid;
 	lancedir[Ntypes+1].length = 0;
 	lancedir[Ntypes+1].perm = 0600;
 }
@@ -668,7 +669,7 @@ lanceclone(Chan *c, Chan *nc)
 int	 
 lancewalk(Chan *c, char *name)
 {
-	if(c->qid == CHDIR)
+	if(c->qid.path == CHDIR)
 		return devwalk(c, name, lancedir, Ndir, devgen);
 	else
 		return devwalk(c, name, 0, 0, streamgen);
@@ -677,7 +678,7 @@ lancewalk(Chan *c, char *name)
 void	 
 lancestat(Chan *c, char *dp)
 {
-	if(c->qid==CHDIR || c->qid==Ltraceqid || c->qid==Lstatsqid)
+	if(c->qid.path==CHDIR || c->qid.path==Ltraceqid || c->qid.path==Lstatsqid)
 		devstat(c, dp, lancedir, Ndir, devgen);
 	else
 		devstat(c, dp, 0, 0, streamgen);
@@ -691,12 +692,12 @@ lanceopen(Chan *c, int omode)
 {
 	extern Qinfo nonetinfo;
 
-	switch(c->qid){
+	switch(c->qid.path){
 	case CHDIR:
 	case Ltraceqid:
 	case Lstatsqid:
 		if(omode != OREAD)
-			error(0, Eperm);
+			error(Eperm);
 		break;
 	default:
 		streamopen(c, &lanceinfo);
@@ -711,14 +712,14 @@ lanceopen(Chan *c, int omode)
 void	 
 lancecreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 lanceclose(Chan *c)
 {
 	/* real closing happens in lancestclose */
-	switch(c->qid){
+	switch(c->qid.path){
 	case CHDIR:
 	case Ltraceqid:
 	case Lstatsqid:
@@ -767,7 +768,7 @@ lanceread(Chan *c, void *a, long n)
 {
 	char buf[256];
 
-	switch(c->qid){
+	switch(c->qid.path){
 	case CHDIR:
 		return devdirread(c, a, n, lancedir, Ndir, devgen);
 	case Lstatsqid:
@@ -791,25 +792,13 @@ lancewrite(Chan *c, void *a, long n)
 void	 
 lanceremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 lancewstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void	 
-lanceerrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
-}
-
-void	 
-lanceuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
+	error(Eperm);
 }
 
 /*

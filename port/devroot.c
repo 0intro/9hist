@@ -16,11 +16,11 @@ enum{
 };
 
 Dirtab rootdir[]={
-	"bin",		Qbin|CHDIR,	0,			0700,
-	"boot",		Qboot,		0,			0700,
-	"dev",		Qdev|CHDIR,	0,			0700,
-	"env",		Qenv|CHDIR,	0,			0700,
-	"proc",		Qproc|CHDIR,	0,			0700,
+	"bin",		{Qbin|CHDIR},	0,			0700,
+	"boot",		{Qboot},	0,			0700,
+	"dev",		{Qdev|CHDIR},	0,			0700,
+	"env",		{Qenv|CHDIR},	0,			0700,
+	"proc",		{Qproc|CHDIR},	0,			0700,
 };
 
 #define	NROOT	(sizeof rootdir/sizeof(Dirtab))
@@ -68,7 +68,7 @@ rootopen(Chan *c, int omode)
 void	 
 rootcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 /*
@@ -85,7 +85,7 @@ long
 rootread(Chan *c, void *buf, long n)
 {
 
-	switch(c->qid & ~CHDIR){
+	switch(c->qid.path & ~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, rootdir, NROOT, devgen);
 
@@ -100,41 +100,24 @@ rootread(Chan *c, void *buf, long n)
 	case Qdev:
 		return 0;
 	}
-	error(0, Egreg);
+	error(Egreg);
 	return 0;
 }
 
 long	 
 rootwrite(Chan *c, void *buf, long n)
 {
-	error(0, Egreg);
+	error(Egreg);
 }
 
 void	 
 rootremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 rootwstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void
-rootuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-#include "errstr.h"
-
-void	 
-rooterrstr(Error *e, char *buf)
-{
-	if(e->code<0 || e->code>=sizeof errstrtab/sizeof(char*))
-		strcpy(buf, "no such error");
-	else
-		strcpy(buf, errstrtab[e->code]);
+	error(Eperm);
 }

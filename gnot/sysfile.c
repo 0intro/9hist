@@ -21,7 +21,7 @@ newfd(void)
 				u->maxfd = i;
 			return i;
 		}
-	error(0, Enofd);
+	error(Enofd);
 }
 
 Chan*
@@ -30,12 +30,12 @@ fdtochan(int fd, int mode)
 	Chan *c;
 
 	if(fd<0 || NFD<=fd || (c=u->fd[fd])==0)
-		error(0, Ebadfd);
+		error(Ebadfd);
 	if(mode<0 || c->mode==ORDWR)
 		return c;
 	if((mode&OTRUNC) && c->mode==OREAD)
     err:
-		error(0, Ebadusefd);
+		error(Ebadusefd);
 	if((mode&~OTRUNC) != c->mode)
 		goto err;
 	return c;
@@ -46,7 +46,7 @@ openmode(ulong o)
 {
 	if(o >= (OTRUNC|OCEXEC|ORCLOSE|OEXEC))
     Err:
-		error(0, Ebadarg);
+		error(Ebadarg);
 	o &= ~(OTRUNC|OCEXEC|ORCLOSE);
 	if(o > OEXEC)
 		goto Err;
@@ -227,12 +227,12 @@ sysread(ulong *arg)
 		nexterror();
 	}
 	n = arg[2];
-	if(c->qid&CHDIR){
+	if(c->qid.path & CHDIR){
 		n -= n%DIRLEN;
 		if(c->offset%DIRLEN || n==0)
-			error(0, Ebaddirread);
+			error(Ebaddirread);
 	}
-	if((c->qid&CHDIR) && (c->flag&CMOUNT))
+	if((c->qid.path&CHDIR) && (c->flag&CMOUNT))
 		n = unionread(c, (void*)arg[1], n);
 	else
 		n = (*devtab[c->type].read)(c, (void*)arg[1], n);
@@ -254,8 +254,8 @@ syswrite(ulong *arg)
 		qunlock(c);
 		nexterror();
 	}
-	if(c->qid & CHDIR)
-		error(0, Eisdir);
+	if(c->qid.path & CHDIR)
+		error(Eisdir);
 	n = (*devtab[c->type].write)(c, (void*)arg[1], arg[2]);
 	c->offset += n;
 	qunlock(c);
@@ -271,8 +271,8 @@ sysseek(ulong *arg)
 	long off;
 
 	c = fdtochan(arg[0], -1);
-	if(c->qid & CHDIR)
-		error(0, Eisdir);
+	if(c->qid.path & CHDIR)
+		error(Eisdir);
 	qlock(c);
 	if(waserror()){
 		qunlock(c);
@@ -365,13 +365,15 @@ bindmount(ulong *arg, int ismount)
 	struct{
 		Chan	*chan;
 		char	*spec;
+		char	*auth;
 	}bogus;
 
 	flag = arg[2];
 	if(flag>MMASK || (flag&MORDER)==(MBEFORE|MAFTER))
-		error(0, Ebadarg);
+		error(Ebadarg);
 	if(ismount){
 		bogus.chan = fdtochan(arg[0], 2);
+		validaddr(arg[3], 1, 0);
 		p = (char*)arg[3];
 		t = BY2PG-((ulong)p&(BY2PG-1));
 		while(vmemchr(p, 0, t) == 0){
@@ -379,6 +381,14 @@ bindmount(ulong *arg, int ismount)
 			t = BY2PG;
 		}
 		bogus.spec = (char*)arg[3];
+		validaddr(arg[4], 1, 0);
+		p = (char*)arg[4];
+		t = BY2PG-((ulong)p&(BY2PG-1));
+		while(vmemchr(p, 0, t) == 0){
+			p += t;
+			t = BY2PG;
+		}
+		bogus.auth = (char*)arg[4];
 		ret = devno('M', 0);
 		c0 = (*devtab[ret].attach)((char*)&bogus);
 	}else{
@@ -395,10 +405,10 @@ bindmount(ulong *arg, int ismount)
 		close(c1);
 		nexterror();
 	}
-	if((c0->qid^c1->qid) & CHDIR)
-		error(0, Ebadmount);
-	if(flag && !(c0->qid&CHDIR))
-		error(0, Ebadmount);
+	if((c0->qid.path^c1->qid.path) & CHDIR)
+		error(Ebadmount);
+	if(flag && !(c0->qid.path&CHDIR))
+		error(Ebadmount);
 	ret = mount(c0, c1, flag);
 	close(c0);
 	close(c1);
@@ -433,25 +443,6 @@ syscreate(ulong *arg)
 	c = namec((char*)arg[0], Acreate, arg[1], arg[2]);
 	u->fd[fd] = c;
 	return fd;
-}
-
-long
-sysuserstr(ulong *arg)
-{
-	Error err;
-	char buf[NAMELEN];
-
-	validaddr(arg[0], sizeof(Error), 0);
-	validaddr(arg[1], NAMELEN, 1);
-	err = *(Error*)arg[0];
-	err.type = devno(err.type, 1);
-	if(err.type == -1)
-		strcpy((char*)arg[1], "*gok*");
-	else{
-		(*devtab[err.type].userstr)(&err, buf);
-		memcpy((char*)arg[1], buf, sizeof buf);
-	}
-	return 0;
 }
 
 long
@@ -509,6 +500,7 @@ sysfwstat(ulong *arg)
 	return 0;
 }
 
+#ifdef asdf
 long
 sysfilsys(ulong *arg)
 {
@@ -517,8 +509,9 @@ sysfilsys(ulong *arg)
 	cin = fdtochan(arg[0], OREAD);
 	cout = fdtochan(arg[1], OWRITE);
 	validaddr(arg[2], 1, 0);
-	if((cin->qid&CHDIR) || (cout->qid&CHDIR))
-		error(0, Ebadarg);
+	if((cin->qid.path&CHDIR) || (cout->qid.path&CHDIR))
+		error(Ebadarg);
 	service((char *)arg[2], cin, cout, filsys);
 	return 0;
 }
+#endif

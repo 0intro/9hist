@@ -327,7 +327,6 @@ dumpregs(Ureg *ur)
 	l = &ur->status;
 	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2)
 		print("%s\t%.8lux\t%s\t%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
-	dumpstack();
 }
 
 /*
@@ -396,26 +395,26 @@ noted(Ureg **urp)
 #include "/sys/src/libc/mips9sys/sys.h"
 
 typedef long Syscall(ulong*);
-Syscall sysaccess, sysbind, sysbrk_, syschdir, sysclose, syscreate;
+Syscall sysbind, sysbrk_, syschdir, sysclose, syscreate, sysdeath;
 Syscall	sysdup, syserrstr, sysexec, sysexits, sysfork, sysforkpgrp;
-Syscall	sysfstat, sysfwstat, sysgetpid, syslasterr, sysmount, sysnoted;
+Syscall	sysfstat, sysfwstat, sysgetpid, sysmount, sysnoted;
 Syscall	sysnotify, sysopen, syspipe, sysr1, sysread, sysremove, sysseek;
-Syscall syssleep, sysstat, sysuserstr, syswait, syswrite, syswstat;
+Syscall syssleep, sysstat, syswait, syswrite, syswstat;
 
 Syscall *systab[]={
 	[SYSR1]		sysr1,
-	[___ACCESS___]	sysaccess,
+	[ERRSTR]	syserrstr,
 	[BIND]		sysbind,
 	[CHDIR]		syschdir,
 	[CLOSE]		sysclose,
 	[DUP]		sysdup,
-	[ERRSTR]	syserrstr,
+	[___ERRSTR___]	sysdeath,
 	[EXEC]		sysexec,
 	[EXITS]		sysexits,
 	[FORK]		sysfork,
 	[FORKPGRP]	sysforkpgrp,
 	[FSTAT]		sysfstat,
-	[LASTERR]	syslasterr,
+	[___LASTERR___]	sysdeath,
 	[MOUNT]		sysmount,
 	[OPEN]		sysopen,
 	[READ]		sysread,
@@ -426,7 +425,7 @@ Syscall *systab[]={
 	[WRITE]		syswrite,
 	[PIPE]		syspipe,
 	[CREATE]	syscreate,
-	[USERSTR]	sysuserstr,
+	[___USERSTR___]	sysdeath,
 	[BRK_]		sysbrk_,
 	[REMOVE]	sysremove,
 	[WSTAT]		syswstat,
@@ -467,15 +466,15 @@ syscall(Ureg *aur)
 			msg = "sys: bad sys call";
 	    Bad:
 			postnote(u->p, 1, msg, NDebug);
-			error(0, Ebadarg);
+			error(Ebadarg);
 		}
 		if(sp & (BY2WD-1)){
 			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 			msg = "sys: odd stack";
 			goto Bad;
 		}
-		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))
-			validaddr(sp, 4*BY2WD, 0);
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-5*BY2WD))
+			validaddr(sp, 5*BY2WD, 0);
 		ret = (*systab[r1])((ulong*)(sp+2*BY2WD));
 	}
 	ur->pc += 4;
@@ -491,17 +490,19 @@ syscall(Ureg *aur)
 	return ret;
 }
 
+#include "errstr.h"
+
 void
-error(Chan *c, int code)
+error(int code)
 {
-	if(c){
-		u->error.type = c->type;
-		u->error.dev = c->dev;
-	}else{
-		u->error.type = 0;
-		u->error.dev = 0;
-	}
-	u->error.code = code;
+	strncpy(u->error, errstrtab[code], NAMELEN);
+	nexterror();
+}
+
+void
+errors(char *err)
+{
+	strncpy(u->error, err, NAMELEN);
 	nexterror();
 }
 

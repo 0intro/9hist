@@ -253,7 +253,7 @@ duartbaud(int b)
 		x = BD300;
 		break;
 	default:
-		error(0, Ebadarg);
+		error(Ebadarg);
 	}
 	if(x & 0x0100)
 		duart[0].ipc_acr = duartacr |= 0x80;
@@ -278,7 +278,7 @@ duartbreak(int ms)
 	static QLock brk;
 	Duart *duart = DUARTREG;
 	if (ms<=0 || ms >20000)
-		error(0, Ebadarg);
+		error(Ebadarg);
 	qlock(&brk);
 	duart[0].is_imr = duartimr &= ~IM_XRDYB;
 	duart[1].cmnd = STRT_BRK|ENB_TX;

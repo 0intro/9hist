@@ -294,11 +294,11 @@ lookorig(ulong va, ulong npte, int flag, Chan *c)
 	ulong i;
 
 	for(o=origalloc.arena,i=0; i<conf.norig; i++,o++)
-		if(o->npage && o->qid==c->qid && o->va==va){
+		if(o->npage && o->qid.path==c->qid.path && o->va==va){
 			lock(o);
-			if(o->npage && o->qid==c->qid)
+			if(o->npage && eqqid(o->qid, c->qid))
 			if(o->va==va && o->npte==npte && o->flag==flag)
-			if(o->mchan==c->mchan && o->mqid==c->mqid && o->type==c->type){
+			if(o->mchan==c->mchan && o->type==c->type && eqqid(o->mqid, c->mqid)){
 				if(o->chan == 0){
 					o->chan = c;
 					incref(c);
@@ -329,7 +329,6 @@ loop:
 		o->nproc = 1;
 		o->npage = 0;
 		o->chan = c;
-o->nmod = 0;
 		if(c){
 			o->type = c->type;
 			o->qid = c->qid;
@@ -338,8 +337,8 @@ o->nmod = 0;
 			incref(c);
 		}else{
 			o->type = -1;
-			o->qid = -1;
-			o->mqid = -1;
+			o->qid = (Qid){~0, ~0};
+			o->mqid = (Qid){~0, ~0};
 			o->mchan = 0;
 		}
 		if(u && u->p && waserror()){
@@ -401,8 +400,6 @@ loop:
 	}
 	unlock(&modalloc);
 	print("no mods\n");
-DEBUG();
-panic("mods %lux %d %d", o->va, o->npte, o->nmod);
 	if(u == 0)
 		panic("newmod");
 	u->p->state = Wakeme;
@@ -429,7 +426,6 @@ forkmod(Seg *old, Seg *new, Proc *p)
 if(pte->page==0) panic("forkmod zero page");
 if(pte->proc != u->p) panic("forkmod wrong page");
 		npte = newmod(o);
-o->nmod++;
 		npte->proc = p;
 		npte->page = pte->page;
 		pte->page->ref++;
@@ -490,7 +486,6 @@ freesegs(int save)
 				}
 				pg->ref--;
 				o->npage--;
-o->nmod--;
 				old = (PTEA*)pte;
 				pte = pte->nextva;
 				lock(&modalloc);
@@ -653,7 +648,7 @@ growpte(Orig *o, ulong n)
 	unlock(&ptealloc);
 	unlock(o);
 	if(u && u->p)
-		error(0, Enovmem);
+		error(Enovmem);
 	panic("growpte fails %d %lux %d\n", n, o->va, o->npte);
 }
 

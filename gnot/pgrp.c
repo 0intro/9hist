@@ -59,9 +59,9 @@ pgrpnote(Pgrp *pg, char *a, long n, int flag)
 	char buf[ERRLEN];
 
 	if(n >= ERRLEN-1)
-		error(0, Etoobig);
+		error(Etoobig);
 	if(n>=4 && strncmp(a, "sys:", 4)==0)
-		error(0, Ebadarg);
+		error(Ebadarg);
 	memcpy(buf, a, n);
 	buf[n] = 0;
 	p = proctab(0);

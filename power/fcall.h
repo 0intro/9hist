@@ -4,29 +4,29 @@ struct	Fcall
 {
 	char	type;
 	short	fid;
-	short	err;
+	short	tag;
 	union
 	{
 		struct
 		{
-			short	uid;		/* T-Userstr */
 			short	newfid;		/* T-Clone */
-			char	lang;		/* T-Session */
-			ulong	qid;		/* R-Attach, R-Walk, R-Open, R-Create */
+			short	oldtag;		/* T-Flush */
+			Qid	qid;		/* R-Attach, R-Walk, R-Open, R-Create */
 		};
 		struct
 		{
-			char	uname[28];	/* T-Attach, R-Userstr */
-			char	aname[28];	/* T-Attach */
+			char	uname[NAMELEN];	/* T-Attach */
+			char	aname[NAMELEN];	/* T-Attach */
+			char	auth[NAMELEN];	/* T-Attach */
 		};
 		struct
 		{
-			char	ename[64];	/* R-Errstr */
+			char	ename[ERRLEN];	/* R-Error */
 		};
 		struct
 		{
 			long	perm;		/* T-Create */ 
-			char	name[28];	/* T-Walk, T-Create, T-Remove */
+			char	name[NAMELEN];	/* T-Walk, T-Create */
 			char	mode;		/* T-Create, T-Open */
 		};
 		struct
@@ -46,40 +46,36 @@ struct	Fcall
 
 enum
 {
-	Tnop =		0,
+	Tnop =		50,
 	Rnop,
-	Tsession =	2,
+	Tsession =	52,
 	Rsession,
-	Tattach =	10,
+/*	Terror =	54,	illegal */
+	Rerror =	55,
+	Tflush =	56,
+	Rflush,
+	Tattach =	58,
 	Rattach,
-	Tclone =	12,
+	Tclone =	60,
 	Rclone,
-	Twalk =		14,
+	Twalk =		62,
 	Rwalk,
-	Topen =		16,
+	Topen =		64,
 	Ropen,
-	Tcreate =	18,
+	Tcreate =	66,
 	Rcreate,
-	Toread =	20,
-	Roread,
-	Towrite =	22,
-	Rowrite,
-	Tclunk =	24,
-	Rclunk,
-	Tremove =	26,
-	Rremove,
-	Tstat =		28,
-	Rstat,
-	Twstat =	30,
-	Rwstat,
-	Terrstr =	32,
-	Rerrstr,
-	Tuserstr =	34,
-	Ruserstr,
-	Tread =		36,
+	Tread =		68,
 	Rread,
-	Twrite =	38,
+	Twrite =	70,
 	Rwrite,
+	Tclunk =	72,
+	Rclunk,
+	Tremove =	74,
+	Rremove,
+	Tstat =		76,
+	Rstat,
+	Twstat =	78,
+	Rwstat,
 };
 
 int	convM2S(char*, Fcall*, int);
@@ -87,3 +83,6 @@ int	convS2M(Fcall*, char*);
 
 int	convM2D(char*, Dir*);
 int	convD2M(Dir*, char*);
+
+int	fcallconv(void *, int, int, int, int);
+int	dirconv(void *, int, int, int, int);

@@ -22,28 +22,28 @@ enum{
 };
 
 Dirtab procdir[]={
-	"ctl",		Qctl,		0,			0600,
-	"mem",		Qmem,		0,			0600,
-	"note",		Qnote,		0,			0600,
-	"notepg",	Qnotepg,	0,			0200,
-	"proc",		Qproc,		sizeof(Proc),		0600,
-	"status",	Qstatus,	NAMELEN+12+6*12,	0600,
-	"text",		Qtext,		0,			0600,
+	"ctl",		{Qctl},		0,			0600,
+	"mem",		{Qmem},		0,			0600,
+	"note",		{Qnote},	0,			0600,
+	"notepg",	{Qnotepg},	0,			0200,
+	"proc",		{Qproc},	sizeof(Proc),		0600,
+	"status",	{Qstatus},	NAMELEN+12+6*12,	0600,
+	"text",		{Qtext},	0,			0600,
 };
 
 /*
- * Qids are, from bottom to top:
+ * Qids are, in path:
  *	 4 bits of file type (qids above)
- *	12 bits of process slot number + 1
- *	15 bits of pid, for consistency checking
+ *	24 bits of process slot number + 1
+ *	     in vers,
+ *	32 bits of pid, for consistency checking
+ * If notepg, c->pgrpid.path is pgrp slot, .vers is pgrpid.
  */
 #define	NPROC	(sizeof procdir/sizeof(Dirtab))
 #define	QSHIFT	4	/* location in qid of proc slot # */
-#define	PIDSHIFT 16	/* location in qid of pid */
-#define	PIDMASK	0x7FFF	/* low bits of pid used in qid */
-#define	QID(q)	(((q)&0x0000000F)>>0)
-#define	SLOT(q)	((((q)&0x0000FFF0)>>QSHIFT)-1)
-#define	PID(q)	(((q)&0x7FFF0000)>>PIDSHIFT)
+#define	QID(q)	(((q).path&0x0000000F)>>0)
+#define	SLOT(q)	((((q).path&0x0FFFFFFF0)>>QSHIFT)-1)
+#define	PID(q)	((q).vers)
 
 int
 procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
@@ -52,7 +52,7 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	char buf[NAMELEN];
 	ulong pid;
 
-	if(c->qid == CHDIR){
+	if(c->qid.path == CHDIR){
 		if(s >= conf.nproc)
 			return -1;
 		p = proctab(s);
@@ -60,7 +60,7 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 		if(pid == 0)
 			return 0;
 		sprint(buf, "%d", pid);
-		devdir(c, CHDIR|(pid<<PIDSHIFT)|((s+1)<<QSHIFT), buf, 0, CHDIR|0500, dp);
+		devdir(c, (Qid){CHDIR|((s+1)<<QSHIFT), pid}, buf, 0, CHDIR|0500, dp);
 		return 1;
 	}
 	if(s >= NPROC)
@@ -68,7 +68,8 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	if(tab)
 		panic("procgen");
 	tab = &procdir[s];
-	devdir(c, (~CHDIR)&(c->qid|tab->qid), tab->name, tab->length, tab->perm, dp);
+	devdir(c, (Qid){(~CHDIR)&(c->qid.path|tab->qid.path), c->qid.vers},
+		tab->name, tab->length, tab->perm, dp);
 	return 1;
 }
 
@@ -117,16 +118,16 @@ procopen(Chan *c, int omode)
 	Orig *o;
 	Chan *tc;
 
-	if(c->qid == CHDIR){
+	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
-			error(0, Eperm);
+			error(Eperm);
 		goto done;
 	}
 	p = proctab(SLOT(c->qid));
 	pg = p->pgrp;
-	if((p->pid&PIDMASK) != PID(c->qid))
+	if(p->pid != PID(c->qid))
     Died:
-		error(0, Eprocdied);
+		error(Eprocdied);
 	omode = openmode(omode);
 
 	switch(QID(c->qid)){
@@ -144,7 +145,7 @@ procopen(Chan *c, int omode)
 		}
 		if(!(tc->flag&COPEN) || tc->mode!=OREAD)
 			goto Close;
-		if((p->pid&PIDMASK) != PID(c->qid))
+		if(p->pid != PID(c->qid))
 			goto Close;
 		qlock(tc);
 		tc->offset = 0;
@@ -156,8 +157,9 @@ procopen(Chan *c, int omode)
 
 	case Qnotepg:
 		if(omode!=OWRITE || pg->pgrpid==1)	/* easy to do by mistake */
-			error(0, Eperm);
-		c->pgrpid = (pg->pgrpid<<PIDSHIFT)|((pg->index+1)<<QSHIFT);
+			error(Eperm);
+		c->pgrpid.path = pg->index+1;
+		c->pgrpid.vers = pg->pgrpid;
 		break;
 
 	case Qdir:
@@ -165,17 +167,17 @@ procopen(Chan *c, int omode)
 	case Qproc:
 	case Qstatus:
 		if(omode != OREAD)
-			error(0, Eperm);
+			error(Eperm);
 		break;
 	default:
 		pprint("unknown qid in devopen\n");
-		error(0, Egreg);
+		error(Egreg);
 	}
 	/*
 	 * Affix pid to qid
 	 */
 	if(p->state != Dead)
-		c->qid |= (p->pid&PIDMASK)<<PIDSHIFT;
+		c->qid.vers = p->pid;
    done:
 	c->mode = omode;
 	c->flag |= COPEN;
@@ -186,19 +188,19 @@ procopen(Chan *c, int omode)
 void
 proccreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 procremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 procwstat(Chan *c, char *db)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
@@ -222,15 +224,15 @@ procread(Chan *c, void *va, long n)
 	long pid;
 	User *up;
 
-	if(c->qid & CHDIR)
+	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, procgen);
 
 	/*
 	 * BUG: should lock(&p->debug)?
 	 */
 	p = proctab(SLOT(c->qid));
-	if((p->pid&PIDMASK) != PID(c->qid))
-		error(0, Eprocdied);
+	if(p->pid != PID(c->qid))
+		error(Eprocdied);
 
 	switch(QID(c->qid)){
 	case Qmem:
@@ -243,15 +245,15 @@ procread(Chan *c, void *va, long n)
 		if(s){
 			o = s->o;
 			if(o == 0)
-				error(0, Eprocdied);
+				error(Eprocdied);
 			lock(o);
-			if(s->o!=o || (p->pid&PIDMASK)!=PID(c->qid)){
+			if(s->o!=o || p->pid!=PID(c->qid)){
 				unlock(o);
-				error(0, Eprocdied);
+				error(Eprocdied);
 			}
 			if(seg(p, c->offset) != s){
 				unlock(o);
-				error(0, Egreg);
+				error(Egreg);
 			}
 			pte = &o->pte[(c->offset-o->va)>>PGSHIFT];
 			if(s->mod){
@@ -281,8 +283,8 @@ procread(Chan *c, void *va, long n)
 			if(c->offset+n > USERADDR+BY2PG)
 				n = USERADDR+BY2PG - c->offset;
 			pg = p->upage;
-			if(pg==0 || (p->pid&PIDMASK)!=PID(c->qid))
-				error(0, Eprocdied);
+			if(pg==0 || p->pid!=PID(c->qid))
+				error(Eprocdied);
 			k = kmap(pg);
 			b = (char*)VA(k);
 			memcpy(a, b+(c->offset-USERADDR), n);
@@ -296,12 +298,6 @@ procread(Chan *c, void *va, long n)
 				n = KZERO+conf.npage0*BY2PG - c->offset;
 			memcpy(a, (char*)c->offset, n);
 			return n;
-		}else if(c->offset>=UNCACHED && c->offset<UNCACHED+conf.npage0*BY2PG){
-			/* BUT mips only TAKE IT OUT */
-			if(c->offset+n > UNCACHED+conf.npage0*BY2PG)
-				n = UNCACHED+conf.npage0*BY2PG - c->offset;
-			memcpy(a, (char*)c->offset, n);
-			return n;
 		}
 		return 0;
 		break;
@@ -312,17 +308,17 @@ procread(Chan *c, void *va, long n)
 			unlock(&p->debug);
 			nexterror();
 		}
-		if((p->pid&PIDMASK) != PID(c->qid))
-			error(0, Eprocdied);
+		if(p->pid != PID(c->qid))
+			error(Eprocdied);
 		k = kmap(p->upage);
 		up = (User*)VA(k);
 		if(up->p != p){
 			kunmap(k);
 			pprint("note read u/p mismatch");
-			error(0, Egreg);
+			error(Egreg);
 		}
 		if(n < ERRLEN)
-			error(0, Etoosmall);
+			error(Etoosmall);
 		if(up->nnote == 0)
 			n = 0;
 		else{
@@ -359,7 +355,7 @@ procread(Chan *c, void *va, long n)
 		memcpy(a, statbuf+c->offset, n);
 		return n;
 	}
-	error(0, Egreg);
+	error(Egreg);
 }
 
 
@@ -372,20 +368,20 @@ procwrite(Chan *c, void *va, long n)
 	KMap *k;
 	char buf[ERRLEN];
 
-	if(c->qid & CHDIR)
-		error(0, Eisdir);
+	if(c->qid.path & CHDIR)
+		error(Eisdir);
 
 	/*
 	 * Special case: don't worry about process, just use remembered group
 	 */
 	if(QID(c->qid) == Qnotepg){
-		pg = pgrptab(SLOT(c->pgrpid));
+		pg = pgrptab(c->pgrpid.path-1);
 		lock(&pg->debug);
 		if(waserror()){
 			unlock(&pg->debug);
 			nexterror();
 		}
-		if((pg->pgrpid&PIDMASK) != PID(c->pgrpid)){
+		if(pg->pgrpid != c->pgrpid.vers){
 			unlock(&pg->debug);
   	  		goto Died;
 		}
@@ -400,16 +396,16 @@ procwrite(Chan *c, void *va, long n)
 		unlock(&p->debug);
 		nexterror();
 	}
-	if((p->pid&PIDMASK) != PID(c->qid))
+	if(p->pid != PID(c->qid))
     Died:
-		error(0, Eprocdied);
+		error(Eprocdied);
 
 	switch(QID(c->qid)){
 	case Qctl:
 		if(p->state==Broken && n>=4 && strncmp(va, "exit", 4)==0)
 			ready(p);
 		else
-			error(0, Ebadctl);
+			error(Ebadctl);
 		break;
 	case Qnote:
 		k = kmap(p->upage);
@@ -417,34 +413,22 @@ procwrite(Chan *c, void *va, long n)
 		if(up->p != p){
 			kunmap(k);
 			pprint("note write u/p mismatch");
-			error(0, Egreg);
+			error(Egreg);
 		}
 		kunmap(k);
 		if(n >= ERRLEN-1)
-			error(0, Etoobig);
+			error(Etoobig);
 		if(n>=4 && strncmp(va, "sys:", 4)==0)
-			error(0, Ebadarg);
+			error(Ebadarg);
 		memcpy(buf, va, n);
 		buf[n] = 0;
 		if(!postnote(p, 0, buf, NUser))
-			error(0, Enonote);
+			error(Enonote);
 		break;
 	default:
 		pprint("unknown qid in procwrite\n");
-		error(0, Egreg);
+		error(Egreg);
 	}
 	unlock(&p->debug);
 	return n;
-}
-
-void
-procuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-void
-procerrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
 }

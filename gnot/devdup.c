@@ -20,7 +20,7 @@ dupgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	if((f=u->fd[s]) == 0)
 		return 0;
 	sprint(buf, "%ld", s);
-	devdir(c, s, buf, 0, perm[f->mode&3], dp);
+	devdir(c, (Qid){s, 0}, buf, 0, perm[f->mode&3], dp);
 	return 1;
 }
 
@@ -63,16 +63,16 @@ dupopen(Chan *c, int omode)
 {
 	Chan *f;
 
-	if(c->qid == CHDIR){
+	if(c->qid.path == CHDIR){
 		if(omode != 0)
-			error(0, Eisdir);
+			error(Eisdir);
 		c->mode = 0;
 		c->flag |= COPEN;
 		c->offset = 0;
 		return c;
 	}
-	fdtochan(c->qid, openmode(omode));	/* error check only */
-	f = u->fd[c->qid];
+	fdtochan(c->qid.path, openmode(omode));	/* error check only */
+	f = u->fd[c->qid.path];
 	close(c);
 	incref(f);
 	return f;
@@ -81,19 +81,19 @@ dupopen(Chan *c, int omode)
 void
 dupcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 dupremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 dupwstat(Chan *c, char *dp)
 {
-	error(0, Egreg);
+	error(Egreg);
 }
 
 void
@@ -106,7 +106,7 @@ dupread(Chan *c, void *va, long n)
 {
 	char *a = va;
 
-	if(c->qid != CHDIR)
+	if(c->qid.path != CHDIR)
 		panic("dupread");
 	return devdirread(c, a, n, (Dirtab *)0, 0L, dupgen);
 }
@@ -115,16 +115,4 @@ long
 dupwrite(Chan *c, void *va, long n)
 {
 	panic("dupwrite");
-}
-
-void
-duperrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
-}
-
-void
-dupuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
 }

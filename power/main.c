@@ -39,6 +39,8 @@ char sysname[64];
  */
 int ioid;
 
+char	user[NAMELEN] = "bootes";
+
 void
 main(void)
 {

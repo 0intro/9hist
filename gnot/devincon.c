@@ -151,7 +151,7 @@ inconset(Incon *ip, int cnt, int del)
 	Device *dev;
 
 	if (cnt<1 || cnt>14 || del<1 || del>15)
-		error(0, Ebadarg);
+		error(Ebadarg);
 
 	dev = ip->dev;
 	dev->cmd = sel_rcv_cnt | INCON_RUN;
@@ -181,19 +181,19 @@ inconsetctl(Incon *ip, Block *bp)
 	switch(n){
 	default:
 		freeb(bp);
-		error(0, Ebadarg);
+		error(Ebadarg);
 	case 2:
 		del = strtol(field[1], 0, 0);
 		if(del<0 || del>15){
 			freeb(bp);
-			error(0, Ebadarg);
+			error(Ebadarg);
 		}
 		/* fall through */
 	case 1:
 		cnt = strtol(field[0], 0, 0);
 		if(cnt<0 || cnt>15){
 			freeb(bp);
-			error(0, Ebadarg);
+			error(Ebadarg);
 		}
 	}
 	inconset(ip, cnt, del);
@@ -336,14 +336,15 @@ inconattach(char *spec)
 
 	i = strtoul(spec, 0, 0);
 	if(i >= Nincon)
-		error(0, Ebadarg);
+		error(Ebadarg);
 	ip = &incon[i];
 	if(ip->state != Selected)
 		inconrestart(ip);
 
 	c = devattach('i', spec);
 	c->dev = i;
-	c->qid = CHDIR;
+	c->qid.path = CHDIR;
+	c->qid.vers = 0;
 	return c;
 }
 
@@ -368,9 +369,9 @@ inconstat(Chan *c, char *dp)
 Chan*
 inconopen(Chan *c, int omode)
 {
-	if(c->qid == CHDIR){
+	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
-			error(0, Eperm);
+			error(Eperm);
 	}else
 		streamopen(c, &inconinfo);
 	c->mode = openmode(omode);
@@ -382,13 +383,13 @@ inconopen(Chan *c, int omode)
 void	 
 inconcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 inconclose(Chan *c)
 {
-	if(c->qid != CHDIR)
+	if(c->qid.path != CHDIR)
 		streamclose(c);
 }
 
@@ -407,25 +408,13 @@ inconwrite(Chan *c, void *buf, long n)
 void	 
 inconremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 inconwstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void
-inconuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-void	 
-inconerrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
+	error(Eperm);
 }
 
 /*

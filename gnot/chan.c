@@ -85,7 +85,7 @@ loop:
 		c->mnt = 0;
 		c->stream = 0;
 		c->mchan = 0;
-		c->mqid = 0;
+		c->mqid = (Qid){0, 0};
 		return c;
 	}
 	unlock(&chanalloc);
@@ -117,9 +117,17 @@ close(Chan *c)
 }
 
 int
-eqchan(Chan *a, Chan *b, long qmask)
+eqqid(Qid a, Qid b)
 {
-	if((a->qid^b->qid) & qmask)
+	return a.path==b.path && a.vers==b.vers;
+}
+
+int
+eqchan(Chan *a, Chan *b, int pathonly)
+{
+	if(a->qid.path != b->qid.path)
+		return 0;
+	if(!pathonly && a->qid.vers!=b->qid.vers)
 		return 0;
 	if(a->type != b->type)
 		return 0;
@@ -159,10 +167,10 @@ mount(Chan *new, Chan *old, int flag)
 	Pgrp *pg;
 	int islast;
 
-	if(CHDIR & (old->qid^new->qid))
-		error(0, Emount);
-	if((old->qid&CHDIR)==0 && (flag&MORDER)!=MREPL)
-		error(0, Emount);
+	if(CHDIR & (old->qid.path^new->qid.path))
+		error(Emount);
+	if((old->qid.path&CHDIR)==0 && (flag&MORDER)!=MREPL)
+		error(Emount);
 
 	mz = 0;
 	islast = 0;
@@ -184,14 +192,14 @@ mount(Chan *new, Chan *old, int flag)
 	for(i=0; i<pg->nmtab; i++,mt++){
 		if(mt->c==0 && mz==0)
 			mz = mt;
-		else if(eqchan(mt->c, old, CHDIR|QPATH)){
+		else if(eqchan(mt->c, old, 1)){
 			mz = 0;
 			goto Found;
 		}
 	}
 	if(mz == 0){
 		if(i == conf.nmtab)
-			error(0, Enomount);
+			error(Enomount);
 		mz = &pg->mtab[i];
 		islast++;
 	}
@@ -211,7 +219,7 @@ mount(Chan *new, Chan *old, int flag)
 	 */
 	case MBEFORE:
 		if(mt->mnt == 0)
-			error(0, Enotunion);
+			error(Enotunion);
 		/* fall through */
 
 	case MREPL:
@@ -228,7 +236,7 @@ mount(Chan *new, Chan *old, int flag)
 	 */
 	case MAFTER:
 		if(mt->mnt == 0)
-			error(0, Enotunion);
+			error(Enotunion);
 		omnt = mt->mnt;
 		pmnt = 0;
 		while(!omnt->term){
@@ -288,7 +296,7 @@ domount(Chan *c)
 	 */
 	mt = pg->mtab;
 	for(i=0; i<pg->nmtab; i++,mt++)
-		if(mt->c && eqchan(mt->c, c, CHDIR|QPATH))
+		if(mt->c && eqchan(mt->c, c, 1))
 			goto Found;
 	/*
 	 * No; c is unaffected
@@ -300,7 +308,7 @@ domount(Chan *c)
 	 */
     Found:
 	lock(pg);
-	if(!eqchan(mt->c, c, CHDIR|QPATH)){	/* table changed underfoot */
+	if(!eqchan(mt->c, c, 1)){	/* table changed underfoot */
 		pprint("domount: changed underfoot?\n");
 		unlock(pg);
 		return c;
@@ -417,11 +425,11 @@ createdir(Chan *c)
 	mnt = c->mnt;
 	if(c->mountid != mnt->mountid){
 		pprint("createdir: changed underfoot?\n");
-		error(0, Enocreate);
+		error(Enocreate);
 	}
 	do{
 		if(mnt->term)
-			error(0, Enocreate);
+			error(Enocreate);
 		mnt = mnt->next;
 	}while(!(mnt->c->flag&CCREATE));
 	mc = mnt->c;
@@ -458,7 +466,7 @@ namec(char *name, int amode, int omode, ulong perm)
 	char *elem;
 
 	if(name[0] == 0)
-		error(0, Enonexist);
+		error(Enonexist);
 
 	/*
 	 * Make sure all of name is o.k.  first byte is validated
@@ -485,10 +493,10 @@ namec(char *name, int amode, int omode, ulong perm)
 	}else if(name[0] == '#'){
 		mntok = 0;
 		if(name[1]=='M')
-			error(0, Enonexist);
+			error(Enonexist);
 		t = devno(name[1], 1);
 		if(t == -1)
-			error(0, Ebadsharp);
+			error(Ebadsharp);
 		name += 2;
 		if(*name == '/'){
 			name = skipslash(name);
@@ -520,7 +528,7 @@ namec(char *name, int amode, int omode, ulong perm)
 	 */
 	while(*name){
 		if((nc=walk(c, elem, mntok)) == 0)
-			error(0, Enonexist);
+			error(Enonexist);
 		c = nc;
 		name = nextelem(name, elem);
 	}
@@ -535,7 +543,7 @@ namec(char *name, int amode, int omode, ulong perm)
 			c = domount(c);
 		else{
 			if((nc=walk(c, elem, mntok)) == 0)
-				error(0, Enonexist);
+				error(Enonexist);
 			c = nc;
 		}
 		break;
@@ -546,10 +554,10 @@ namec(char *name, int amode, int omode, ulong perm)
 		 * so one may mount on / or . and see the effect.
 		 */
 		if((nc=walk(c, elem, 0)) == 0)
-			error(0, Enonexist);
+			error(Enonexist);
 		c = nc;
-		if(!(c->qid & CHDIR))
-			error(0, Enotdir);
+		if(!(c->qid.path & CHDIR))
+			error(Enotdir);
 		break;
 
 	case Aopen:
@@ -557,7 +565,7 @@ namec(char *name, int amode, int omode, ulong perm)
 			c = domount(c);
 		else{
 			if((nc=walk(c, elem, mntok)) == 0)
-				error(0, Enonexist);
+				error(Enonexist);
 			c = nc;
 		}
 	Open:
@@ -574,13 +582,13 @@ namec(char *name, int amode, int omode, ulong perm)
 		 * the replacement.
 		 */
 		if((nc=walk(c, elem, 0)) == 0)
-			error(0, Enonexist);
+			error(Enonexist);
 		c = nc;
 		break;
 
 	case Acreate:
 		if(isdot)
-			error(0, Eisdir);
+			error(Eisdir);
 		if((nc=walk(c, elem, 1)) != 0){
 			c = nc;
 			omode |= OTRUNC;
@@ -638,12 +646,12 @@ nextelem(char *name, char *elem)
 	char *end, *e;
 
 	if(*name == '/')
-		error(0, Efilename);
+		error(Efilename);
 	end = memchr(name, 0, NAMELEN);
 	if(end == 0){
 		end = memchr(name, '/', NAMELEN);
 		if(end == 0)
-			error(0, Efilename);
+			error(Efilename);
 	}else{
 		e = memchr(name, '/', end-name);
 		if(e)
@@ -652,7 +660,7 @@ nextelem(char *name, char *elem)
 	while(name < end){
 		c = *name++;
 		if((c&0x80) || isfrog[c])
-			error(0, Ebadchar);
+			error(Ebadchar);
 		*elem++ = c;
 	}
 	*elem = 0;
@@ -662,7 +670,7 @@ nextelem(char *name, char *elem)
 void
 isdir(Chan *c)
 {
-	if(c->qid & CHDIR)
+	if(c->qid.path & CHDIR)
 		return;
-	error(0, Enotdir);
+	error(Enotdir);
 }

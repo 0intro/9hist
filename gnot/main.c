@@ -20,7 +20,7 @@ struct Boot
 };
 #define BOOT ((Boot*)0)
 
-char protouser[NAMELEN];
+char user[NAMELEN];
 char bootline[64];
 char bootserver[64];
 char bootdevice[2];
@@ -46,8 +46,8 @@ main(void)
 	alarminit();
 	chandevreset();
 	streaminit();
-	serviceinit();
-	filsysinit();
+/*	serviceinit(); /**/
+/*	filsysinit(); /**/
 	pageinit();
 	kmapinit();
 	userinit();
@@ -57,7 +57,7 @@ main(void)
 void
 unloadboot(void)
 {
-	strncpy(protouser, BOOT->user, NAMELEN);
+	strncpy(user, BOOT->user, NAMELEN);
 	memcpy(bootline, BOOT->line, 64);
 	memcpy(bootserver, BOOT->server, 64);
 	bootdevice[0] = BOOT->device;
@@ -136,7 +136,7 @@ userinit(void)
 	p = newproc();
 	p->pgrp = newpgrp();
 	strcpy(p->text, "*init*");
-	strcpy(p->pgrp->user, protouser);
+	strcpy(p->pgrp->user, user);
 
 	/*
 	 * Kernel Stack

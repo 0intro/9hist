@@ -265,11 +265,11 @@ lookorig(ulong va, ulong npte, int flag, Chan *c)
 	ulong i;
 
 	for(o=origalloc.arena,i=0; i<conf.norig; i++,o++)
-		if(o->npage && o->qid==c->qid && o->va==va){
+		if(o->npage && eqqid(o->qid, c->qid) && o->va==va){
 			lock(o);
-			if(o->npage && o->qid==c->qid)
+			if(o->npage && eqqid(o->qid, c->qid))
 			if(o->va==va && o->npte==npte && o->flag==flag)
-			if(o->mchan==c->mchan && o->mqid==c->mqid && o->type==c->type){
+			if(o->mchan==c->mchan && eqqid(o->mqid, c->mqid) && o->type==c->type){
 				if(o->chan == 0){
 					o->chan = c;
 					incref(c);
@@ -307,8 +307,10 @@ loop:
 			incref(c);
 		}else{
 			o->type = -1;
-			o->qid = -1;
-			o->mqid = -1;
+			o->qid.path = -1;
+			o->qid.vers = 0;
+			o->mqid.path = -1;
+			o->mqid.vers = 0;
 			o->mchan = 0;
 		}
 		if(u && u->p && waserror()){
@@ -614,7 +616,7 @@ growpte(Orig *o, ulong n)
 	unlock(&ptealloc);
 	unlock(o);
 	if(u && u->p)
-		error(0, Enovmem);
+		error(Enovmem);
 	panic("growpte fails %d %lux %d\n", n, o->va, o->npte);
 }
 

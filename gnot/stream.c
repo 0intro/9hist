@@ -239,7 +239,7 @@ allocq(Qinfo *qi)
 
 	if(q == &qlist[conf.nqueue]){
 		print("no more queues\n");
-		error(0, Enoqueue);
+		error(Enoqueue);
 	}
 
 	q->flag = QINUSE;
@@ -335,7 +335,7 @@ popq(Stream *s)
 	Queue *q;
 
 	if(s->procq->next == WR(s->devq))
-		error(0, Ebadld);
+		error(Ebadld);
 	q = s->procq->next;
 	if(q->info->close)
 		(*q->info->close)(RD(q));
@@ -541,7 +541,7 @@ nullput(Queue *q, Block *bp)
 		freeb(bp);
 	else {
 		freeb(bp);
-		error(0, Ehungup);
+		error(Ehungup);
 	}
 }
 
@@ -554,11 +554,11 @@ qinfofind(char *name)
 	Qinfo *qi;
 
 	if(name == 0)
-		error(0, Ebadld);
+		error(Ebadld);
 	for(qi = lds; qi; qi = qi->next)
 		if(strcmp(qi->name, name)==0)
 			return qi;
-	error(0, Ebadld);
+	error(Ebadld);
 }
 
 /*
@@ -608,8 +608,8 @@ streamparse(char *name, Block *bp)
  *  the per stream directory structure
  */
 Dirtab streamdir[]={
-	"data",		Sdataqid,	0,			0600,
-	"ctl",		Sctlqid,	0,			0600,
+	"data",		{Sdataqid},	0,			0600,
+	"ctl",		{Sctlqid},	0,			0600,
 };
 
 /*
@@ -633,7 +633,7 @@ streamgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	else
 		return -1;
 
-	devdir(c, STREAMQID(STREAMID(c->qid),tab->qid), tab->name, tab->length,
+	devdir(c, (Qid){STREAMQID(STREAMID(c->qid.path),tab->qid.path), 0}, tab->name, tab->length,
 		tab->perm, dp);
 	return 1;
 }
@@ -661,7 +661,7 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	}
 	if(s == &slist[conf.nstream]){
 		print("no more streams\n");
-		error(0, Enostream);
+		error(Enostream);
 	}
 	if(waserror()){
 		qunlock(s);
@@ -716,11 +716,11 @@ streamopen(Chan *c, Qinfo *qi)
 	 */
 	for(s = slist; s < &slist[conf.nstream]; s++) {
 		if(s->inuse && s->type == c->type && s->dev == c->dev
-		   && s->id == STREAMID(c->qid)){
+		   && s->id == STREAMID(c->qid.path)){
 			qlock(s);
 			if(s->inuse && s->type == c->type
 			&& s->dev == c->dev
-		 	&& s->id == STREAMID(c->qid)){
+		 	&& s->id == STREAMID(c->qid.path)){
 				s->inuse++;
 				s->opens++;
 				c->stream = s;
@@ -734,7 +734,7 @@ streamopen(Chan *c, Qinfo *qi)
 	/*
 	 *  create a new stream
 	 */
-	c->stream = streamnew(c->type, c->dev, STREAMID(c->qid), qi, 0);
+	c->stream = streamnew(c->type, c->dev, STREAMID(c->qid.path), qi, 0);
 }
 
 /*
@@ -792,11 +792,12 @@ streamexit(Stream *s, int locked)
  *  On the last close of a stream, for each queue on the
  *  stream release its blocks and call its close routine.
  */
-void
+int
 streamclose1(Stream *s)
 {
 	Queue *q, *nq;
 	Block *bp;
+	int rv;
 
 	/*
 	 *  decrement the reference count
@@ -829,15 +830,16 @@ streamclose1(Stream *s)
 			flushq(q);
 		}
 	}
-	s->opens--;
+	rv = --(s->opens);
 
 	/*
 	 *  leave it and free it
 	 */
 	streamexit(s, 1);
 	qunlock(s);
+	return rv;
 }
-void
+int
 streamclose(Chan *c)
 {
 	/*
@@ -845,7 +847,7 @@ streamclose(Chan *c)
 	 */
 	if(!c->stream)
 		return;
-	streamclose1(c->stream);
+	return streamclose1(c->stream);
 }
 
 /*
@@ -918,11 +920,11 @@ streamctlread(Chan *c, void *vbuf, long n)
 	Stream *s;
 
 	s = c->stream;
-	if(STREAMTYPE(c->qid) == Sctlqid){
+	if(STREAMTYPE(c->qid.path) == Sctlqid){
 		sprint(num, "%d", s->id);
 		return stringread(c, buf, n, num);
 	} else {
-		if(CHDIR & c->qid)
+		if(CHDIR & c->qid.path)
 			return devdirread(c, vbuf, n, 0, 0, streamgen);
 		else
 			panic("streamctlread");
@@ -953,7 +955,7 @@ streamread(Chan *c, void *vbuf, long n)
 	int left, i;
 	uchar *buf = vbuf;
 
-	if(STREAMTYPE(c->qid) != Sdataqid)
+	if(STREAMTYPE(c->qid.path) != Sdataqid)
 		return streamctlread(c, vbuf, n);
 
 	/*
@@ -978,7 +980,7 @@ streamread(Chan *c, void *vbuf, long n)
 				if(s->hread++ < 3)
 					break;
 				else
-					error(0, Ehungup);
+					error(Ehungup);
 			}
 			sleep(&q->r, &isinput, (void *)q);
 			continue;
@@ -1023,7 +1025,7 @@ streamctlwrite(Chan *c, void *a, long n)
 	Block *bp;
 	Stream *s;
 
-	if(STREAMTYPE(c->qid) != Sctlqid)
+	if(STREAMTYPE(c->qid.path) != Sctlqid)
 		panic("streamctlwrite %lux", c->qid);
 	s = c->stream;
 
@@ -1095,7 +1097,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	/*
 	 *  decode the qid
 	 */
-	if(STREAMTYPE(c->qid) != Sdataqid)
+	if(STREAMTYPE(c->qid.path) != Sdataqid)
 		return streamctlwrite(c, a, n);
 
 	/*
@@ -1103,7 +1105,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	 */
 	q = s->procq;
 	if(q->other->flag & QHUNGUP)
-		error(0, Ehungup);
+		error(Ehungup);
 
 	if(!docopy && GLOBAL(a)){
 		/*

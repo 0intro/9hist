@@ -392,20 +392,20 @@ enum{
 };
 
 Dirtab consdir[]={
-	"cons",		Qcons,		0,		0600,
-	"cputime",	Qcputime,	6*NUMSIZE,	0600,
-	"null",		Qnull,		0,		0600,
-	"pgrpid",	Qpgrpid,	NUMSIZE,	0600,
-	"pid",		Qpid,		NUMSIZE,	0600,
-	"ppid",		Qppid,		NUMSIZE,	0600,
-	"rcons",	Qrcons,		0,		0600,
-	"rs232",	Qrs232,		0,		0600,
-	"rs232ctl",	Qrs232ctl,	0,		0600,
-	"time",		Qtime,		NUMSIZE,	0600,
-	"user",		Quser,		0,		0600,
-	"klog",		Qklog,		0,		0400,
-	"msec",		Qmsec,		NUMSIZE,	0400,
-	"clock",	Qclock,		2*NUMSIZE,	0400,
+	"cons",		{Qcons},	0,		0600,
+	"cputime",	{Qcputime},	6*NUMSIZE,	0600,
+	"null",		{Qnull},	0,		0600,
+	"pgrpid",	{Qpgrpid},	NUMSIZE,	0600,
+	"pid",		{Qpid},		NUMSIZE,	0600,
+	"ppid",		{Qppid},	NUMSIZE,	0600,
+	"rcons",	{Qrcons},	0,		0600,
+	"rs232",	{Qrs232},	0,		0600,
+	"rs232ctl",	{Qrs232ctl},	0,		0600,
+	"time",		{Qtime},	NUMSIZE,	0600,
+	"user",		{Quser},	0,		0600,
+	"klog",		{Qklog},	0,		0400,
+	"msec",		{Qmsec},	NUMSIZE,	0400,
+	"clock",	{Qclock},	2*NUMSIZE,	0400,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
@@ -489,7 +489,7 @@ conswalk(Chan *c, char *name)
 void
 consstat(Chan *c, char *dp)
 {
-	switch(c->qid){
+	switch(c->qid.path){
 	case Qrs232:
 		streamstat(c, dp, "rs232");
 		break;
@@ -504,14 +504,14 @@ consopen(Chan *c, int omode)
 {
 	int ch;
 
-	switch(c->qid){
+	switch(c->qid.path){
 	case Quser:
 		if(omode==(OWRITE|OTRUNC)){
 			/* truncate? */
 			if(strcmp(u->p->pgrp->user, "bootes") == 0)	/* BUG */
 				u->p->pgrp->user[0] = 0;
 			else
-				error(0, Eperm);
+				error(Eperm);
 		}
 		break;
 	case Qrcons:
@@ -536,13 +536,13 @@ consopen(Chan *c, int omode)
 void
 conscreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 consclose(Chan *c)
 {
-	if(c->qid==Qrcons && (c->flag&COPEN))
+	if(c->qid.path==Qrcons && (c->flag&COPEN))
 		decref(&raw);
 	if(c->stream)
 		streamclose(c);
@@ -561,7 +561,7 @@ consread(Chan *c, void *buf, long n)
 
 	if(n <= 0)
 		return n;
-	switch(c->qid&~CHDIR){
+	switch(c->qid.path&~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, consdir, NCONS, consgen);
 
@@ -701,7 +701,7 @@ conswrite(Chan *c, void *va, long n)
 	long l, m;
 	char *a = va;
 
-	switch(c->qid){
+	switch(c->qid.path){
 	case Qcons:
 	case Qrcons:
 		/*
@@ -736,7 +736,7 @@ conswrite(Chan *c, void *va, long n)
 
 	case Quser:
 		if(u->p->pgrp->user[0])		/* trying to overwrite /dev/user */
-			error(0, Eperm);
+			error(Eperm);
 		if(c->offset >= NAMELEN-1)
 			return 0;
 		if(c->offset+n >= NAMELEN-1)
@@ -749,12 +749,12 @@ conswrite(Chan *c, void *va, long n)
 	case Qpgrpid:
 	case Qpid:
 	case Qppid:
-		error(0, Eperm);
+		error(Eperm);
 
 	case Qnull:
 		break;
 	default:
-		error(0, Egreg);
+		error(Egreg);
 	}
 	return n;
 }
@@ -762,25 +762,13 @@ conswrite(Chan *c, void *va, long n)
 void
 consremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 conswstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void
-conserrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
-}
-
-void
-consuserstr(Error *e, char *buf)
-{
-	strcpy(buf, u->p->pgrp->user);
+	error(Eperm);
 }
 
 /*

@@ -112,7 +112,7 @@ asyncopen(Queue *q, Stream *s)
 		qunlock(ap);
 	}
 	if(ap == &async[conf.nasync])
-		error(0, Enoasync);
+		error(Enoasync);
 	q->ptr = q->other->ptr = ap;
 
 	ap->inuse = 1;

@@ -6,7 +6,7 @@
 #include	"io.h"
 #include	"errno.h"
 
-#define	DPRINT	if(0)	/*kprint*/
+#define	DPRINT	if(0) print
 
 #define	NOW	(MACHP(0)->ticks)
 
@@ -232,7 +232,7 @@ dkalloc(char *name)
 	}
 	if(freep == 0){
 		unlock(&dklock);
-		error(0, Enoifc);
+		error(Enoifc);
 	}
 	dp = freep;
 	dp->opened = 0;
@@ -388,7 +388,7 @@ dkstopen(Queue *q, Stream *s)
 	lock(dp);
 	if(dp->opened==0 || streamenter(dp->s)<0){
 		unlock(dp);
-		error(0, Ehungup);
+		error(Ehungup);
 	}
 	unlock(dp);
 	lp->rq = q;
@@ -499,7 +499,7 @@ dkoput(Queue *q, Block *bp)
 
 	if(bp->type != M_DATA){
 		freeb(bp);
-		error(0, Ebadarg);
+		error(Ebadarg);
 	}
 
 	lp = (Line *)q->ptr;
@@ -540,7 +540,7 @@ dkmuxconfig(Queue *q, Block *bp)
 
 	if(WR(q)->ptr){
 		freeb(bp);
-		error(0, Egreg);
+		error(Egreg);
 	}
 
 	/*
@@ -571,11 +571,11 @@ dkmuxconfig(Queue *q, Block *bp)
 		break;
 	default:
 		freeb(bp);
-		error(0, Ebadarg);
+		error(Ebadarg);
 	}
 	freeb(bp);
 	if(ncsc <= 0 || lines <= ncsc)
-		error(0, Ebadarg);
+		error(Ebadarg);
 
 	/*
 	 *  set up
@@ -584,7 +584,7 @@ dkmuxconfig(Queue *q, Block *bp)
 	lock(dp);
 	if(dp->opened){
 		unlock(dp);
-		error(0, Ebadarg);
+		error(Ebadarg);
 	}
 	dp->ncsc = ncsc;
 	dp->lines = lines;
@@ -653,11 +653,11 @@ Dirtab dkdir[Ndir];
  *  the per stream directory structure
  */
 Dirtab dksubdir[]={
-	"addr",		Daddrqid,	0,	0600,
-	"listen",	Dlistenqid,	0,	0600,
-	"other",	Dotherqid,	0,	0600,
-	"raddr",	Draddrqid,	0, 	0600,
-	"ruser",	Duserqid,	0, 	0600,
+	"addr",		{Daddrqid},	0,	0600,
+	"listen",	{Dlistenqid},	0,	0600,
+	"other",	{Dotherqid},	0,	0600,
+	"raddr",	{Draddrqid},	0, 	0600,
+	"ruser",	{Duserqid},	0, 	0600,
 };
 
 /*
@@ -687,7 +687,8 @@ dkinit(void)
 	 */
 	for(i = 1; i < Nline; i++) {
 		sprint(dkdir[i].name, "%d", i);
-		dkdir[i].qid = CHDIR|STREAMQID(i, Dlineqid);
+		dkdir[i].qid.path = CHDIR|STREAMQID(i, Dlineqid);
+		dkdir[i].qid.vers = 0;
 		dkdir[i].length = 0;
 		dkdir[i].perm = 0600;
 	}
@@ -696,7 +697,8 @@ dkinit(void)
 	 *  the clone device
 	 */
 	strcpy(dkdir[0].name, "clone");
-	dkdir[0].qid = Dcloneqid;
+	dkdir[0].qid.path = Dcloneqid;
+	dkdir[0].qid.vers = 0;
 	dkdir[0].length = 0;
 	dkdir[0].perm = 0600;
 }
@@ -731,7 +733,7 @@ dkclone(Chan *c, Chan *nc)
 int	 
 dkwalk(Chan *c, char *name)
 {
-	if(c->qid == CHDIR)
+	if(c->qid.path == CHDIR)
 		return devwalk(c, name, dkdir, dk[c->dev].lines, devgen);
 	else
 		return devwalk(c, name, dksubdir, Nsubdir, streamgen);
@@ -740,7 +742,7 @@ dkwalk(Chan *c, char *name)
 void	 
 dkstat(Chan *c, char *dp)
 {
-	if(c->qid == CHDIR)
+	if(c->qid.path == CHDIR)
 		devstat(c, dp, dkdir, dk[c->dev].lines, devgen);
 	else
 		devstat(c, dp, dksubdir, Nsubdir, streamgen);
@@ -764,13 +766,13 @@ dkopen(Chan *c, int omode)
 	Dk *dp;
 	int line;
 
-	if(c->qid & CHDIR){
+	if(c->qid.path & CHDIR){
 		/*
 		 *  directories are read only
 		 */
 		if(omode != OREAD)
-			error(0, Ebadarg);
-	} else switch(STREAMTYPE(c->qid)){
+			error(Ebadarg);
+	} else switch(STREAMTYPE(c->qid.path)){
 	case Dcloneqid:
 		dp = &dk[c->dev];
 		/*
@@ -783,12 +785,12 @@ dkopen(Chan *c, int omode)
 					qunlock(lp);
 					continue;
 				}
-				c->qid = STREAMQID(lp-dp->line, Sctlqid);
+				c->qid.path = STREAMQID(lp-dp->line, Sctlqid);
 				break;
 			}
 		}
 		if(lp == end)
-			error(0, Enodev);
+			error(Enodev);
 		lp->state = Lopened;
 		qunlock(lp);
 		streamopen(c, &dkinfo);
@@ -800,7 +802,7 @@ dkopen(Chan *c, int omode)
 		 *  channel on which the call arrived.
 		 */
 		line = dklisten(c);
-		c->qid = STREAMQID(line, Sctlqid);
+		c->qid.path = STREAMQID(line, Sctlqid);
 		streamopen(c, &dkinfo);
 		pushq(c->stream, &urpinfo);
 		dkwindow(c);
@@ -813,7 +815,7 @@ dkopen(Chan *c, int omode)
 		 *  read only files
 		 */
 		if(omode != OREAD)
-			error(0, Ebadarg);
+			error(Ebadarg);
 		break;
 	default:
 		/*
@@ -834,7 +836,7 @@ dkopen(Chan *c, int omode)
 void	 
 dkcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
@@ -852,15 +854,15 @@ dkread(Chan *c, void *a, long n)
 	if(c->stream)
 		return streamread(c, a, n);
 
-	if(c->qid & CHDIR){
-		if(c->qid == CHDIR)
+	if(c->qid.path & CHDIR){
+		if(c->qid.path == CHDIR)
 			return devdirread(c, a, n, dkdir, dk[c->dev].lines, devgen);
 		else
 			return devdirread(c, a, n, dksubdir, Nsubdir, streamgen);
 	}
 
-	lp = &dk[c->dev].line[STREAMID(c->qid)];
-	switch(STREAMTYPE(c->qid)){
+	lp = &dk[c->dev].line[STREAMID(c->qid.path)];
+	switch(STREAMTYPE(c->qid.path)){
 	case Daddrqid:
 		return stringread(c, a, n, lp->addr);
 	case Draddrqid:
@@ -868,7 +870,7 @@ dkread(Chan *c, void *a, long n)
 	case Duserqid:
 		return stringread(c, a, n, lp->ruser);
 	}
-	error(0, Eperm);
+	error(Eperm);
 }
 
 long	 
@@ -879,7 +881,7 @@ dkwrite(Chan *c, void *a, long n)
 	char *field[5];
 	int m;
 
-	t = STREAMTYPE(c->qid);
+	t = STREAMTYPE(c->qid.path);
 
 	/*
 	 *  get data dispatched as quickly as possible
@@ -895,56 +897,42 @@ dkwrite(Chan *c, void *a, long n)
 		m = getfields(buf, field, 5, ' ');
 		if(strcmp(field[0], "connect")==0){
 			if(m < 2)
-				error(0, Ebadarg);
+				error(Ebadarg);
 			dkcall(Dial, c, field[1], 0, 0);
 		} else if(strcmp(field[0], "announce")==0){
 			if(m < 2)
-				error(0, Ebadarg);
+				error(Ebadarg);
 			dkcall(Announce, c, field[1], 0, 0);
 		} else if(strcmp(field[0], "redial")==0){
 			if(m < 4)
-				error(0, Ebadarg);
+				error(Ebadarg);
 			dkcall(Redial, c, field[1], field[2], field[3]);
 		} else if(strcmp(field[0], "accept")==0){
 			if(m < 2)
-				error(0, Ebadarg);
+				error(Ebadarg);
 			dkanswer(c, strtoul(field[1], 0, 0), 0);
 		} else if(strcmp(field[0], "reject")==0){
 			if(m < 3)
-				error(0, Ebadarg);
+				error(Ebadarg);
 			dkanswer(c, strtoul(field[1], 0, 0), strtoul(field[2], 0, 0));
 		} else
 			return streamwrite(c, a, n, 0);
 		return n;
 	}
 
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 dkremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void	 
 dkwstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
-}
-
-void	 
-dkerrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
-}
-
-void	 
-dkuserstr(Error *e, char *buf)
-{
-	extern consuserstr(Error *, char *);
-
-	consuserstr(e, buf);
+	error(Eperm);
 }
 
 /*
@@ -962,7 +950,7 @@ dkopenline(Dk *dp, int line)
 		nexterror();
 	}
 	c = dkattach(dp->name);
-	c->qid = STREAMQID(line, Sdataqid);
+	c->qid.path = STREAMQID(line, Sdataqid);
 	dkopen(c, ORDWR);
 	poperror();
 
@@ -1022,7 +1010,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	Chan *csc;
 	char *bang, *dot;
 	
-	line = STREAMID(c->qid);
+	line = STREAMID(c->qid.path);
 	dp = &dk[c->dev];
 	lp = &dp->line[line];
 
@@ -1030,7 +1018,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 *  only dial on virgin lines
 	 */
 	if(lp->state != Lopened)
-		error(0, Ebadarg);
+		error(Ebadarg);
 
 	DPRINT("dkcall(line=%d, type=%d, dest=%s)\n", line, type, addr);
 
@@ -1040,9 +1028,9 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 *	- change ! into . to delimit service
 	 */
 	if(strchr(addr, '\n'))
-		error(0, Ebadarg);
+		error(Ebadarg);
 	if(strlen(addr)+strlen(u->p->pgrp->user)+2 >= sizeof(dialstr))
-		error(0, Ebadarg);
+		error(Ebadarg);
 	strcpy(dialstr, addr);
 	bang = strchr(dialstr, '!');
 	if(bang){
@@ -1109,7 +1097,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	if(type==Redial){
 		if(streamread(dc, &dialtone, 1L) != 1L){
 			lp->state = Lconnected;
-			error(0, Ebadarg);
+			error(Ebadarg);
 		}
 	}
 
@@ -1142,9 +1130,9 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	DPRINT("got reply %d\n", lp->state);
 	if(lp->state != Lconnected) {
 		if(lp->err >= DKERRS)
-			error(0, dkerr[0]);
+			error(dkerr[0]);
 		else
-			error(0, dkerr[lp->err]);
+			error(dkerr[lp->err]);
 	}
 
 	/*
@@ -1202,7 +1190,7 @@ dklisten(Chan *c)
 	/*
 	 *  open the data file
 	 */
-	dc = dkopenline(dp, STREAMID(c->qid));
+	dc = dkopenline(dp, STREAMID(c->qid.path));
 	if(waserror()){
 		close(dc);
 		nexterror();
@@ -1218,7 +1206,7 @@ dklisten(Chan *c)
 		n = streamread(dc, dialstr, sizeof(dialstr)-1);
 		DPRINT("returns %d\n", n);
 		if(n <= 0)
-			error(0, Eio);
+			error(Eio);
 		dialstr[n] = 0;
 		DPRINT("dialstr = %s\n", dialstr);
 
@@ -1228,7 +1216,7 @@ dklisten(Chan *c)
 		n = getfields(dialstr, line, 12, '\n');
 		if (n < 2) {
 			DPRINT("bad dialstr from dk (1 line)\n");
-			error(0, Eio);
+			error(Eio);
 		}
 
 		/*
@@ -1332,7 +1320,7 @@ dklisten(Chan *c)
 		default:
 			print("bad message from dk(>4 line)\n");
 			qunlock(lp);
-			error(0, Ebadarg);
+			error(Ebadarg);
 		}
 
 		sprint(lp->other, "w(%d)", W_TRAF(lp->window));
@@ -1372,7 +1360,7 @@ dkanswer(Chan *c, int line, int code)
 		close(dc);
 		nexterror();
 	}
-	dc->qid = STREAMQID(STREAMID(c->qid), Sdataqid);
+	dc->qid.path = STREAMQID(STREAMID(c->qid.path), Sdataqid);
 	dkopen(dc, ORDWR);
 
 	/*
@@ -1395,7 +1383,7 @@ dkwindow(Chan *c)
 	long wins;
 	Line *lp;
 
-	lp = &dk[c->dev].line[STREAMID(c->qid)];
+	lp = &dk[c->dev].line[STREAMID(c->qid.path)];
 	if(lp->window == 0)
 		lp->window = 64;
 	sprint(buf, "init %d %d", lp->window, Streamhi);
@@ -1444,7 +1432,7 @@ dkcsckproc(void *a)
 		n = streamread(dp->csc, (char *)&d, (long)sizeof(d));
 		if(n != sizeof(d)){
 			if(n == 0)
-				error(0, Ehungup);
+				error(Ehungup);
 			print("strange csc message %d\n", n);
 			continue;
 		}
@@ -1663,11 +1651,12 @@ dktimer(void *a)
 
 	for(;;){
 		if(dp->opened==0)
-			error(0, Ehungup);
+			error(Ehungup);
 
 		/*
 		 * send keep alive
 		 */
+		DPRINT("keep alive\n");
 		dkmesg(c, T_ALIVE, D_CONTINUE, 0, 0);
 
 		/*
