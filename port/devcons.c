@@ -963,6 +963,7 @@ static ulong
 randomread(void *xp, ulong n)
 {
 	uchar *e, *p;
+	ulong x;
 
 	p = xp;
 
@@ -980,8 +981,15 @@ randomread(void *xp, ulong n)
 			rb.wakeme = 0;
 			continue;
 		}
-		rb.randn = rb.randn*1103515245 + 12345 + *rb.rp;
-		*p++ = rb.randn;
+
+		/*
+		 *  beating clocks will be precictable if
+		 *  they are synchronized.  Use a cheap pseudo
+		 *  random number generator to obscure any cycles.
+		 */
+		x = rb.randn*1103515245 ^ *rb.rp;
+		*p++ = rb.randn = x;
+
 		if(rb.rp+1 == rb.ep)
 			rb.rp = rb.buf;
 		else
