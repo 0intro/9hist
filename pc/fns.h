@@ -42,6 +42,7 @@ void	mouseps2(void);
 void	mouseaccelerate(int);
 void	mouseres(int);
 void	mousespeed(int);
+uchar	nvramread(int);
 void	outb(int, int);
 void	outs(int, ushort);
 void	outss(int, void*, int);

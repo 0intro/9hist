@@ -353,3 +353,10 @@ sec2rtc(ulong secs, Rtc *rtc)
 
 	return;
 }
+
+uchar
+nvramread(int offset)
+{
+	outb(Paddr, offset);
+	return inb(Pdata);
+}

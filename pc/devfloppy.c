@@ -37,6 +37,7 @@ enum
 	Freadid=	0x4a,	/* read track id */
 	Fspec=		0x03,	/* set hold times */
 	Fwrite=		0x45,	/* write cmd */
+	Fformat=	0x4d,	/* format cmd */
 	Fmulti=		0x80,	/* or'd with Fread or Fwrite for multi-head */
 	Fdumpreg=	0x0e,	/* dump internal registers */
 
@@ -60,11 +61,24 @@ enum
 };
 
 /*
+ *  types of drive (from PC equipment byte)
+ */
+enum
+{
+	Tnone=		0,
+	T360kb=		1,
+	T1200kb=	2,
+	T720kb=		3,
+	T1440kb=	4,
+};
+
+/*
  *  floppy types (all MFM encoding)
  */
 struct Type
 {
 	char	*name;
+	int	dt;		/* compatible drive type */
 	int	bytes;		/* bytes/sector */
 	int	sectors;	/* sectors/track */
 	int	heads;		/* number of heads */
@@ -84,12 +98,12 @@ struct Type
 };
 Type floppytype[] =
 {
- { "3½HD",	512,	18,	2,	1,	80,	0x1B,	0x54,	0, },
- { "3½DD",	512,	9,	2,	1,	80,	0x1B,	0x54,	2, },
- { "5¼HD",	512,	15,	2,	1,	80,	0x2A,	0x50,	0, },
- { "5¼DD2",	512,	9,	2,	2,	40,	0x2A,	0x50,	2, },
- { "5¼DD1",	512,	9,	2,	2,	40,	0x2A,	0x50,	1, },
- { "3½ED",	1024,	18,	2,	1,	80,	0x1B,	0x54,	3, },
+ { "3½HD",	T1440kb, 512, 18, 2, 1, 80, 0x1B, 0x54,	0, },
+ { "3½DD",	T1440kb, 512,  9, 2, 1, 80, 0x1B, 0x54, 2, },
+ { "3½DD",	T720kb,  512,  9, 2, 1, 80, 0x1B, 0x54, 2, },
+ { "5¼HD",	T1200kb, 512, 15, 2, 1, 80, 0x2A, 0x50, 0, },
+ { "5¼DD",	T1200kb, 512,  9, 2, 2, 40, 0x2A, 0x50, 1, },
+ { "5¼DD",	T360kb,  512,  9, 2, 1, 40, 0x2A, 0x50, 2, },
 };
 #define NTYPES (sizeof(floppytype)/sizeof(Type))
 
@@ -118,11 +132,12 @@ static int c2b[] =
  */
 struct Drive
 {
-	Type	*t;
+	Type	*t;		/* floppy type */
+	int	dt;		/* drive type */
 	int	dev;
 
 	ulong	lasttouched;	/* time last touched */
-	int	arm;		/* current arm position */
+	int	cyl;		/* current arm position */
 	int	confused;	/* needs to be recalibrated */
 	int	vers;
 
@@ -179,6 +194,7 @@ static long	floppyseek(Drive*, long);
 static int	floppysense(void);
 static void	floppywait(void);
 static long	floppyxfer(Drive*, int, void*, long, long);
+static int	floppyformat(Chan*, Drive*, int, char);
 static long	floppythrice(Drive*, int, void*, long, long);
 static int	cmddone(void*);
 void Xdelay(int);
@@ -195,11 +211,28 @@ Dirtab floppydir[]={
 };
 #define NFDIR	2	/* directory entries/drive */
 
+/*
+ *  set floppy drive to its default type
+ */
+static void
+setdef(Drive *dp)
+{
+	Type *t;
+
+	for(t = floppytype; t < &floppytype[NTYPES]; t++)
+		if(dp->dt == t->dt){
+			dp->t = t;
+			floppydir[NFDIR*dp->dev].length = dp->t->cap;
+			break;
+		}
+}
+
 void
 floppyreset(void)
 {
 	Drive *dp;
 	Type *t;
+	uchar equip;
 
 	/*
 	 *  init dependent parameters
@@ -229,12 +262,25 @@ floppyreset(void)
 	 */
 	for(dp = fl.d; dp < &fl.d[conf.nfloppy]; dp++){
 		dp->dev = dp - fl.d;
-		dp->t = &floppytype[0];		/* default type */
-		floppydir[NFDIR*dp->dev].length = dp->t->cap;
-		dp->arm = -1;		/* because we don't know */
+		dp->dt = T1440kb;
+		setdef(dp);
+		dp->cyl = -1;			/* because we don't know */
 		dp->cache = (uchar*)xspanalloc(dp->t->tsize, BY2PG, 0);
 		dp->ccyl = -1;
 		dp->vers = 1;
+	}
+
+	/*
+	 *  read nvram for types of floppies 0 & 1
+	 */
+	equip = nvramread(0x10);
+	if(conf.nfloppy > 0){
+		fl.d[0].dt = (equip >> 4) & 0xf;
+		setdef(&fl.d[0]);
+	}
+	if(conf.nfloppy > 1){
+		fl.d[1].dt = equip & 0xf;
+		setdef(&fl.d[1]);
 	}
 
 	/*
@@ -336,9 +382,11 @@ changed(Chan *c, Drive *dp)
 	ulong old;
 
 	if(inb(Pdir)&Fchange){
+		setdef(dp);
 		dp->vers++;
-		dp->ccyl = -1;
-		if(dp->arm)
+		dp->confused = 1;
+		floppyon(dp);
+		if(dp->cyl)
 			floppythrice(dp, Fread, dp->cache, 0, dp->t->tsize);
 		else
 			floppythrice(dp, Fread, dp->cache, dp->t->heads*dp->t->tsize,
@@ -427,6 +475,8 @@ floppywrite(Chan *c, void *a, long n)
 	Drive *dp;
 	long rv, i;
 	char *aa = a;
+	char *f[3];
+	char ctlmsg[64];
 
 	rv = 0;
 	dp = &fl.d[c->qid.path & ~Qmask];
@@ -444,8 +494,7 @@ floppywrite(Chan *c, void *a, long n)
 			floppypos(dp, c->offset+rv);
 			if(dp->tcyl == dp->ccyl)
 				dp->ccyl = -1;
-			i = floppythrice(dp, Fwrite, aa+rv, c->offset+rv,
-				n-rv);
+			i = floppythrice(dp, Fwrite, aa+rv, c->offset+rv, n-rv);
 			if(i < 0)
 				break;
 			if(i == 0)
@@ -456,15 +505,19 @@ floppywrite(Chan *c, void *a, long n)
 		break;
 	case Qctl:
 		qlock(&fl);
-		if(SNCMP(aa, "eject") == 0){
+		if(n >= sizeof(ctlmsg))
+			n = sizeof(ctlmsg) - 1;
+		memmove(ctlmsg, aa, n);
+		ctlmsg[n] = 0;
+		if(SNCMP(ctlmsg, "eject") == 0){
 			floppyeject(dp);
-		} else if(SNCMP(aa, "reset") == 0){
+		} else if(SNCMP(ctlmsg, "reset") == 0){
 			fl.confused = 1;
 			floppyon(dp);
-		} else if(SNCMP(aa, "fast") == 0){
-			cpuspeed(1);
-		} else if(SNCMP(aa, "slow") == 0){
-			cpuspeed(0);
+		} else if(SNCMP(ctlmsg, "format") == 0){
+			if(getfields(ctlmsg, f, 3, ' ') != 3)
+				error(Ebadarg);
+			rv = n*floppyformat(c, dp, atoi(f[1]), *f[2]);
 		}
 		qunlock(&fl);
 		break;
@@ -693,9 +746,9 @@ floppyrecal(Drive *dp)
 		dp->confused = 1;
 		return -1;
 	}
-	dp->arm = fl.stat[1];
-	if(dp->arm != 0){
-		DPRINT("recalibrate went to wrong cylinder %d\n", dp->arm);
+	dp->cyl = fl.stat[1];
+	if(dp->cyl != 0){
+		DPRINT("recalibrate went to wrong cylinder %d\n", dp->cyl);
 		dp->confused = 1;
 		return -1;
 	}
@@ -743,7 +796,7 @@ static long
 floppyseek(Drive *dp, long off)
 {
 	floppypos(dp, off);
-	if(dp->arm*dp->t->steps == dp->tcyl)
+	if(dp->cyl == dp->tcyl)
 		return dp->tcyl;
 
 	DPRINT("seeking tcyl %d, thead %d\n", dp->tcyl, dp->thead);
@@ -767,7 +820,7 @@ floppyseek(Drive *dp, long off)
 		return -1;
 	}
 
-	dp->arm = dp->tcyl*dp->t->steps;
+	dp->cyl = dp->tcyl;
 	return dp->tcyl;
 }
 
@@ -790,8 +843,14 @@ floppythrice(Drive *dp, int cmd, void *a, long off, long n)
 
 			/* walk through the compatible types */
 			if(tries == 3){
-				if(++dp->t == &floppytype[NTYPES])
-					dp->t = floppytype;
+				while(++dp->t){
+					if(dp->t == &floppytype[NTYPES])
+						dp->t = floppytype;
+					if(dp->dt == Tnone)
+						break;
+					if(dp->dt == dp->t->dt)
+						break;
+				}
 				floppydir[NFDIR*dp->dev].length = dp->t->cap;
 				if(dp->t == start)
 					nexterror();
@@ -838,7 +897,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	fl.ncmd = 0;
 	fl.cmd[fl.ncmd++] = cmd;
 	fl.cmd[fl.ncmd++] = (dp->thead<<2) | dp->dev;
-	fl.cmd[fl.ncmd++] = dp->tcyl * dp->t->steps;
+	fl.cmd[fl.ncmd++] = dp->tcyl;
 	fl.cmd[fl.ncmd++] = dp->thead;
 	fl.cmd[fl.ncmd++] = dp->tsec;
 	fl.cmd[fl.ncmd++] = dp->t->bcode;
@@ -876,7 +935,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	/*
 	 *  check for correct cylinder
 	 */
-	offset = ((fl.stat[3]+dp->t->steps-1)/dp->t->steps) * dp->t->heads + fl.stat[4];
+	offset = fl.stat[3] * dp->t->heads + fl.stat[4];
 	offset = offset*dp->t->sectors + fl.stat[5] - 1;
 	offset = offset * c2b[fl.stat[6]];
 	if(offset != off+dp->len){
@@ -889,6 +948,86 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	return dp->len;
 }
 
+/*
+ *  format a track
+ */
+static int
+floppyformat(Chan *c, Drive *dp, int track, char filler)
+{
+ 	int cyl, h, sec;
+	uchar *buf, *bp;
+	Type *t;
+
+	t = dp->t;
+	cyl = track/t->heads;
+	h = track % t->heads;
+	if(track >= t->tracks * t->heads)
+		return 0;
+	buf = smalloc(t->sectors*4);
+
+	qlock(&fl);
+	if(waserror()){
+		qunlock(&fl);
+		free(buf);
+		nexterror();
+	}
+	floppyon(dp);
+	changed(c, dp);
+	if(floppyseek(dp, track*t->tsize) < 0)
+		error(Eio);
+
+	/*
+	 *  set up the dma (dp->len may be trimmed)
+	 */
+	bp = buf;
+	for(sec = 1; sec <= t->sectors; sec++){
+		*bp++ = cyl;
+		*bp++ = h;
+		*bp++ = sec;
+		*bp++ = t->bcode;
+	}
+	dmasetup(DMAchan, buf, bp-buf, 0);
+
+	/*
+	 *  start operation
+	 */
+	fl.ncmd = 0;
+	fl.cmd[fl.ncmd++] = Fformat;
+	fl.cmd[fl.ncmd++] = (h<<2) | dp->dev;
+	fl.cmd[fl.ncmd++] = t->bcode;
+	fl.cmd[fl.ncmd++] = t->sectors;
+	fl.cmd[fl.ncmd++] = t->fgpl;
+	fl.cmd[fl.ncmd++] = filler;
+	if(floppycmd() < 0){
+		DPRINT("xfer cmd failed\n");
+		error(Eio);
+	}
+
+	/*
+	 *  give bus to DMA, floppyintr() will read result
+	 */
+	floppywait();
+	dmaend(DMAchan);
+
+	/*
+	 *  check for errors
+	 */
+	if(fl.nstat < 7){
+		DPRINT("format result failed %lux\n", inb(Pmsr));
+		fl.confused = 1;
+		error(Eio);
+	}
+	if((fl.stat[0]&Codemask)!=0 || fl.stat[1] || fl.stat[2]){
+		DPRINT("format failed %lux %lux %lux\n",
+			fl.stat[0], fl.stat[1], fl.stat[2]);
+		dp->confused = 1;
+		error(Eio);
+	}
+	qunlock(&fl);
+	free(buf);
+	return 1;
+}
+
 static void
 floppyintr(Ureg *ur)
 {
@@ -896,9 +1035,7 @@ floppyintr(Ureg *ur)
 	switch(fl.cmd[0]&~Fmulti){
 	case Fread:
 	case Fwrite:
-		floppyresult();
-		break;
-	case Freadid:
+	case Fformat:
 		floppyresult();
 		break;
 	case Fseek:

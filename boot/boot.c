@@ -116,7 +116,7 @@ boot(int argc, char *argv[])
 	 *  if a local file server exists and it's not
 	 *  running, start it and mount it onto /n/kfs
 	 */
-	if(!islocal && !ishybrid){
+	if(access("#s/kfs", 0) < 0){
 		for(mp = method; mp->name; mp++){
 			if(strcmp(mp->name, "local") != 0)
 				continue;
