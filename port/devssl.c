@@ -696,7 +696,6 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 		error(Ebadusefd);
 	}
 
-	nb = nil;
 	if(waserror()){
 		qunlock(&s.s->out.q);
 		if(bb.b != nil)
