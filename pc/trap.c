@@ -287,6 +287,7 @@ trap(Ureg* ureg)
 		 */
 		if(ctl->isintr && ctl->irq != IrqTIMER && ctl->irq != IrqCLOCK)
 		if(up && up->state == Running)
+		if(up->nlocks == 0)
 		if(anyhigher())
 		if(up->preempted == 0)
 		if(!active.exiting){

@@ -136,6 +136,7 @@ struct Mach
 	vlong	intrts;			/* time stamp of last interrupt */
 	ulong	spuriousintr;
 	int	lastintr;
+	int		ilockdepth;
 
 	int	flushmmu;		/* make current proc flush it's mmu state */
 	Proc	*pid2proc[31];		/* what proc holds what pid */

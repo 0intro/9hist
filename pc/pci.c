@@ -57,7 +57,7 @@ enum
 };
 
 static Lock pcicfglock;
-static QLock pcicfginitlock;
+static Lock pcicfginitlock;
 static int pcicfgmode = -1;
 static int pcimaxbno = 7;
 static int pcimaxdno;
@@ -498,9 +498,9 @@ pciscan(int bno, Pcidev **list)
 {
 	int ubn;
 
-	qlock(&pcicfginitlock);
+	lock(&pcicfginitlock);
 	ubn = pcilscan(bno, list);
-	qunlock(&pcicfginitlock);
+	unlock(&pcicfginitlock);
 	return ubn;
 }
 
@@ -747,7 +747,7 @@ pcicfginit(void)
 	Pcidev **list;
 	ulong mema, ioa;
 
-	qlock(&pcicfginitlock);
+	lock(&pcicfginitlock);
 	if(pcicfgmode != -1)
 		goto out;
 
@@ -839,14 +839,14 @@ pcicfginit(void)
 		pcibusmap(pciroot, &mema, &ioa, 1);
 		DBG("Sizes2: mem=%lux io=%lux\n", mema, ioa);
 	
-		qunlock(&pcicfginitlock);
+		unlock(&pcicfginitlock);
 		return;
 	}
 
 	pcirouting();
 
 out:
-	qunlock(&pcicfginitlock);
+	unlock(&pcicfginitlock);
 
 }
 
@@ -1117,9 +1117,9 @@ pcihinv(Pcidev* p)
 {
 	if(pcicfgmode == -1)
 		pcicfginit();
-	qlock(&pcicfginitlock);
+	lock(&pcicfginitlock);
 	pcilhinv(p);
-	qunlock(&pcicfginitlock);
+	unlock(&pcicfginitlock);
 }
 
 void

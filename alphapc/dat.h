@@ -156,6 +156,7 @@ struct Mach
 	int	load;
 	int	intr;
 	int	flushmmu;		/* make current proc flush it's mmu state */
+	int		ilockdepth;
 
 	ulong	spuriousintr;
 	int	lastintr;

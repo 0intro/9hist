@@ -177,6 +177,7 @@ struct Mach
 	int	intr;
 	vlong	intrts;			/* time stamp of last interrupt */
 	int	flushmmu;		/* make current proc flush it's mmu state */
+	int		ilockdepth;
 
 	ulong	spuriousintr;
 	int	lastintr;

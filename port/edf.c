@@ -40,6 +40,7 @@ int			ntasks;
 Resource		resources[Maxresources];
 int			nresources;
 int			edfstateupdate;
+int			misseddeadlines;
 
 enum{
 	Deadline,	/* Invariant for schedulability test: Deadline < Release */
@@ -465,6 +466,8 @@ edfdeadlineintr(Ureg*, Timer*)
 	
 			if (t->d <= now || t->S == 0LL){
 				/* Task has reached its deadline/slice, remove from queue */
+				if (t->S > 0LL)
+					misseddeadlines++;
 				deadline(up, SSlice);
 				while (t = edfstack[m->machno].head){
 					if (now < t->d)

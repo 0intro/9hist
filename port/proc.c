@@ -87,10 +87,12 @@ schedinit(void)		/* never returns */
 void
 sched(void)
 {
+	if(m->ilockdepth)
+		panic("ilockdepth %d", m->ilockdepth);
+
 	if(up){
-		if(up->state == Running && up->nlocks){
-			up->delaysched = 1;
-			delayedscheds++;
+		if(up->nlocks && up->state != Moribund){
+ 			delayedscheds++;
 			return;
 		}
 

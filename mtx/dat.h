@@ -151,6 +151,7 @@ struct Mach
 	int	load;
 	int	intr;
 	int	flushmmu;		/* make current proc flush it's mmu state */
+	int	ilockdepth;
 
 	ulong	ptabbase;		/* start of page table in kernel virtual space */
 	int		slotgen;		/* next pte (byte offset) when pteg is full */
