@@ -384,7 +384,7 @@ idseq(void)
 }
 
 static ulong
-activate(void)
+activate(int tag)
 {
 	int i;
 	ushort x, acr;
@@ -419,9 +419,6 @@ activate(void)
 	/*
 	 * 3. Read the Address Configuration from the EEPROM.
 	 *    The Address Configuration field is at offset 0x08 in the EEPROM).
-	 * 6. Tag the adapter so it won't respond in future.
-	 * 6. Activate the adapter by writing the Activate command
-	 *    (0xFF).
 	 */
 	outb(IDport, 0x88);
 	for(acr = 0, i = 0; i < 16; i++){
@@ -429,17 +426,25 @@ activate(void)
 		acr <<= 1;
 		acr |= inb(IDport) & 0x01;
 	}
-	outb(IDport, 0xD1);
-	outb(IDport, 0xFF);
-
-	/*
-	 * 8. Now we can talk to the adapter's I/O base addresses.
-	 *    We get the I/O base address from the acr just read.
-	 *
-	 *    Enable the adapter. 
-	 */
 	port = (acr & 0x1F)*0x10 + 0x200;
-	outs(port+ConfigControl, Ena);
+
+	if(tag){
+		/*
+		 * 6. Tag the adapter so it won't respond in future.
+		 * 6. Activate the adapter by writing the Activate command
+		 *    (0xFF).
+		 */
+		outb(IDport, 0xD1);
+		outb(IDport, 0xFF);
+
+		/*
+		 * 8. Now we can talk to the adapter's I/O base addresses.
+		 *    We get the I/O base address from the acr just read.
+		 *
+		 *    Enable the adapter.
+		 */
+		outs(port+ConfigControl, Ena);
+	}
 
 	return port;
 }
@@ -447,29 +452,38 @@ activate(void)
 static ulong
 tcm509(Ether *ether)
 {
-	static int reset;
+	static int untag;
 	ulong port;
 	Adapter *ap;
 
 	/*
 	 * One time only:
 	 *	write ID sequence to get the attention of all adapters;
-	 *	global-reset all adapters;
 	 *	untag all adapters.
+	 * If we do a global reset here on all adapters we'll confuse any
+	 * ISA cards configured for EISA mode.
 	 */
-	if(reset == 0){
+	if(untag == 0){
 		idseq();
-		outb(IDport, 0xC0);
-		delay(2);
 		outb(IDport, 0xD0);
-		reset = 1;
+		untag = 1;
 	}
 
 	/*
 	 * Attempt to activate adapters until one matches our
-	 * address criteria.
+	 * address criteria. If adapter is set for EISA mode,
+	 * tag it and ignore. Otherwise, reset the adapter and
+	 * activate it fully.
 	 */
-	while(port = activate()){
+	while(port = activate(0)){
+		if(port == 0x3F0){
+			outb(IDport, 0xD1);
+			continue;
+		}
+		outb(IDport, 0xC0);
+		if(activate(1) != port)
+			print("activate %d\n");
+		
 		if(ether->port == 0 || ether->port == port)
 			return port;
 
@@ -486,19 +500,40 @@ static ulong
 tcm579(Ether *ether)
 {
 	static int slot = 1;
+	ushort x;
 	ulong port;
 	Adapter *ap;
 
+	/*
+	 * First time through, check if this is an EISA machine.
+	 * If not, nothing to do.
+	 */
 	if(slot == 1 && strncmp((char*)(KZERO|0xFFFD9), "EISA", 4))
 		return 0;
+
+	/*
+	 * Continue through the EISA slots looking for a match on both
+	 * 3COM as the manufacturer and 3C579 or 3C579-TP as the product.
+	 * If we find an adapter, select window 0, enable it and clear
+	 * out any lingering status and interrupts.
+	 * Trying to do a GlobalReset here to re-init the card (as in the
+	 * 509 code) doesn't seem to work.
+	 */
 	while(slot < 16){
 		port = slot++*0x1000;
 		if(ins(port+0xC80+ManufacturerID) != 0x6D50)
 			continue;
-		COMMAND(port+0xC80, GlobalReset, 0);
-		delay(1000);
-		outs(port+0xC80+ConfigControl, Ena);
-		COMMAND(port+0xC80, SelectWindow, 0);
+		x = ins(port+0xC80+ProductID);
+		if((x & 0xF0FF) != 0x9050/* || (x != 0x9350 && x != 0x9250)*/)
+			continue;
+
+		COMMAND(port, SelectWindow, 0);
+		outs(port+ConfigControl, Ena);
+
+		COMMAND(port, TxReset, 0);
+		COMMAND(port, RxReset, 0);
+		COMMAND(port, AckIntr, 0xFF);
+
 		if(ether->port == 0 || ether->port == port)
 			return port;
 
@@ -508,6 +543,13 @@ tcm579(Ether *ether)
 		adapter = ap;
 	}
 
+	return 0;
+}
+
+static ulong
+tcm589(Ether *ether)
+{
+	USED(ether);
 	return 0;
 }
 
@@ -528,8 +570,8 @@ reset(Ether *ether)
 	 * otherwise the ports must match.
 	 * See if we've already found an adapter that fits
 	 * the bill.
-	 * If no match then try for an EISA card and finally
-	 * for an ISA card.
+	 * If no match then try for an EISA card, an ISA card
+	 * and finally for a PCMCIA card.
 	 */
 	port = 0;
 	for(app = &adapter, ap = *app; ap; app = &ap->next, ap = ap->next){
@@ -545,12 +587,14 @@ reset(Ether *ether)
 	if(port == 0)
 		port = tcm509(ether);
 	if(port == 0)
+		port = tcm589(ether);
+	if(port == 0)
 		return -1;
 
 	/*
 	 * Read the IRQ from the Resource Configuration Register,
 	 * the ethernet address from the EEPROM, and the address configuration.
-	 * The EEPROM command is 8bits, the lower 6 bits being
+	 * The EEPROM command is 8 bits, the lower 6 bits being
 	 * the address offset.
 	 */
 	ether->irq = (ins(port+ResourceConfig)>>12) & 0x0F;
@@ -583,8 +627,11 @@ reset(Ether *ether)
 	/*
 	 * Finished with window 2.
 	 * Set window 1 for normal operation.
+	 * Clear out any lingering Tx status.
 	 */
 	COMMAND(port, SelectWindow, 1);
+	while(inb(port+TxStatus))
+		outb(port+TxStatus, 0);
 
 	/*
 	 * If we have a 10BASE2 transceiver, start the DC-DC

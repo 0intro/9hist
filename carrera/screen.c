@@ -118,19 +118,30 @@ void
 screenwin(void)
 {
 	Dac *d;
+	Point p;
+	int i, y;
 	ulong zbuf[16];
 
-	memset(Screenvirt, 0, 3*1024*1024);
+	memset((void*)Screenvirt, 0xff, 3*1024*1024);
 
 	gtexture(&gscreen, gscreen.r, &bgrnd, S);
 	w = defont0.info[' '].width;
 	h = defont0.height;
 
 	window.min = Pt(100, 100);
-	window.max = add(window.min, Pt(10+w*120, 10+h*60));
+	window.max = add(window.min, Pt(10+w*80, 10+h*40));
 
+	gbitblt(&gscreen, add(window.min, Pt(5, 5)), &gscreen, window, F);
 	gbitblt(&gscreen, window.min, &gscreen, window, Zero);
+	gborder(&gscreen, window, 4, F);
 	window = inset(window, 5);
+	for(i = 0; i < h+6; i += 2) {
+		y = window.min.y+i;
+		gsegment(&gscreen, Pt(window.min.x, y), Pt(window.max.x, y), ~0, F);
+	}
+	p = add(window.min, Pt(10, 2));
+	gsubfstring(&gscreen, p, &defont0, "Brazil Console ", S);
+	window.min.y += h+6;
 	cursor = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
 

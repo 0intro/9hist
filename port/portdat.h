@@ -650,3 +650,4 @@ enum
 };
 extern int mouseshifted;
 extern int mousetype;
+extern int mouseswap;

@@ -594,7 +594,8 @@ mousectl(char *arg)
 			splx(x);
 			break;
 		}
-	}
+	} else if(strcmp(field[0], "swap") == 0)
+		mouseswap ^= 1;
 }
 
 void

@@ -63,6 +63,7 @@ Mouseinfo	mouse;
 Cursorinfo	cursor;
 int		mouseshifted;
 int		mousetype;
+int		mouseswap;
 int		hwcurs;
 Cursor	curs;
 
@@ -260,11 +261,13 @@ mouseclose(Chan *c)
 	}
 }
 
+
 long
 mouseread(Chan *c, void *va, long n, ulong offset)
 {
 	char buf[4*12+1];
 	uchar *p;
+	static int map[8] = {0, 4, 2, 6, 1, 5, 3, 7 };
 
 	p = va;
 	switch(c->qid.path){
@@ -290,7 +293,8 @@ mouseread(Chan *c, void *va, long n, ulong offset)
 			sleep(&mouse.r, mousechanged, 0);
 		lock(&cursor);
 		sprint(buf, "%11d %11d %11d %11d",
-			mouse.xy.x, mouse.xy.y, mouse.buttons,
+			mouse.xy.x, mouse.xy.y,
+			mouseswap ? map[mouse.buttons&7] : mouse.buttons,
 			TK2MS(MACHP(0)->ticks));
 		mouse.lastcounter = mouse.counter;
 		unlock(&cursor);
