@@ -364,8 +364,6 @@ bindmount(ulong *arg, int ismount)
 	Chan *c0, *c1;
 	ulong flag;
 	long ret;
-	char *p;
-	int t;
 	struct{
 		Chan	*chan;
 		char	*spec;
@@ -378,20 +376,12 @@ bindmount(ulong *arg, int ismount)
 	if(ismount){
 		bogus.chan = fdtochan(arg[0], 2);
 		validaddr(arg[3], 1, 0);
-		p = (char*)arg[3];
-		t = BY2PG-((ulong)p&(BY2PG-1));
-		while(vmemchr(p, 0, t) == 0){
-			p += t;
-			t = BY2PG;
-		}
+		if(vmemchr((char*)arg[3], '\0', NAMELEN) == 0)
+			error(Ebadarg);
 		bogus.spec = (char*)arg[3];
 		validaddr(arg[4], 1, 0);
-		p = (char*)arg[4];
-		t = BY2PG-((ulong)p&(BY2PG-1));
-		while(vmemchr(p, 0, t) == 0){
-			p += t;
-			t = BY2PG;
-		}
+		if(vmemchr((char*)arg[4], '\0', NAMELEN) == 0)
+			error(Ebadarg);
 		bogus.auth = (char*)arg[4];
 		ret = devno('M', 0);
 		c0 = (*devtab[ret].attach)((char*)&bogus);

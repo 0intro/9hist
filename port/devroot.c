@@ -19,10 +19,8 @@ enum{
 
 extern long	cfslen;
 extern ulong	cfscode[];
-
 extern long	cryptfslen;
 extern ulong	cryptfscode[];
-
 
 Dirtab rootdir[]={
 	"bin",		{Qbin|CHDIR},	0,			0700,
@@ -30,17 +28,39 @@ Dirtab rootdir[]={
 	"dev",		{Qdev|CHDIR},	0,			0700,
 	"env",		{Qenv|CHDIR},	0,			0700,
 	"proc",		{Qproc|CHDIR},	0,			0700,
-	"cryptfs",	{Qcryptfs},	0,			0700,
-	"cfs",		{Qcfs},		0,			0700,
 };
-
 #define	NROOT	(sizeof rootdir/sizeof(Dirtab))
+Dirtab rootpdir[]={
+	"cfs",		{Qcfs},		0,			0700,
+	"cryptfs",	{Qcryptfs},	0,			0700,
+};
+Dirtab *rootmap[sizeof rootpdir/sizeof(Dirtab)];
 int	nroot;
+
+int
+rootgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
+{
+	if(tab==0 || i>=ntab)
+		return -1;
+	if(i < NROOT)
+		tab += i;
+	else
+		tab = rootmap[i - NROOT];
+	devdir(c, tab->qid, tab->name, tab->length, tab->perm, dp);
+	return 1;
+}
 
 void
 rootreset(void)
 {
-	nroot = (cfslen > 0) ? NROOT : NROOT-1;
+	int i;
+
+	i = 0;
+	if(cfslen)
+		rootmap[i++] = &rootpdir[0];
+	if(cryptfslen)
+		rootmap[i++] = &rootpdir[1];
+	nroot = NROOT + i;
 }
 
 void
@@ -63,19 +83,19 @@ rootclone(Chan *c, Chan *nc)
 int	 
 rootwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, rootdir, nroot, devgen);
+	return devwalk(c, name, rootdir, nroot, rootgen);
 }
 
 void	 
 rootstat(Chan *c, char *dp)
 {
-	devstat(c, dp, rootdir, nroot, devgen);
+	devstat(c, dp, rootdir, nroot, rootgen);
 }
 
 Chan*
 rootopen(Chan *c, int omode)
 {
-	return devopen(c, omode, rootdir, nroot, devgen);
+	return devopen(c, omode, rootdir, nroot, rootgen);
 }
 
 void	 
@@ -100,7 +120,7 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:
-		return devdirread(c, buf, n, rootdir, nroot, devgen);
+		return devdirread(c, buf, n, rootdir, nroot, rootgen);
 
 	case Qboot:		/* boot */
 		if(offset >= sizeof bootcode)
