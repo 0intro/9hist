@@ -481,6 +481,11 @@ devpccardlink(void)
 	if (!getconf("pccard0"))
 		return;
 
+	if (_pcmspecial) {
+		print("#Y: CardBus and PCMCIA at the same time?\n");
+		return;
+	}
+
 	_pcmspecial = pccard_pcmspecial;
 	_pcmspecialclose = pccard_pcmspecialclose;
 

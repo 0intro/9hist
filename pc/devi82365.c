@@ -113,7 +113,6 @@ static PCMslot	*lastslot;
 static nslot;
 
 static void	i82365intr(Ureg*, void*);
-static void	i82365reset(void);
 static int	pcmio(int, ISAConf*);
 static long	pcmread(int, int, void*, long, vlong);
 static long	pcmwrite(int, int, void*, long, vlong);
@@ -355,7 +354,6 @@ pcmcia_pcmspecial(char *idstr, ISAConf *isa)
 	extern char *strstr(char*, char*);
 	int enabled;
 
-	i82365reset();
 	for(pp = slot; pp < lastslot; pp++){
 		if(pp->special)
 			continue;	/* already taken */
@@ -570,14 +568,18 @@ i82365dump(PCMslot *pp)
 /*
  *  set up for slot cards
  */
-static void
-i82365reset(void)
+void
+devi82365link(void)
 {
 	static int already;
 	int i, j;
 	I82365 *cp;
 	PCMslot *pp;
 	char buf[32];
+
+	if(already)
+		return;
+	already = 1;
 
 	if (!getconf("pcmcia0"))
 		return;
@@ -590,9 +592,6 @@ i82365reset(void)
 	_pcmspecial = pcmcia_pcmspecial;
 	_pcmspecialclose = pcmcia_pcmspecialclose;
 
-	if(already)
-		return;
-	already = 1;
 
 	/* look for controllers if the ports aren't already taken */
 	if(ioalloc(0x3E0, 2, 0, "i82365.0") >= 0){
@@ -869,7 +868,7 @@ Dev i82365devtab = {
 	'y',
 	"i82365",
 
-	i82365reset,
+	devreset,
 	devinit,
 	i82365attach,
 	i82365walk,
