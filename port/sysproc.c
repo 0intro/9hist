@@ -512,9 +512,12 @@ sysdeath(ulong *arg)
 long
 syserrstr(ulong *arg)
 {
+	char tmp[ERRLEN];
+
 	validaddr(arg[0], ERRLEN, 1);
+	memmove(tmp, (char*)arg[0], ERRLEN);
 	memmove((char*)arg[0], u->error, ERRLEN);
-	strncpy(u->error, Enoerror, ERRLEN);
+	memmove(u->error, tmp, ERRLEN);
 	return 0;
 }
 

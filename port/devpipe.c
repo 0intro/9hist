@@ -170,7 +170,7 @@ pipeopen(Chan *c, int omode)
 	qunlock(p);
 	poperror();
 
-	c->mode = omode&~OTRUNC;
+	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
 	return c;
