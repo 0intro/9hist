@@ -99,6 +99,7 @@
 #define MSR_IP		BIT(25)		/* Exception prefix 0x000/0xFFF */
 #define MSR_IR		BIT(26)		/* Instruction MMU enable */
 #define MSR_DR		BIT(27)		/* Data MMU enable */
+#define MSR_PM		BIT(29)		/* Performance Monitor marked mode (604e specific) */
 #define MSR_RI		BIT(30)		/* Recoverable Exception */
 #define MSR_LE		BIT(31)		/* Little-Endian enable */
 

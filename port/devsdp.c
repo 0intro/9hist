@@ -723,7 +723,7 @@ sdpgen(Chan *c, char*, Dirtab*, int, int s, Dir *dp)
 			devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 			break;
 		default:
-			panic("sdpwalk %lux", c->qid.path);
+			panic("sdpwalk %llux", c->qid.path);
 		}
 		return 1;
 	}
@@ -737,7 +737,7 @@ sdpgen(Chan *c, char*, Dirtab*, int, int s, Dir *dp)
 			return -1;
 		dt = dirtab[TYPE(c->qid)];
 		if(dt == nil)
-			panic("sdpgen: unknown type: %d", TYPE(c->qid));
+			panic("sdpgen: unknown type: %lud", TYPE(c->qid));
 		devdir(c, c->qid, dt->name, dt->length, eve, dt->perm, dp);
 		return 1;
 	case Qtopdir:

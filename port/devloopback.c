@@ -208,7 +208,7 @@ loopbackgen(Chan *c, char*, Dirtab*, int, int i, Dir *dp)
 			devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 			break;
 		default:
-			panic("loopbackgen %lux", c->qid.path);
+			panic("loopbackgen %llux", c->qid.path);
 		}
 		return 1;
 	}

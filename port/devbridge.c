@@ -437,7 +437,7 @@ bridgegen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 			devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 			break;
 		default:
-			panic("bridgewalk %lux", c->qid.path);
+			panic("bridgewalk %llux", c->qid.path);
 		}
 		return 1;
 	}
@@ -451,7 +451,7 @@ bridgegen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 			return -1;
 		dt = dirtab[TYPE(c->qid)];
 		if(dt == nil)
-			panic("bridgegen: unknown type: %d", TYPE(c->qid));
+			panic("bridgegen: unknown type: %lud", TYPE(c->qid));
 		devdir(c, c->qid, dt->name, dt->length, eve, dt->perm, dp);
 		return 1;
 	case Qtopdir:
