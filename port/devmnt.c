@@ -36,7 +36,6 @@ struct Mntalloc
 }mntalloc;
 
 #define MAXRPC		(16*1024+MAXMSG)
-#define limit(n, max)	(n > max ? max : n)
 
 void	mattach(Mnt*, Chan*, char*);
 void	mntauth(Mnt*, Mntrpc*, char*, ushort);
@@ -584,7 +583,13 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 		r->request.fid = c->fid;
 		r->request.offset = off;
 		r->request.data = uba;
-		r->request.count = limit(n, m->blocksize);
+		if(n > m->blocksize){
+			if(c->qid.path & CHDIR)
+				r->request.count = (m->blocksize/DIRLEN)*DIRLEN;
+			else
+				r->request.count = m->blocksize;
+		} else
+			r->request.count = n;
 		mountrpc(m, r);
 		nreq = r->request.count;
 		nr = r->reply.count;
