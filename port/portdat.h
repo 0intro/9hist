@@ -838,7 +838,7 @@ struct Uart
 extern	Uart*	consuart;
 
 /*
- * fasttick timer interrupts (Dummy for now)
+ * fasttick timer interrupts
  */
 struct Timer
 {
