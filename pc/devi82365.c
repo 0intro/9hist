@@ -151,6 +151,7 @@ struct Slot
 	uchar	busy;
 
 	/* cis info */
+	uchar	verstr[512];	/* version string */
 	uchar	vpp1;
 	uchar	vpp2;
 	uchar	bit16;
@@ -379,24 +380,24 @@ decrefp(Slot *pp)
 	qunlock(pp->cp);
 }
 
-int
+char*
 pcmspecial(int dev)
 {
 	Slot *pp;
 
 	i82365reset();
 	if(dev >= nslot)
-		return -1;
+		return 0;
 	pp = slot + dev;
 	if(pp->special)
-		return -1;
+		return 0;
 	increfp(pp);
 	if(!pp->occupied){
 		decrefp(pp);
-		return -1;
+		return 0;
 	}
 	pp->special = 1;
-	return 0;
+	return pp->verstr;
 }
 
 void
@@ -850,9 +851,11 @@ pcmio(int dev, ISAConf *isa)
  */
 static void	tcfig(Slot*, int);
 static void	tentry(Slot*, int);
+static void	tvers1(Slot*, int);
 
 static void (*parse[256])(Slot*, int) =
 {
+[0x15]	tvers1,
 [0x1A]	tcfig,
 [0x1B]	tentry,
 };
@@ -1158,4 +1161,27 @@ tentry(Slot *pp, int ttype)
 		break;
 	}
 	pp->configed++;
+}
+
+void
+tvers1(Slot *pp, int ttype)
+{
+	uchar c, major, minor;
+	int  i;
+
+	USED(ttype);
+	if(readc(pp, &major) != 1)
+		return;
+	if(readc(pp, &minor) != 1)
+		return;
+	for(i = 0; i < sizeof(pp->verstr)-1; i++){
+		if(readc(&c) != 1)
+			return;
+		if(c == 0)
+			c = '\n';
+		if(c == 0xff)
+			break;
+		pp->verstr[i] = c;
+	}
+	pp->verstr[i] = 0;
 }

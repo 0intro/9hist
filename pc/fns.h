@@ -62,7 +62,7 @@ void	outsl(int, void*, int);
 void	pcicreset(void);
 int	pcmio(int, ISAConf*);
 long	pcmread(int, int, void*, long, ulong);
-int	pcmspecial(int);
+char*	pcmspecial(int);
 void	pcmspecialclose(int);
 long	pcmwrite(int, int, void*, long, ulong);
 void	prflush(void);
