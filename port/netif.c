@@ -245,7 +245,6 @@ netifwstat(Netif *nif, Chan *c, char *db)
 void
 netifstat(Netif *nif, Chan *c, char *db)
 {
-
 	devstat(c, db, (Dirtab *)nif, 0, netifgen);
 }
 
@@ -361,7 +360,8 @@ openfile(Netif *nif, int id)
 }
 
 /*
- *  look for a token starting a string, return a pointer to first non-space char after it
+ *  look for a token starting a string,
+ *  return a pointer to first non-space char after it
  */
 static char*
 matchtoken(char *p, char *token)
