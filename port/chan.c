@@ -418,6 +418,26 @@ eqchantdqid(Chan *a, int type, int dev, Qid qid, int pathonly)
 	return 1;
 }
 
+Mhead*
+newmhead(Chan *from)
+{
+	Mhead *mh;
+	int n;
+
+	mh = smalloc(sizeof(Mhead));
+	mh->ref = 1;
+	mh->from = from;
+	incref(from);
+
+	n = from->name->len;
+	if(n >= sizeof(mh->fromname))
+		n = sizeof(mh->fromname)-1;
+	memmove(mh->fromname, from->name->s, n);
+	mh->fromname[n] = 0;
+
+	return mh;
+}
+
 int
 cmount(Chan **newp, Chan *old, int flag, char *spec)
 {
@@ -430,8 +450,7 @@ cmount(Chan **newp, Chan *old, int flag, char *spec)
 	if(QTDIR & (old->qid.type^(*newp)->qid.type))
 		error(Emount);
 
-if(old->umh)
-	print("cmount old extra umh\n");
+if(old->umh)print("cmount old extra umh\n");
 
 	order = flag&MORDER;
 
@@ -476,11 +495,7 @@ if(old->umh)
 		 *  nothing mounted here yet.  create a mount
 		 *  head and add to the hash table.
 		 */
-		m = smalloc(sizeof(Mhead));
-		m->ref = 1;
-		m->from = old;
-		incref(old);
-		m->hash = *l;
+		m = newmhead(old);
 		*l = m;
 
 		/*
@@ -584,7 +599,6 @@ cunmount(Chan *mnt, Chan *mounted)
 		putmhead(m);
 		return;
 	}
-	wunlock(&pg->ns);
 
 	p = &m->mount;
 	for(f = *p; f; f = f->next) {
@@ -598,15 +612,18 @@ cunmount(Chan *mnt, Chan *mounted)
 				*l = m->hash;
 				cclose(m->from);
 				wunlock(&m->lock);
+				wunlock(&pg->ns);
 				putmhead(m);
 				return;
 			}
 			wunlock(&m->lock);
+			wunlock(&pg->ns);
 			return;
 		}
 		p = &f->next;
 	}
 	wunlock(&m->lock);
+	wunlock(&pg->ns);
 	error(Eunion);
 }
 
@@ -1131,6 +1148,8 @@ namec(char *aname, int amode, int omode, ulong perm)
 		m = nil;
 		if(!nomount)
 			domount(&c, &m);
+		if(c->umh != nil)
+			putmhead(c->umh);
 		c->umh = m;
 		break;
 
@@ -1159,8 +1178,9 @@ namec(char *aname, int amode, int omode, ulong perm)
 		case Aopen:
 		case Acreate:
 if(c->umh != nil){
-	print("cunique umh\n");
+	print("cunique umh Open\n");
 	putmhead(c->umh);
+	c->umh = nil;
 }
 
 			/* only save the mount head if it's a multiple element union */

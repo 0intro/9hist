@@ -182,6 +182,7 @@ Chan*		namec(char*, int, int, ulong);
 #define		nelem(x)	(sizeof(x)/sizeof(x[0]))
 Chan*		newchan(void);
 int		newfd(Chan*);
+Mhead*		newmhead(Chan*);
 Mount*		newmount(Mhead*, Chan*, int, char*);
 Page*		newpage(int, Segment **, ulong);
 Pgrp*		newpgrp(void);

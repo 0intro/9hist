@@ -316,6 +316,8 @@ typedef struct Ctlr {
 	int	tdh;			/* transmit descriptor head */
 	int	tdt;			/* transmit descriptor tail */
 	int	ett;			/* early transmit threshold */
+
+	ulong	multimask[128];		/* bit mask for multicast addresses */
 } Ctlr;
 
 static Ctlr* ctlrhead;
@@ -949,6 +951,42 @@ print("status1 %8.8uX\n", csr32r(ctlr, Status));
 	}
 }
 
+static void
+gc82543promiscuous(void* arg, int on)
+{
+	Ether *edev=arg;
+	Ctlr *ctlr;
+	ulong ctl;
+
+	ctlr = edev->ctlr;
+	ctl = csr32r(ctlr, Rctl);
+	ctl &= ~MoMASK;			/* make sure we're using bits 47:36 */
+	if(on)
+		ctl |= Upe|Mpe;
+	else
+		ctl &= ~(Upe|Mpe);
+	csr32w(ctlr, Rctl, ctl);
+}
+
+static void
+gc82543multicast(void* arg, uchar *addr, int on)
+{
+	Ether *edev=arg;
+	Ctlr *ctlr;
+	int x;
+	int bit;
+
+	ctlr = edev->ctlr;
+	x = addr[5]>>1;
+	bit = ((addr[5]&1)<<4)|(addr[4]>>4);
+	if(on)
+		ctlr->multimask[x] |= 1<<bit;
+	else
+		ctlr->multimask[x] &= ~(1<<bit);
+	
+	csr32w(ctlr, Mta+x*4, ctlr->multimask[x]);
+}
+
 static int
 gc82543pnp(Ether* edev)
 {
@@ -1002,6 +1040,8 @@ gc82543pnp(Ether* edev)
 	edev->interrupt = gc82543interrupt;
 	edev->ifstat = gc82543ifstat;
 	edev->shutdown = gc82543shutdown;
+	edev->promiscuous = gc82543promiscuous;
+	edev->multicast = gc82543multicast;
 
 	edev->arg = edev;
 	edev->promiscuous = nil;

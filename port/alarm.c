@@ -14,7 +14,6 @@ alarmkproc(void*)
 	Proc *rp;
 	ulong now;
 
-print("alarmkproc\n");
 	for(;;){
 		now = MACHP(0)->ticks;
 		qlock(&alarms);
