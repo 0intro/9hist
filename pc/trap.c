@@ -652,7 +652,7 @@ notify(Ureg* ureg)
 	if(up->nnote == 0)
 		return 0;
 
-	if(user && up->fpstate == FPactive){
+	if(up->fpstate == FPactive){
 		fpsave(&up->fpsave);
 		up->fpstate = FPinactive;
 	}
