@@ -22,7 +22,7 @@ enum
 
 enum
 {
-	Nmux	=	20,
+	Nmux	=	32,
 	Maxmsg	=	(32*1024),
 	Flowctl	=	Maxmsg/2,
 };
@@ -50,17 +50,17 @@ struct Con
 struct Mux
 {
 	Ref;
-	int	type;
+	int	srv;
 	char	name[NAMELEN];
 	char	user[NAMELEN];
 	ulong	perm;
 	int	headopen;
 	Dtq	headq;
 	Con	connects[Nmux];
+	Chan	*c;
 };
 
 Mux	*muxes;
-
 ulong	muxreadq(Mux *m, Dtq*, char*, ulong);
 void	muxwriteq(Dtq*, char*, long, int, int);
 void	muxflow(Dtq*);
@@ -87,7 +87,10 @@ muxgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 		m = &muxes[s];
 		if(m->name[0] == '\0')
 			return 0;
-		devdir(c, DQID(s), m->name, 0, m->user, m->perm, dp);
+		if(m->srv)
+			devdir(c, NQID(s, 0), m->name, 0, m->user, m->perm, dp);
+		else
+			devdir(c, DQID(s), m->name, 0, m->user, m->perm, dp);
 		return 1;
 	}
 
@@ -191,60 +194,61 @@ muxopen(Chan *c, int omode)
 	Mux *m;
 	Con *cm, *e;
 	int mux, ok;
+	Chan *new;
 
+	c = devopen(c, omode, 0, 0, muxgen);
 	if(c->qid.path & CHDIR)
-		return devopen(c, omode, 0, 0, muxgen);
+		return c;
 
 	mux = NMUX(c);
 	m = &muxes[mux];
+	lock(m);
+	if(waserror()) {
+		c->flag &= ~COPEN;
+		unlock(m);
+		nexterror();
+	}
+	if(m->srv) {
+		if(m->c == 0)
+			error(Eshutdown);
+		new = m->c;
+		incref(new);
+		unlock(m);
+		poperror();
+		close(c);
+		return new;
+	}
 	switch(NCON(c)) {
 	case Qhead:
-		c = devopen(c, omode, 0, 0, muxgen);
-		lock(m);
 		if(m->headopen)
-			ok = 0;
-		else {
-			ok = 1;
-			m->headopen = 1;
-			m->ref++;
-		}
-		unlock(m);
-		if(!ok) {
-			c->flag &= ~COPEN;
 			errors("server channel busy");
-		}
+		m->headopen = 1;
+		m->ref++;
 		break;
 	case Qclone:
 		if(m->headopen == 0)
 			errors("server shutdown");
 
-		c = devopen(c, omode, 0, 0, muxgen);
-		lock(m);
 		cm = m->connects;
 		for(e = &cm[Nmux]; cm < e; cm++)
 			if(cm->ref == 0)
 				break;
-		if(cm == e) {
-			unlock(m);
+		if(cm == e)
 			errors("all cannels busy");
-		}
 		cm->ref = 1;
 		m->ref++;
-		unlock(m);
 		strncpy(cm->user, u->p->user, NAMELEN);
 		cm->perm = 0600;
 		c->qid = NQID(mux, (cm-m->connects)+Qoffset);
 		break;
 	default:
-		c = devopen(c, omode, 0, 0, muxgen);
 		cm = &m->connects[NCON(c)-Qoffset];
-		lock(m);
 		cm->ref++;
 		m->ref++;
-		unlock(m);
 		break;
 	}
-
+	unlock(m);
+	poperror();
 	return c;
 }
 
@@ -266,7 +270,6 @@ muxcreate(Chan *c, char *name, int omode, ulong perm)
 				unlock(m);
 				continue;
 			}
-			m->ref++;
 			break;
 		}	
 	}
@@ -277,10 +280,13 @@ muxcreate(Chan *c, char *name, int omode, ulong perm)
 	strncpy(m->name, name, NAMELEN);
 	strncpy(m->user, u->p->user, NAMELEN);
 	m->perm = perm&~CHDIR;
+	m->srv = 1;
+	if(perm&CHDIR)
+		m->srv = 0;
 	unlock(m);
 
 	n = m - muxes;
-	c->qid = (Qid){CHDIR|(n+1)<<8, 0};
+	c->qid = (Qid){(CHDIR&perm)|(n+1)<<8, 0};
 	c->flag |= COPEN;
 	c->mode = omode;
 }
@@ -289,15 +295,30 @@ void
 muxremove(Chan *c)
 {
 	Mux *m;
+	Chan *srv;
 
-	if(c->qid.path == CHDIR || (c->qid.path&CHDIR) == 0)
+	if(c->qid.path == CHDIR) 
 		error(Eperm);
 
 	m = &muxes[NMUX(c)];
+	if((c->qid.path&CHDIR) == 0 && m->srv == 0)
+		error(Eperm);
+		
 	if(strcmp(u->p->user, m->user) != 0)
 		errors("not owner");
 
+	srv = 0;
+	lock(m);
+	if(m->srv) {
+		srv = m->c;
+		m->c = 0;
+	}
 	m->name[0] = '\0';
+	unlock(m);
+	if(srv)
+		close(srv);
+
+	muxclose(c);
 }
 
 void
@@ -316,7 +337,7 @@ muxwstat(Chan *c, char *db)
 
 	convM2D(db, &d);
 	d.mode &= 0777;
-	if(c->qid.path&CHDIR) {
+	if(c->qid.path&CHDIR || m->srv) {
 		strcpy(m->name, d.name);
 		m->perm = d.mode;
 		return;
@@ -345,10 +366,10 @@ muxclose(Chan *c)
 	if(c->qid.path&CHDIR)
 		return;
 
-	if((c->flag&COPEN) == 0)
+	m = &muxes[NMUX(c)];
+	if(!(c->flag&COPEN) || m->srv)
 		return;
 
-	m = &muxes[NMUX(c)];
 	nc = NCON(c);
 	f1 = 0;
 	f2 = 0;
@@ -430,17 +451,26 @@ muxwrite(Chan *c, void *va, long n, ulong offset)
 {
 	Mux *m;
 	Con *cm;
-	int muxid;
+	int muxid, fd;
 	Block *f, *bp;
-	char *a, hdr[3];
+	char *a, hdr[3], buf[10];
 
 	if(c->qid.path&CHDIR)
 		error(Eisdir);
 
-	if(n > Maxmsg)
+	m = &muxes[NMUX(c)];
+	if(n > Maxmsg || (m->srv && n >= sizeof(buf)))
 		error(Etoobig);
 
-	m = &muxes[NMUX(c)];
+	if(m->srv) {
+		memmove(buf, va, n);		/* so we can NUL-terminate */
+		buf[n] = 0;
+		fd = strtoul(buf, 0, 0);
+		fdtochan(fd, -1, 0);		/* error check */
+		m->c = u->p->fgrp->fd[fd];
+		incref(m->c);
+		return n;
+	}
 	switch(NCON(c)) {
 	case Qclone:
 		error(Eperm);
@@ -475,7 +505,7 @@ muxwriteq(Dtq *q, char *va, long n, int addid, int muxid)
 	ulong l, bwrite;
 
 	head = 0;
-	SET(tail);
+	tail = 0;
 	if(waserror()) {
 		if(head)
 			freeb(head);
@@ -568,13 +598,13 @@ muxreadq(Mux *m, Dtq *q, char *va, ulong n)
 	qlock(&q->rd);
 	bp = 0;
 	if(waserror()) {
-		qunlock(&q->rd);
 		lock(&q->listlk);
 		if(bp) {
 			bp->next = q->list;
 			q->list = bp;
 		}
 		unlock(&q->listlk);
+		qunlock(&q->rd);
 		nexterror();
 	}
 	while(!havedata(q)) {

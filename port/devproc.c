@@ -556,17 +556,17 @@ procctlreq(Proc *p, char *va, int n)
 		n = NAMELEN;
 	strncpy(buf, va, n);
 
-	if(strncmp(buf, "exit", 4) == 0) {
-		if(p->state == Broken)
-			ready(p);
-	}
-	else if(strncmp(buf, "stop", 4) == 0)
+	if(strncmp(buf, "stop", 4) == 0)
 		procstopwait(p, Proc_stopme);
 	else if(strncmp(buf, "kill", 4) == 0) {
-		if(p->state == Stopped)
+		if(p->state == Broken)
 			ready(p);
-		postnote(p, 0, "sys: killed", NExit);
-		p->procctl = Proc_exitme;
+		else{
+			if(p->state == Stopped)
+				ready(p);
+			postnote(p, 0, "sys: killed", NExit);
+			p->procctl = Proc_exitme;
+		}
 	}
 	else if(strncmp(buf, "hang", 4) == 0)
 		p->hang = 1;
