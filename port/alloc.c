@@ -276,12 +276,13 @@ good:
 		arena.btab[pow] = bp->next;
 		unlock(&arena);
 
-		if(bp->magic != 0)
-			panic("malloc %lux", bp->magic);
+		if(bp->magic != 0 || bp->size != pow)
+			panic("malloc bp %lux magic %lux size %d next %lux pow %d", bp,
+				bp->magic, bp->size, bp->next, pow);
 
 		bp->magic = Magic2n;
 
-		memset(bp->data, 0,  size);
+		memset(bp->data, 0, size);
 		return  bp->data;
 	}
 	unlock(&arena);
