@@ -121,11 +121,12 @@ static struct
 	int	clri8;
 	int	clri16;
 	int	clri401;
+	int	dma;
 } blaster;
 
 static	void	swab(uchar*);
 
-static	char	Emajor[]	= "SoundBlaster version too old";
+static	char	Emajor[]	= "soundblaster not responding/wrong version";
 static	char	Emode[]		= "illegal open mode";
 static	char	Evolume[]	= "illegal volume specifier";
 
@@ -334,11 +335,11 @@ contindma(void)
 	if(b == 0)
 		goto shutdown;
 
-	dmasetup(Dma, b->virt, Bufsize, audio.amode == Aread);
+	dmasetup(blaster.dma, b->virt, Bufsize, audio.amode == Aread);
 	return;
 
 shutdown:
-	dmaend(Dma);
+	dmaend(blaster.dma);
 	sbcmd(0xd9);				/* exit at end of count */
 	sbcmd(0xd5);				/* pause */
 	audio.curcount = 0;
@@ -356,7 +357,7 @@ startdma(void)
 	int speed;
 
 	ilock(&blaster);
-	dmaend(Dma);
+	dmaend(blaster.dma);
 	if(audio.amode == Aread) {
 		sbcmd(0x42);			/* input sampling rate */
 		speed = audio.livol[Vspeed];
@@ -511,6 +512,7 @@ audioinit(void)
 	int i;
 
 	sbconf.port = 0x220;
+	sbconf.dma = 5;
 	sbconf.irq = 7;
 	if(isaconfig("audio", 0, &sbconf) == 0)
 		return;
@@ -523,7 +525,7 @@ audioinit(void)
 	case 0x280:
 		break;
 	default:
-		print("bad sb16 port 0x%x\n", sbconf.port);
+		print("devaudio: bad sb16 port 0x%x\n", sbconf.port);
 		return;
 	}
 	switch(sbconf.irq){
@@ -533,9 +535,11 @@ audioinit(void)
 	case 10:
 		break;
 	default:
-		print("bad sb16 irq %d\n", sbconf.irq);
+		print("devaudio: bad sb16 irq %d\n", sbconf.irq);
 		return;
 	}
+
+	blaster.dma = sbconf.dma;
 
 	blaster.reset = sbconf.port + 0x6;
 	blaster.read = sbconf.port + 0xa;
@@ -548,7 +552,7 @@ audioinit(void)
 	blaster.clri16 = sbconf.port + 0xf;
 	blaster.clri401 = sbconf.port + 0x100;
 
-	seteisadma(Dma, audiodmaintr);
+	seteisadma(blaster.dma, audiodmaintr);
 	setvec(Int0vec+sbconf.irq, pcaudiosbintr, 0);
 
 	audio.amode = Aclosed;
@@ -570,7 +574,7 @@ audioinit(void)
 	audio.minor = sbread();
 
 	if(audio.major != 4) {
-		print("bad soundblaster model #%.2x #.2x\n", audio.major, audio.minor);
+		print("bad soundblaster model #%.2x #%.2x; not SB 16\n", audio.major, audio.minor);
 		return;
 	}
 	/*
@@ -588,7 +592,7 @@ audioinit(void)
 		(sbconf.irq==7)? 4:
 		(sbconf.irq==10)? 8:
 		0);
-	mxcmd(0x81, 1<<Dma);	/* dma */
+	mxcmd(0x81, 1<<blaster.dma);	/* dma */
 }
 
 Chan*
