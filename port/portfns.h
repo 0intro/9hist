@@ -277,3 +277,6 @@ Segment*	seg(Proc*, ulong, int);
 
 int		cread(Chan*, uchar*, int, ulong);
 void		cupdate(Chan*, uchar*, int, ulong);
+void		cwrite(Chan*, uchar*, int, ulong);
+void		copen(Chan*);
+void		cinit(void);

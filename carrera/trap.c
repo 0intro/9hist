@@ -406,6 +406,7 @@ dumpregs(Ureg *ur)
 	else
 		print("registers for kernel\n");
 
+
 	l = &ur->status;
 	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2)
 		print("%s\t0x%.8lux\t%s\t0x%.8lux\n", regname[i], l[0], regname[i+1], l[1]);

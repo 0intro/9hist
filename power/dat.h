@@ -8,6 +8,7 @@ typedef struct Label	Label;
 typedef struct Lock	Lock;
 typedef struct Mach	Mach;
 typedef struct MMU	MMU;
+typedef struct Notsave	Notsave;
 typedef struct PMMU	PMMU;
 typedef struct Softtlb	Softtlb;
 typedef struct Ureg	Ureg;
@@ -82,6 +83,15 @@ struct PMMU
 	Cycmsg	*kcyc;
 	Cycmsg	*ucyc;
 	Cycmsg	*fcyc;
+};
+
+/*
+ *  things saved in the Proc structure during a notify
+ */
+struct Notsave
+{
+	ulong	svstatus;
+	ulong	svr1;
 };
 
 #include "../port/portdat.h"

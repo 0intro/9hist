@@ -47,7 +47,7 @@ main(void)
 	serialinit();
 	vecinit();
 	screeninit();
-	print("\n\nBrazil\n");
+	iprint("\n\nBrazil\n");
 	pageinit();
 	procinit0();
 	initseg();
@@ -136,6 +136,8 @@ machinit(void)
 
 	/* scrub cache */
 	cleancache();
+
+	memset(m, 0, sizeof(Mach));
 
 	n = m->machno;
 	m->stb = &stlb[n][0];
@@ -374,7 +376,7 @@ confinit(void)
 	conf.npage1 = 0;
 	conf.base1 = 0;
 
-	conf.upages = (conf.npage*50)/100;
+	conf.upages = (conf.npage*70)/100;
 
 	conf.nmach = 1;
 

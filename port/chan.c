@@ -141,13 +141,6 @@ close(Chan *c)
 		poperror();
 	}
 
-/* ASSERT */
-if(c->path && c->path->ref == 0) {
-	char buf[64];
-	ptpath(c->path, buf, sizeof(buf));
-	print(">>%s %c %d %lux.%lux\n",
-	buf, devchar[c->type], c->dev, c->qid.path, c->qid.vers);
-}
 	chanfree(c);
 }
 

@@ -218,6 +218,33 @@ putpage(Page *p)
 	unlock(p);
 }
 
+Page*
+auxpage()
+{
+	Page *p;
+
+	lock(&palloc);
+	p = palloc.head;
+	if(palloc.freecol[p->color] < swapalloc.highwater/NCOLOR) {
+		unlock(&palloc);
+		return 0;
+	}
+	p->next->prev = 0;
+	palloc.head = p->next;
+	palloc.freecol[p->color]--;
+	unlock(&palloc);
+
+	lock(p);
+	if(p->ref != 0) {		/* Stolen by lookpage */
+		unlock(p);
+		return 0;
+	}
+	p->ref++;
+	uncachepage(p);
+	unlock(p);
+	return p;
+}
+
 void
 duppage(Page *p)				/* Always call with p locked */
 {
@@ -322,6 +349,7 @@ uncachepage(Page *p)			/* Always called with a locked page */
 	unlock(&palloc.hashlock);
 	putimage(p->image);
 	p->image = 0;
+	p->daddr = 0;
 }
 
 void

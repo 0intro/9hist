@@ -66,6 +66,8 @@ mntreset(void)
 {
 	mntalloc.id = 1;
 	mntalloc.rpctag = Tagspace;
+
+	cinit();
 }
 
 void
@@ -83,7 +85,7 @@ mntattach(char *muxattach)
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
-		int	flag;
+		int	flags;
 	}bogus;
 
 	bogus = *((struct bogus *)muxattach);
@@ -91,7 +93,7 @@ mntattach(char *muxattach)
 
 	lock(&mntalloc);
 	for(m = mntalloc.list; m; m = m->list) {
-		if(m->c == c && m->id) {
+		if(m->c == c && m->id && m->flags == bogus.flags) {
 			lock(m);
 			if(m->id && m->ref > 0 && m->c == c) {
 				unlock(&mntalloc);
@@ -109,6 +111,7 @@ mntattach(char *muxattach)
 			unlock(m);	
 		}
 	}
+
 	m = mntalloc.mntfree;
 	if(m != 0)
 		mntalloc.mntfree = m->list;	
@@ -354,6 +357,10 @@ mntopen(Chan *c, int omode)
 	c->flag |= COPEN;
 	poperror();
 	mntfree(r);
+
+	if(m->flags&MCACHE)
+		copen(c);
+
 	return c;
 }
 
@@ -381,6 +388,9 @@ mntcreate(Chan *c, char *name, int omode, ulong perm)
 	c->mode = openmode(omode);
 	poperror();
 	mntfree(r);
+
+	if(m->flags & MCACHE)
+		copen(c);
 }
 
 void	 
@@ -481,19 +491,21 @@ mntwstat(Chan *c, char *dp)
 long	 
 mntread(Chan *c, void *buf, long n, ulong offset)
 {
-	int nc;
+	Mnt *m;
 	uchar *p, *e;
+	int nc, cached;
 
 	m = mntchk(c);
-	nc = 0;
-	if((m->flags&MCACHE) && !isdir(c)) {
-		nc = cread(c, buf, n, offset);
-		if(nc == n)
-			return n;
+	cached = m->flags&MCACHE;
 
-		buf = (uchar*)buf+nc;
-		offset += nc;
-		n -= nc;
+	SET(nc);
+	if(cached) {
+		nc = cread(c, buf, n, offset);
+		if(nc > 0) {
+			buf = (uchar*)buf+nc;
+			offset += nc;
+			n -= nc;
+		}
 	}
 
 	n = mntrdwr(Tread, m, c, buf, n, offset);
@@ -501,8 +513,10 @@ mntread(Chan *c, void *buf, long n, ulong offset)
 		for(p = (uchar*)buf, e = &p[n]; p < e; p += DIRLEN)
 			mntdirfix(p, c);
 
-	if(nc != 0)
+	if(cached) {
 		cupdate(c, buf, n, offset);
+		n += nc;
+	}
 
 	return n;
 }
@@ -510,8 +524,7 @@ mntread(Chan *c, void *buf, long n, ulong offset)
 long	 
 mntwrite(Chan *c, void *buf, long n, ulong offset)
 {
-	m = mntchk(c);
-	return mntrdwr(Twrite, m, c, buf, n, offset);	
+	return mntrdwr(Twrite, mntchk(c), c, buf, n, offset);
 }
 
 long
@@ -519,10 +532,12 @@ mntrdwr(int type, Mnt *m, Chan *c, void *buf, long n, ulong offset)
 {
 	Mntrpc *r;
 	char *uba;
+	int cache;
 	ulong cnt, nr;
 
 	uba = buf;
 	cnt = 0;
+	cache = m->flags & MCACHE;
 	for(;;) {
 		r = mntralloc(c);
 		if(waserror()) {
@@ -538,8 +553,12 @@ mntrdwr(int type, Mnt *m, Chan *c, void *buf, long n, ulong offset)
 		nr = r->reply.count;
 		if(nr > r->request.count)
 			nr = r->request.count;
+
 		if(type == Tread)
 			memmove(uba, r->reply.data, nr);
+		else if(cache)
+			cwrite(c, (uchar*)r->reply.data, nr, offset);
+
 		poperror();
 		mntfree(r);
 		offset += nr;

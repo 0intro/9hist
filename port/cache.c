@@ -58,7 +58,7 @@ cinit(void)
 	cache.head = xalloc(sizeof(Mntcache)*NFILE);
 	m = cache.head;
 	
-	for(i = NFILE; i > 0; i++) {
+	for(i = 0; i < NFILE; i++) {
 		m->next = m+1;
 		m->prev = m-1;
 		m++;
@@ -95,13 +95,14 @@ clook(Chan *c)
 }
 
 void
-cprint(Mntcache *m)
+cprint(Mntcache *m, char *s)
 {
 	Extent *e;
+return;
+	print("%s: 0x%lux.0x%lux %d %d\n",
+			s, m->path, m->vers, m->type, m->dev);
 
-	print("%lux.%lux %d %d\n", m->path, m->vers, m->type, m->dev);
-
-	while(e)
+	for(e = m->list; e; e = e->next)
 		print("\t%4d %5d %4d %lux\n",
 			e->bid, e->start, e->len, e->cache);
 }
@@ -129,12 +130,14 @@ cnodata(Mntcache *m)
 		n = e->next;
 		free(e);
 	}
+	m->list = 0;
 }
 
 void
-ctail(Mntcache *m)
+ctail(Mntcache *m, int dolock)
 {
-	lock(&cache);
+	if(dolock)
+		lock(&cache);
 
 	/* Unlink and send to the tail */
 	if(m->prev) 
@@ -157,7 +160,8 @@ ctail(Mntcache *m)
 		m->prev = m->next = 0;
 	}
 
-	unlock(&cache);
+	if(dolock)
+		unlock(&cache);
 }
 
 void
@@ -165,14 +169,22 @@ copen(Chan *c)
 {
 	Mntcache *m, *f, **l;
 
+	if(c->qid.path & CHDIR)
+		return;
+
 	m = clook(c);
 	if(m != 0) {
-		/* File was updated */
-		if(m->vers != c->qid.vers)
-			cnodata(m);
+		c->mcp = m;
+		ctail(m, 1);
 
-		ctail(m);
+		/* File was updated */
+		if(m->vers != c->qid.vers) {
+cprint(m, "copen mod");
+			cnodata(m);
+			m->vers = c->qid.vers;
+		}
 		qunlock(m);
+cprint(m, "copen lru");
 		return;
 	}
 
@@ -191,14 +203,16 @@ copen(Chan *c)
 	l = &cache.hash[c->qid.path%NHASH];
 	m->hash = *l;
 	*l = m;
+	ctail(m, 0);
 	unlock(&cache);
+
 	m->Qid = c->qid;
 	m->dev = c->dev;
 	m->type = c->type;
 	cnodata(m);
-	ctail(m);
 	c->mcp = m;
 	qunlock(m);
+cprint(m, "copen new");
 }
 
 static int
@@ -224,9 +238,13 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 	Extent *e, **t;
 	int o, l, total, end;
 
+	if(c->qid.path & CHDIR)
+		return 0;
+
 	m = c->mcp;
 	if(m == 0)
 		return 0;
+
 	qlock(m);
 	if(cdev(m, c) == 0) {
 		qunlock(m);
@@ -306,12 +324,13 @@ cchain(uchar *buf, ulong offset, int len, Extent **tail)
 			free(e);
 			break;
 		}
-		e->cache = p;
-		e->start = offset;
 		l = len;
 		if(l > BY2PG)
 			l = BY2PG;
 
+		e->cache = p;
+		e->start = offset;
+		e->len = l;
 		e->bid = incref(&cache);
 		p->daddr = e->bid;
 		k = kmap(p);
@@ -341,6 +360,7 @@ cpgmove(Extent *e, uchar *buf, int boff, int len)
 	p = cpage(e);
 	if(p == 0)
 		return 0;
+
 	k = kmap(p);
 	memmove((uchar*)VA(k)+boff, buf, len);
 	kunmap(k);
@@ -355,9 +375,12 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 	Mntcache *m;
 	Extent *tail;
 	Extent *e, *f, *p;
-	int o, ee, eblock; 
+	int o, ee, eblock;
 
-	if(offset > MAXCACHE)
+	if(c->qid.path & CHDIR)
+		return;
+
+	if(offset > MAXCACHE || len == 0)
 		return;
 
 	m = c->mcp;
@@ -378,6 +401,7 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 			break;
 		p = f;
 	}
+
 	if(p == 0) {		/* at the head */
 		eblock = offset+len;
 		/* trim if there is a successor */
@@ -418,8 +442,8 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 			qunlock(m);
 			return;
 		}
-		if(cpgmove(e, buf, p->len, o)) {
-			e->len += o;
+		if(cpgmove(p, buf, p->len, o)) {
+			p->len += o;
 			buf += o;
 			len -= o;
 			offset += o;
@@ -448,7 +472,7 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 		len -= o;
 	}
 
-	/* Insert a middle block */
+	/* insert a middle block */
 	p->next = cchain(buf, offset, len, &tail);
 	if(p->next == 0)
 		p->next = f;
@@ -456,4 +480,63 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 		tail->next = f;
 
 	qunlock(m);
+}
+
+void
+cwrite(Chan* c, uchar *buf, int len, ulong offset)
+{
+	int o;
+	Mntcache *m;
+	ulong eblock, ee;
+	Extent *p, *f, *e, *tail;
+
+	if(offset > MAXCACHE || len == 0)
+		return;
+
+	m = c->mcp;
+	if(m == 0)
+		return;
+
+	qlock(m);
+	if(cdev(m, c) == 0) {
+		qunlock(m);
+		return;
+	}
+
+	m->vers++;
+
+	p = 0;
+	for(f = m->list; f; f = f->next) {
+		if(offset >= f->start)
+			break;
+		p = f;		
+	}
+
+	if(p != 0) {
+		ee = p->start+p->len;
+		if(ee > offset) {
+			o = ee - offset;
+			p->len -= o;
+			if(p->len)
+				panic("del empty extent");
+		}
+	}
+
+	eblock = offset+len;
+	/* free the overlap - its a rare case */
+	while(f && f->start < eblock) {
+		e = f->next;
+		free(f);
+		f = e;
+	}
+
+	e = cchain(buf, offset, len, &tail);
+	if(p == 0)
+		m->list = e;
+	else
+		p->next = e;
+	if(tail != 0)
+		tail->next = f;
+	qunlock(m);
+cprint(m, "cwrite");
 }
