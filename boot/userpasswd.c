@@ -4,6 +4,7 @@
 #include <../boot/boot.h>
 
 char	password[NAMELEN];
+extern	char *sauth;
 
 /*
  *  get/set user name and password.  verify password with auth server.
@@ -14,10 +15,17 @@ userpasswd(int islocal, Method *mp)
 	char key[7];
 	char buf[8 + NAMELEN];
 	int fd, crfd;
+	char *p;
 
 	if(*username == 0 || strcmp(username, "none") == 0){
 		strcpy(username, "none");
 		outin("user", username, sizeof(username));
+		/* Hack to do authentication testing */
+		p = utfrrune(username, '!');
+		if(p && p > username) {
+			*p = '\0';
+			sauth = "any";
+		}
 	}
 	crfd = fd = -1;
 	while(strcmp(username, "none") != 0 && !islocal){

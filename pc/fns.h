@@ -2,6 +2,7 @@
 
 void	meminit(void);
 void	bigcursor(void);
+void	bootargs(ulong);
 #define	clearmmucache()		/* 386 doesn't have one */
 void	clock(Ureg*);
 void	clockinit(void);
@@ -55,7 +56,7 @@ void	screenputs(char*, int);
 int	serial(int);
 void	setvec(int, void (*)(Ureg*));
 void	systrap(void);
-void	touser(void);
+void	touser(void*);
 void	trapinit(void);
 int	tas(void*);
 void	uartclock(void);

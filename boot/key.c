@@ -3,10 +3,22 @@
 #include <auth.h>
 #include <../boot/boot.h>
 
+static uchar
+cksum(char *key)
+{
+	int i, nvsum;
+
+	nvsum = 0;
+	for(i=0; i<DESKEYLEN; i++)
+		nvsum += key[i];
+	return nvsum & 0xff;
+}
+
 void
 key(int islocal, Method *mp)
 {
-	char password[20], key[7];
+	char password[20], key[DESKEYLEN];
+	uchar nvsum;
 	int prompt, fd;
 
 	USED(islocal);
@@ -18,24 +30,31 @@ key(int islocal, Method *mp)
 		prompt = 1;
 		warning("can't open nvram");
 	}
+	if(seek(fd, 1024+900, 0) < 0
+	|| read(fd, key, DESKEYLEN) != DESKEYLEN
+	|| read(fd, &nvsum, 1) != 1)
+		warning("can't read nvram key");
+
 	if(prompt){
 		do
 			getpasswd(password, sizeof password);
 		while(!passtokey(key, password));
-	}else if(seek(fd, 1024+900, 0) < 0 || read(fd, key, 7) != 7){
-		close(fd);
-		warning("can't read key from nvram");
+	}else if(cksum(key) != nvsum){
+		warning("bad nvram key; using password boofhead");
+		passtokey(key, "boofhead");
 	}
-	if(kflag && (seek(fd, 1024+900, 0) < 0 || write(fd, key, 7) != 7)){
-		close(fd);
-		warning("can't write key to nvram");
+	nvsum = cksum(key);
+	if(kflag){
+		if(seek(fd, 1024+900, 0) < 0
+		|| write(fd, key, DESKEYLEN) != DESKEYLEN
+		|| write(fd, &nvsum, 1) != 1)
+			warning("can't write key to nvram");
 	}
 	close(fd);
 	fd = open("#c/key", OWRITE);
 	if(fd < 0)
-		warning("can't open key");
-	else if(write(fd, key, 7) != 7)
-		warning("can't write key");
+		warning("can't open #c/key");
+	else if(write(fd, key, DESKEYLEN) != DESKEYLEN)
+		warning("can't set #c/key");
 	close(fd);
 }
-

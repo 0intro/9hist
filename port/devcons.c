@@ -361,7 +361,7 @@ Dirtab consdir[]={
 	"user",		{Quser},	0,		0666,
 	"chal",		{Qchal},	8,		0666,
 	"crypt",	{Qcrypt},	0,		0666,
-	"key",		{Qkey},		DESKEYLEN,	0222,
+	"key",		{Qkey},		DESKEYLEN,	0622,
 	"klog",		{Qklog},	0,		0444,
 	"sysstat",	{Qsysstat},	0,		0666,
 	"sysname",	{Qsysname},	0,		0664,
@@ -597,7 +597,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return n;
 
 	case Qchal:
-		if(offset != 0 || n != 8)
+		if(offset!=0 || n!=8)
 			error(Ebadarg);
 		chal = u->p->pgrp->crypt->chal;
 		chal[0] = RXschal;
@@ -606,6 +606,14 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		memmove(buf, chal, 8);
 		encrypt(evekey, buf, 8);
 		chal[0] = RXstick;
+		return n;
+
+	case Qkey:
+		if(offset!=0 || n!=DESKEYLEN)
+			error(Ebadarg);
+		if(strcmp(u->p->user, eve)!=0 || conf.cntrlp==0)
+			error(Eperm);
+		memmove(buf, evekey, DESKEYLEN);
 		return n;
 
 	case Quser:

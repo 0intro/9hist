@@ -563,7 +563,8 @@ TEXT	setlabel(SB),$0
  */
 TEXT	touser(SB),$0
 	PUSHL	$(UDSEL)		/* old ss */
-	PUSHL	$(USTKTOP)		/* old sp */
+	MOVL	sp+0(FP),AX		/* old sp */
+	PUSHL	AX
 	PUSHFL				/* old flags */
 	PUSHL	$(UESEL)		/* old cs */
 	PUSHL	$(UTZERO+32)		/* old pc */

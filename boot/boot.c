@@ -12,11 +12,13 @@ char	cputype[NAMELEN];
 char	terminal[NAMELEN];
 char	sys[2*NAMELEN];
 char	username[NAMELEN];
+char 	*sauth = "";
 
 int mflag;
 int fflag;
 int kflag;
 int aflag;
+int pflag;
 
 int	cache(int);
 void	swapproc(void);
@@ -48,7 +50,11 @@ main(int argc, char *argv[])
 		kflag = 1;
 		break;
 	case 'm':
+		pflag = 1;
 		mflag = 1;
+		break;
+	case 'p':
+		pflag = 1;
 		break;
 	case 'f':
 		fflag = 1;
@@ -89,7 +95,7 @@ main(int argc, char *argv[])
 	 */
 	if(bind("/", "/", MREPL) < 0)
 		fatal("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
+	if(mount(fd, "/", MAFTER|MCREATE, "", sauth) < 0)
 		fatal("mount");
 	close(fd);
 	newkernel();
@@ -145,7 +151,7 @@ rootserver(char *arg)
 	else
 		strcpy(reply, method->name);
 	for(notfirst = 0;; notfirst = 1){
-		if(mflag || notfirst)
+		if(pflag || notfirst)
 			outin(prompt, reply, sizeof(reply));
 		for(mp = method; mp->name; mp++)
 			if(*reply == *mp->name){

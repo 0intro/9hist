@@ -8,6 +8,7 @@
 #include	"init.h"
 
 int machtype;
+uchar	*sp;	/* stack pointer for /boot */
 
 void
 main(void)
@@ -93,7 +94,7 @@ init0(void)
 		ksetenv("cputype", "386");
 		poperror();
 	}
-	touser();
+	touser(sp);
 }
 
 void
@@ -103,6 +104,7 @@ userinit(void)
 	Segment *s;
 	User *up;
 	KMap *k;
+	Page *pg;
 
 	p = newproc();
 	p->pgrp = newpgrp();
@@ -138,6 +140,11 @@ userinit(void)
 	 */
 	s = newseg(SG_STACK, USTKTOP-BY2PG, 1);
 	p->seg[SSEG] = s;
+	pg = newpage(1, 0, USTKTOP-BY2PG);
+	segpage(s, pg);
+	k = kmap(pg);
+	bootargs(VA(k));
+	kunmap(k);
 
 	/*
 	 * Text
@@ -150,6 +157,43 @@ userinit(void)
 	kunmap(k);
 
 	ready(p);
+}
+
+uchar *
+pusharg(char *p)
+{
+	int n;
+
+	n = strlen(p)+1;
+	sp -= n;
+	memmove(sp, p, n);
+	return sp;
+}
+
+void
+bootargs(ulong base)
+{
+ 	int i, ac;
+	uchar *av[32];
+	char *p, *pp;
+	uchar **lsp;
+
+	sp = (uchar*)base + BY2PG - MAXSYSARG*BY2WD;
+
+	ac = 0;
+	av[ac++] = pusharg("/386/9safari");
+	av[ac++] = pusharg("-p");
+
+	/* 4 byte word align stack */
+	sp = (uchar*)((ulong)sp & ~3);
+
+	/* build argc, argv on stack */
+	sp -= (ac+1)*sizeof(sp);
+	lsp = (uchar**)sp;
+	for(i = 0; i < ac; i++)
+		*lsp++ = av[i] + ((USTKTOP - BY2PG) - base);
+	*lsp = 0;
+	sp += (USTKTOP - BY2PG) - base - sizeof(ulong);
 }
 
 Conf	conf;
