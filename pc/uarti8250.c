@@ -445,7 +445,7 @@ i8250interrupt(Ureg*, void* arg)
 {
 	Ctlr *ctlr;
 	Uart *uart;
-	int iir, old, r;
+	int iir, lsr, old, r;
 
 	uart = arg;
 
@@ -480,16 +480,24 @@ i8250interrupt(Ureg*, void* arg)
 			break;
 		case Irda:		/* Received Data Available */
 		case Ictoi:		/* Character Time-out Indication */
-			uartrecv(uart, csr8r(ctlr, Rbr));
-			break;
-		case Irls:		/* Receiver Line Status */
-			r = csr8r(ctlr, Lsr);
-			if(r & Oe)
-				uart->oerr++;
-			if(r & Pe)
-				uart->perr++;
-			if(r & Fe)
-				uart->ferr++;
+			/*
+			 * Consume any received data.
+			 * If the received byte came in with a break,
+			 * parity or framing error, throw it away;
+			 * overrun is an indication that something has
+			 * already been tossed.
+			 */
+			while((lsr = csr8r(ctlr, Lsr)) & Dr){
+				if(lsr & Oe)
+					uart->oerr++;
+				if(lsr & Pe)
+					uart->perr++;
+				if(lsr & Fe)
+					uart->ferr++;
+				r = csr8r(ctlr, Rbr);
+				if(!(lsr & (Bi|Fe|Pe)))
+					uartrecv(uart, r);
+			}
 			break;
 		default:
 			iprint("weird uart interrupt 0x%2.2uX\n", iir);
@@ -532,7 +540,7 @@ i8250enable(Uart* uart, int ie)
 			intrenable(ctlr->irq, i8250interrupt, uart, ctlr->tbdf, uart->name);
 			ctlr->iena = 1;
 		}
-		ctlr->sticky[Ier] = Erls|Ethre|Erda;
+		ctlr->sticky[Ier] = Ethre|Erda;
 		ctlr->sticky[Mcr] |= Ie;
 	}
 	else{
