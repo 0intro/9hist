@@ -118,6 +118,7 @@ enum
 {
 	Tseng,		/* tseng labs te4000 */
 	Pvga1a,		/* paradise */
+	Ati,
 	Generic,
 };
 
@@ -125,6 +126,7 @@ Vgacard vgacards[] =
 {
 [Pvga1a]	{ "pvga1a", parapage, },
 [Tseng]		{ "tseng", tsengpage, },
+[Ati]		{ "ati", nopage, },
 [Generic]	{ "generic", nopage, },
 		{ 0, 0, },
 };
