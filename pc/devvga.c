@@ -272,26 +272,29 @@ vgactl(char *arg)
 		}
 	}
 	else if(strcmp(field[0], "size") == 0){
-		if((x = strtoul(field[1], &cp, 0)) == 0 || x > 2048)
+		x = strtoul(field[1], &cp, 0);
+		if(x == 0 || x > 2048)
 			error(Ebadarg);
 
 		if(*cp)
 			cp++;
-		if((y = strtoul(cp, &cp, 0)) == 0 || y > 1280)
+		y = strtoul(cp, &cp, 0);
+		if(y == 0 || y > 1280)
 			error(Ebadarg);
 
 		if(*cp)
 			cp++;
-		if((z = strtoul(cp, &cp, 0)) == 1)
-			z = 0;
-		else if(z == 8)
-			z = 3;
-		else
+		switch(strtoul(cp, &cp, 0)){
+		case 8:
+			z = 3; break;
+		case 1:
+			z = 0; break;
+		default:
 			error(Ebadarg);
+		}
 		interlaced[0] = *cp;
 
-		if(cga == 0)
-			cursoroff(1);
+		cursoroff(1);
 		setscreen(x, y, z);
 		cursoron(1);
 		return;
@@ -765,7 +768,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	ulong off;
 	uchar *q, *e;
 
-	if(!rectclip(&r, gscreen.r) || tl<=0)
+	if(cga || !rectclip(&r, gscreen.r) || tl<=0)
 		return;
 
 	if(dolock && hwgc == 0)
@@ -922,7 +925,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	ulong off;
 	uchar *q, *e;
 
-	if(!rectclip(&r, gscreen.r) || tl<=0)
+	if(cga || !rectclip(&r, gscreen.r) || tl<=0)
 		return;
 
 	if(dolock && hwgc == 0)

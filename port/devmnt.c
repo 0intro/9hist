@@ -602,7 +602,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 	uba = buf;
 	cnt = 0;
 	cache = c->flag & CCACHE;
-	if(c->path & CHDIR)
+	if(c->qid.path & CHDIR)
 		cache = 0;
 	for(;;) {
 		r = mntralloc(c);
