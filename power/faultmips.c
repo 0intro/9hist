@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"ureg.h"
 #include	"../port/error.h"
+#include	"io.h"
 
 /*
  *  find out fault address and type of access.
@@ -18,6 +19,7 @@ faultmips(Ureg *ur, int user, int code)
 	char buf[ERRLEN];
 	int read;
 
+	LEDON(LEDfault);
 	addr = ur->badvaddr;
 	addr &= ~(BY2PG-1);
 	read = !(code==CTLBM || code==CTLBS);
@@ -27,6 +29,7 @@ faultmips(Ureg *ur, int user, int code)
 			sprint(buf, "sys: trap: fault %s addr=0x%lux",
 				read? "read" : "write", ur->badvaddr);
 			postnote(u->p, 1, buf, NDebug);
+			LEDOFF(LEDfault);
 			return;
 		}
 		print("kernel %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
@@ -34,6 +37,7 @@ faultmips(Ureg *ur, int user, int code)
 		dumpregs(ur);
 		panic("fault");
 	}
+	LEDOFF(LEDfault);
 }
 
 /*

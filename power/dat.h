@@ -144,6 +144,7 @@ struct Mach
 	int	syscall;
 	int	load;
 	int	intr;
+	int	ledval;			/* value last written to LED */
 
 	int	stack[1];
 };

@@ -412,9 +412,11 @@ hotrodintr(int vec)
 	Hotmsg *hm;
 	ulong l;
 
+	LEDON(LEDhotintr);
 	h = &hotrod[vec - Vmevec];
 	if(h<hotrod || h>&hotrod[Nhotrod]){
 		print("bad hotrod vec\n");
+		LEDOFF(LEDhotintr);
 		return;
 	}
 	while(l = h->addr->replyq[h->ri]){	/* assign = */
@@ -427,4 +429,5 @@ hotrodintr(int vec)
 		if(!hm->abort)
 			wakeup(&hm->r);
 	}
+	LEDOFF(LEDhotintr);
 }

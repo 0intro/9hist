@@ -190,7 +190,9 @@ intr(Ureg *ur)
 	m->intr++;
 	cause = ur->cause&(INTR5|INTR4|INTR3|INTR2|INTR1);
 	if(cause & (INTR2|INTR4)){
+		LEDON(LEDclock);
 		clock(ur);
+		LEDOFF(LEDclock);
 		cause &= ~(INTR2|INTR4);
 	}
 	if(cause & INTR1){
