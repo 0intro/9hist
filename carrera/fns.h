@@ -3,7 +3,7 @@
 void	DEBUG(void);
 
 void	addportintr(int(*)(void));
-#define	affinity(x) (MACHP(0))
+#define	affinity(x) m
 void	allflush(void*, ulong);
 void	arginit(void);
 int	busprobe(ulong);

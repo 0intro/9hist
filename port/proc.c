@@ -21,8 +21,8 @@ struct
 	Waitq	*free;
 }waitqalloc;
 
-Schedq	runhiq, runloq;
 int	nrdy;
+Schedq	runhiq;
 
 char *statename[] =
 {			/* BUG: generate automatically */
@@ -126,7 +126,7 @@ ready(Proc *p)
 	else
 		rq->head = p;
 	rq->tail = p;
-
+	rq->n++;
 	nrdy++;
 	p->state = Ready;
 	unlock(&runhiq);
@@ -160,6 +160,7 @@ loop:
 	if(p->rnext == 0)
 		rq->tail = 0;
 	rq->head = p->rnext;
+	rq->n--;
 	nrdy--;
 	if(p->state != Ready)
 		print("runproc %s %d %s\n", p->text, p->pid, statename[p->state]);
