@@ -439,7 +439,7 @@ ns16552kick(Uart *p)
 }
 
 /*
- *  restart input if its off
+ *  restart input if it's off
  */
 static void
 ns16552flow(Uart *p)
