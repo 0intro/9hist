@@ -72,10 +72,13 @@ pciscan(int bno, Pcidev** list)
 				pcilist = p;
 			pcitail = p;
 
-			p->intl = pcicfgr8(p, PciINTL);
+			p->rid = pcicfgr8(p, PciRID);
 			p->ccrp = pcicfgr8(p, PciCCRp);
 			p->ccru = pcicfgr8(p, PciCCRu);
 			p->ccrb = pcicfgr8(p, PciCCRb);
+			p->pcr = pcicfgr32(p, PciPCR);
+
+			p->intl = pcicfgr8(p, PciINTL);
 
 			/*
 			 * If the device is a multi-function device adjust the

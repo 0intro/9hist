@@ -299,6 +299,10 @@ sdreset(void)
 		return;
 	}
 	for(i = 0; sdifc[i] != nil; i++){
+		/*
+		 * BUG: no check is made here or later when a
+		 * unit is attached that the id and name are set.
+		 */
 		if(sdifc[i]->id)
 			sdifc[i]->id(sdlist);
 	}

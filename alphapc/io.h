@@ -133,9 +133,14 @@ enum {					/* type 1 pre-defined header */
 
 typedef struct Pcidev Pcidev;
 typedef struct Pcidev {
-	int	tbdf;		/* type+bus+device+function */
+	int	tbdf;			/* type+bus+device+function */
 	ushort	vid;			/* vendor ID */
 	ushort	did;			/* device ID */
+
+	uchar	rid;
+	uchar	ccrp;
+	uchar	ccru;
+	uchar	ccrb;
 
 	struct {
 		ulong	bar;		/* base address */
@@ -143,14 +148,22 @@ typedef struct Pcidev {
 	} mem[6];
 
 	uchar	intl;			/* interrupt line */
-	uchar	ccrp;
-	uchar	ccru;
-	uchar	ccrb;
 
 	Pcidev*	list;
-	Pcidev*	bridge;			/* down a bus */
 	Pcidev*	link;			/* next device on this bno */
+
+	Pcidev*	bridge;			/* down a bus */
+	struct {
+		ulong	bar;
+		int	size;
+	} ioa, mema;
+	ulong	pcr;
 };
+
+#define PCIWINDOW	0x40000000
+#define PCIWADDR(va)	(PADDR(va)+PCIWINDOW)
+#define ISAWINDOW	0x00800000
+#define ISAWADDR(va)	(PADDR(va)+ISAWINDOW)
 
 /*
  * PCMCIA support code.
@@ -166,49 +179,3 @@ struct PCMmap {
 	int	attr;			/* attribute memory */
 	int	ref;
 };
-
-/*
- *  SCSI bus
- */
-enum {
-	MaxTarget	= 16,
-};
-
-typedef struct Scsi Scsi;
-typedef struct Target Target;
-typedef struct SCSIdev SCSIdev;
-
-typedef struct Target {
-	int	ctlrno;
-	Scsi*	ctlr;
-	int	targetno;
-
-	uchar*	inq;
-	uchar*	scratch;
-
-	Rendez	rendez;
-
-	int	ok;
-};
-
-typedef struct Scsi {
-	ISAConf;
-	int	ctlrno;
-	Pcidev*	pcidev;
-	int	(*io)(Target*, int, uchar*, int, void*, int*);
-	void	*ctlr;
-	int	ntarget;
-
-	Scsi*	next;
-} Scsi;
-
-typedef struct SCSIdev {
-	char*	type;
-	Scsi*	(*pnp)(void);
-	int	(*reset)(Scsi*);
-} SCSIdev;
-
-#define PCIWINDOW	0x40000000
-#define PCIWADDR(va)	(PADDR(va)+PCIWINDOW)
-#define ISAWINDOW	0x00800000
-#define ISAWADDR(va)	(PADDR(va)+ISAWINDOW)

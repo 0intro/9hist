@@ -38,13 +38,22 @@ sginit(void)
 	sgmap = xspanalloc(BY2PG, BY2PG, 0);
 	memset(sgmap, 0, BY2PG);
 
+	/*
+	 * Prepare scatter-gather map for 0-8MB.
+	 */
 	pte = sgmap;
 	for(pa = 0; pa < 8*1024*1024; pa += BY2PG)
 		*pte++ = ((pa>>PGSHIFT)<<1)|1;
 
-	wind[0x400/4] = ISAWINDOW|2|1;
-	wind[0x440/4] = 0x00700000;
-	wind[0x480/4] = PADDR(sgmap)>>2;	/* why the shift? */
+	/*
+	 * Set up a map for ISA DMA accesses to physical memory.
+	 * Addresses presented by an ISA device between ISAWINDOW
+	 * and ISAWINDOW+8MB will be translated to between 0 and
+	 * 0+8MB of physical memory.
+	 */
+	wind[0x400/4] = ISAWINDOW|2|1;		/* window base */
+	wind[0x440/4] = 0x00700000;		/* window mask */
+	wind[0x480/4] = PADDR(sgmap)>>2;	/* <33:10> of sg map */
 
 	wind[0x100/4] = 3;			/* invalidate tlb cache */
 }
@@ -82,12 +91,17 @@ coreinit(void)
 	wind[0x600/4] = 0;
 	wind[0x700/4] = 0;
 
-	/* direct map bottom 1G PCI target space to KZERO in window 1 */
+	sginit();
+
+	/*
+	 * Set up a map for PCI DMA accesses to physical memory.
+	 * Addresses presented by a PCI device between PCIWINDOW
+	 * and PCIWINDOW+1GB will be translated to between 0 and
+	 * 0+1GB of physical memory.
+	 */
 	wind[0x500/4] = PCIWINDOW|1;
 	wind[0x540/4] = 0x3ff00000;
 	wind[0x580/4] = 0;
-
-sginit();
 
 	/* clear error state */
 	core[0x8200/4] = 0x7ff;
