@@ -148,10 +148,8 @@ panic("etheroput\n");
 			t->prom = 1;
 			qlock(c);
 			c->prom++;
-			if(c->prom == 1){
-				outb(t->ctlr->iobase+Cr, 0x22);	/* Page0, RD2|STA */
+			if(c->prom == 1)
 				outb(c->iobase+Rcr, 0x14);	/* PRO|AB */
-			}
 			qunlock(c);
 		}
 		freeb(bp);
@@ -290,10 +288,8 @@ etherstclose(Queue *q)
 	if(pp->prom){
 		qlock(pp->ctlr);
 		pp->ctlr->prom--;
-		if(pp->ctlr->prom == 0){
-			outb(pp->ctlr->iobase+Cr, 0x22);/* Page0, RD2|STA */
+		if(pp->ctlr->prom == 0)
 			outb(pp->ctlr->iobase+Rcr, 0x04);/* AB */
-		}
 		qunlock(pp->ctlr);
 	}
 	qlock(pp);
@@ -363,7 +359,6 @@ intr(Ureg *ur)
 	Ctlr *cp = &ctlr[0];
 	uchar isr, curr;
 
-	outb(cp->iobase+Cr, 0x22);			/* Page0, RD2|STA */
 	while(isr = inb(cp->iobase+Isr)){
 		outb(cp->iobase+Isr, isr);
 		if(isr & Txe)
@@ -397,7 +392,7 @@ intr(Ureg *ur)
 		 * we have received packets.
 		 * this is the only place, other than the init code,
 		 * where we set the controller to Page1.
-		 * we must be careful to reset it back to Page0 in case
+		 * we must be sure to reset it back to Page0 in case
 		 * we interrupted some other part of this driver.
 		 */
 		if(isr & (Ovw|Prx)){
@@ -411,8 +406,9 @@ intr(Ureg *ur)
 
 /*
  * the following initialisation procedure
- * is mandatory
+ * is mandatory.
  * we leave the chip idling on internal loopback
+ * and pointing to Page0.
  */
 static void
 init(Ctlr *cp)
