@@ -143,6 +143,14 @@ enum {					/* type 1 pre-defined header */
 	PciBCR		= 0x3E,		/* bridge control register */
 };
 
+typedef struct Pcisiz Pcisiz;
+struct Pcisiz
+{
+	Pcidev*	dev;
+	int	siz;
+	int	bar;
+};
+
 typedef struct Pcidev Pcidev;
 struct Pcidev
 {
@@ -155,14 +163,20 @@ struct Pcidev
 		int	size;
 	} mem[6];
 
+	ulong	pcr;
 	uchar	intl;			/* interrupt line */
 	uchar	ccrp;
 	uchar	ccru;
 	uchar	ccrb;
 
 	Pcidev*	list;
-	Pcidev*	bridge;			/* down a bus */
 	Pcidev*	link;			/* next device on this bno */
+
+	Pcidev*	bridge;			/* down a bus */
+	struct {
+		ulong	bar;
+		int	size;
+	} ioa, mema;
 };
 
 /*

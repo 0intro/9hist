@@ -9,6 +9,30 @@
 #include "io.h"
 #include "../port/error.h"
 
+#define DBG	if(0) pcilog
+
+struct
+{
+	char	output[16384];
+	int	ptr;
+}PCICONS;
+
+int
+pcilog(char *fmt, ...)
+{
+	int n;
+	va_list arg;
+	char buf[PRINTSIZE];
+
+	va_start(arg, fmt);
+	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
+
+	memmove(PCICONS.output+PCICONS.ptr, buf, n);
+	PCICONS.ptr += n;
+	return n;
+}
+
 enum
 {					/* configuration mechanism #1 */
 	PciADDR		= 0xCF8,	/* CONFIG_ADDRESS */
@@ -21,13 +45,11 @@ enum
 	MaxFNO		= 7,
 	MaxUBN		= 255,
 
-	BARio		= 0,		/* fake BAR registers for bridges */
-	BARmem,
-
 	NOBIOS		= 0,		/* initialise if the BIOS didn't */
 };
 
-enum {					/* command register */
+enum
+{					/* command register */
 	IOen		= (1<<0),
 	MEMen		= (1<<1),
 	MASen		= (1<<2),
@@ -47,6 +69,63 @@ static Pcidev* pcitail;
 static int pcicfgrw32(int, int, int, int);
 static int pcicfgrw8(int, int, int, int);
 
+static char* bustypes[] = {
+	"CBUSI",
+	"CBUSII",
+	"EISA",
+	"FUTURE",
+	"INTERN",
+	"ISA",
+	"MBI",
+	"MBII",
+	"MCA",
+	"MPI",
+	"MPSA",
+	"NUBUS",
+	"PCI",
+	"PCMCIA",
+	"TC",
+	"VL",
+	"VME",
+	"XPRESS",
+};
+
+#pragma	varargck	type	"T"	int
+
+static int
+tbdfconv(va_list* arg, Fconv* f)
+{
+	char *p;
+	int l, type, tbdf;
+
+	p = malloc(READSTR);
+	if(p == nil){
+		strconv("(tbdfconv)", f);
+		return sizeof(int);
+	}
+		
+	switch(f->chr){
+	case 'T':
+		tbdf = va_arg(*arg, int);
+		type = BUSTYPE(tbdf);
+		if(type < nelem(bustypes))
+			l = snprint(p, READSTR, bustypes[type]);
+		else
+			l = snprint(p, READSTR, "%d", type);
+		snprint(p+l, READSTR-l, ".%d.%d.%d",
+			BUSBNO(tbdf), BUSDNO(tbdf), BUSFNO(tbdf));
+		break;
+
+	default:
+		snprint(p, READSTR, "(tbdfconv)");
+		break;
+	}
+	strconv(p, f);
+	free(p);
+
+	return sizeof(int);
+}
+
 ulong
 pcibarsize(Pcidev *p, int rno)
 {
@@ -62,127 +141,221 @@ pcibarsize(Pcidev *p, int rno)
 	return -(size & ~0x0F);
 }
 
-static void
-pcibusmap(Pcidev *p, ulong *pmema, ulong *pioa, int wrreg)
+static int
+pcisizcmp(void* va, void* vb)
 {
-	int i, size, k;
-	ulong addr, v, mema, ioa, pcr, tmema, tioa;
+	Pcisiz *a, *b;
+
+	a = va;
+	b = vb;
+	return a->siz - b->siz;
+}
+
+static ulong
+pcimask(ulong v)
+{
+	ulong m;
+
+	m = BI2BY*sizeof(v);
+	for(m = 1<<(m-1); m != 0; m >>= 1) {
+		if(m & v)
+			break;
+	}
+
+	m--;
+	if((v & m) == 0)
+		return v;
+
+	v |= m;
+	return v+1;
+}
+
+static void
+pcibusmap(Pcidev *root, ulong *pmema, ulong *pioa, int wrreg)
+{
+	Pcidev *p;
+	int ntb, i, size, rno, hole;
+	ulong v, mema, ioa, sioa, smema, base, limit;
+	Pcisiz *table, *tptr, *mtb, *itb;
+	extern void qsort(void*, long, long, int (*)(void*, void*));
 
 	if(!NOBIOS)
 		return;
 
-	mema = *pmema;
 	ioa = *pioa;
+	mema = *pmema;
 
-	print("pcibusmap wr=%d %d.%d.%d mem=%lux io=%lux\n", 
-		wrreg, BUSBNO(p->tbdf), BUSDNO(p->tbdf), BUSFNO(p->tbdf),
-		mema, ioa);
+	DBG("pcibusmap wr=%d %T mem=%lux io=%lux\n", 
+		wrreg, root->tbdf, mema, ioa);
+
+	ntb = 0;
+	for(p = root; p != nil; p = p->link)
+		ntb++;
+
+	ntb *= (PciCIS-PciBAR0)/4;
+	table = malloc(2*ntb*sizeof(Pcisiz));
+	itb = table;
+	mtb = table+ntb;
 
 	/*
-	 * Allocate address space on this bus
-	 * note this loop follows link, not list
+	 * Build a table of sizes
 	 */
-	for(; p; p = p->link) {
+	for(p = root; p != nil; p = p->link) {
 		if(p->ccrb == 0x06) {
-			if(p->ccru != 0x04) {
-				print("pci: ignored bridge %d.%d.%d\n",
-					BUSBNO(p->tbdf),
-					BUSDNO(p->tbdf),
-					BUSFNO(p->tbdf));
+			if(p->ccru != 0x04 || p->bridge == nil) {
+//				DBG("pci: ignored bridge %T\n", p->tbdf);
 				continue;
 			}
 
-			/* Base */
-			p->mem[BARio].bar = ioa;
-			p->mem[BARmem].bar = mema;
-			tioa = ioa;
-			tmema = mema;
+			sioa = ioa;
+			smema = mema;
+			pcibusmap(p->bridge, &smema, &sioa, 0);
 
-			/* Limit */
-			ioa += p->mem[BARio].size;
-			mema += p->mem[BARmem].size;
+			hole = pcimask(smema-mema);
+			if(hole < (1<<20))
+				hole = 1<<20;
+			p->mema.size = hole;
 
-			if(wrreg == 0)
-				continue;
+			hole = pcimask(sioa-ioa);
+			if(hole < (1<<12))
+				hole = 1<<12;
 
-			pcibusmap(p->bridge, &tmema, &tioa, 1);
+			p->ioa.size = hole;
 
-			/*
-			 * IO base[15:12], IO limit [15:12]
-			 */
-			v =	(0xFFFF<<16)|
-				(ioa & 0xF000)|
-				((p->mem[BARio].bar & 0xF000)>>8);
+			itb->dev = p;
+			itb->bar = -1;
+			itb->siz = p->ioa.size;
+			itb++;
 
-			pcicfgrw32(p->tbdf, PciBAR3, v, 0);
-
-			/*
-			 * Memory Base/Limit
-			 */
-			v =	(mema & ~((1<<20)-1)) |
-				((p->mem[BARmem].bar & ~((1<<20)-1)) >> 16);
-
-			pcicfgrw32(p->tbdf, PciBAR4, v, 0);
-
-			/*
-			 * Disable memory prefetch
-			 */
-			pcicfgrw32(p->tbdf, PciBAR5, 0x0000FFFF, 0);
-
-			/*
-			 * Enable the bridge
-			 */
-			v = 0xFFFF0000 | IOen | MEMen | MASen;
-			pcicfgrw32(p->tbdf, PciPCR, v, 0);
+			mtb->dev = p;
+			mtb->bar = -1;
+			mtb->siz = p->mema.size;
+			mtb++;
 			continue;
 		}
 
-		pcr = pcicfgrw32(p->tbdf, PciPCR, 0, 1);
-		
-		for(i = PciBAR0; i <= PciBAR5; i += 4) {
-			v = pcicfgrw32(p->tbdf, i, 0, 1);
-			size = pcibarsize(p, i);
-			if(size > 16*1024*1024)
-				print("pcimap: size %d?\n", size);
+		for(i = 0; i <= 5; i++) {
+			rno = PciBAR0 + i*4;
+			v = pcicfgrw32(p->tbdf, rno, 0, 1);
+			size = pcibarsize(p, rno);
 			if(size == 0)
 				continue;
 
-			if(v & 1) {		/* Allocate IO space */
-				ioa = (ioa+size-1) & ~(size-1);
-				addr = ioa;
-				ioa += size;
-				pcr |= IOen;
+			if(v & 1) {
+				itb->dev = p;
+				itb->bar = i;
+				itb->siz = size;
+				itb++;
 			}
-			else {			/* Allocate Memory space */
-				mema = (mema+size-1) & ~(size-1);
-				addr = mema;
-				mema += size;
-				pcr |= MEMen;
+			else {
+				mtb->dev = p;
+				mtb->bar = i;
+				mtb->siz = size;
+				mtb++;
 			}
 
-			k = (i-PciBAR0)/4;
-			p->mem[k].size = size;
-			p->mem[k].bar = addr;
-			if(wrreg)
-				pcicfgrw32(p->tbdf, i, addr, 0);
-		}
-
-		/*
-		 * Set latency timer
-		 * Enable memory/io/master
-		 */
-		if(wrreg) {
-			pcicfgrw8(p->tbdf, PciLTR, 64, 0);
-
-			pcr |= MASen;
-			pcicfgrw32(p->tbdf, PciPCR, pcr, 0);
+			p->mem[i].size = size;
 		}
 	}
 
-	print("pcibusmap mem=%lux io=%lux\n", mema, ioa);
+	/*
+	 * Sort both tables IO smallest first, Memory largest
+	 */
+	qsort(table, itb-table, sizeof(Pcisiz), pcisizcmp);
+	tptr = table+ntb;
+	qsort(tptr, mtb-tptr, sizeof(Pcisiz), pcisizcmp);
+
+	/*
+	 * Allocate IO address space on this bus
+	 */
+	for(tptr = table; tptr < itb; tptr++) {
+		hole = tptr->siz;
+		if(tptr->bar == -1)
+			hole = 1<<12;
+		ioa = (ioa+hole-1) & ~(hole-1);
+
+		p = tptr->dev;
+		if(tptr->bar == -1)
+			p->ioa.bar = ioa;
+		else {
+			p->pcr |= IOen;
+			p->mem[tptr->bar].bar = ioa|1;
+			if(wrreg)
+				pcicfgrw32(p->tbdf, PciBAR0+(tptr->bar*4), ioa|1, 0);
+		}
+
+		ioa += tptr->siz;
+	}
+
+	/*
+	 * Allocate Memory address space on this bus
+	 */
+	for(tptr = table+ntb; tptr < mtb; tptr++) {
+		hole = tptr->siz;
+		if(tptr->bar == -1)
+			hole = 1<<20;
+		mema = (mema+hole-1) & ~(hole-1);
+
+		p = tptr->dev;
+		if(tptr->bar == -1)
+			p->mema.bar = mema;
+		else {
+			p->pcr |= MEMen;
+			p->mem[tptr->bar].bar = mema;
+			if(wrreg)
+				pcicfgrw32(p->tbdf, PciBAR0+(tptr->bar*4), mema, 0);
+		}
+		mema += tptr->siz;
+	}
 
 	*pmema = mema;
 	*pioa = ioa;
+	free(table);
+
+	if(wrreg == 0)
+		return;
+
+	/*
+	 * Finally set all the bridge addresses & registers
+	 */
+	for(p = root; p != nil; p = p->link) {
+		if(p->bridge == nil) {
+			pcicfgrw8(p->tbdf, PciLTR, 64, 0);
+
+			p->pcr |= MASen;
+			pcicfgrw32(p->tbdf, PciPCR, p->pcr, 0);
+			continue;
+		}
+
+		base = p->ioa.bar;
+		limit = base+p->ioa.size-1;
+		v = pcicfgrw32(p->tbdf, PciBAR3, 0, 1);
+		v = (v&0xFFFF0000)|(limit & 0xF000)|((base & 0xF000)>>8);
+		pcicfgrw32(p->tbdf, PciBAR3, v, 0);
+		v = (limit & 0xFFFF0000)|(base>>16);
+		pcicfgrw32(p->tbdf, 0x30, v, 0);
+
+		base = p->mema.bar;
+		limit = base+p->mema.size-1;
+		v = (limit & 0xFFF00000)|((base & 0xFFF00000)>>16);
+		pcicfgrw32(p->tbdf, PciBAR4, v, 0);
+
+		/*
+		 * Disable memory prefetch
+		 */
+		pcicfgrw32(p->tbdf, PciBAR5, 0x0000FFFF, 0);
+		pcicfgrw8(p->tbdf, PciLTR, 64, 0);
+
+		/*
+		 * Enable the bridge
+		 */
+		v = 0xFFFF0000 | IOen | MEMen | MASen;
+		pcicfgrw32(p->tbdf, PciPCR, v, 0);
+
+		sioa = p->ioa.bar;
+		smema = p->mema.bar;
+		pcibusmap(p->bridge, &smema, &sioa, 1);
+	}
 }
 
 static int
@@ -224,6 +397,7 @@ pciscan(int bno, Pcidev** list)
 			p->ccrp = pcicfgr8(p, PciCCRp);
 			p->ccru = pcicfgr8(p, PciCCRu);
 			p->ccrb = pcicfgr8(p, PciCCRb);
+			p->pcr = pcicfgr32(p, PciPCR);
 
 			/*
 			 * If the device is a multi-function device adjust the
@@ -315,37 +489,9 @@ pciscan(int bno, Pcidev** list)
 			maxubn = ubn;
 			pciscan(sbn, &p->bridge);
 		}
-
-		/*
-		 * Now figure out the size of things below the bridge
-		 */
-		if(NOBIOS) {
-			mema = 0;
-			ioa = 0;
-			pcibusmap(p->bridge, &mema, &ioa, 0);
-			p->mem[BARmem].size = ROUND(mema, 1<<20);
-			p->mem[BARio].size = ROUND(ioa, 1<<12);
-		}
 	}
 
 	return maxubn;
-}
-
-static ulong
-pcimask(ulong v)
-{
-	ulong m;
-
-	if(!NOBIOS)
-		return 0;
-
-	m = BI2BY*sizeof(v);
-	for(m = 1<<(m-1); m != 0; m >>= 1) {
-		if(m & v)
-			break;
-	}
-	v |= m-1;
-	return v+1;
 }
 
 static void
@@ -354,7 +500,7 @@ pcicfginit(void)
 	char *p;
 	int bno;
 	Pcidev **list;
-	ulong mema, ioa, size;
+	ulong mema, ioa;
 
 	lock(&pcicfginitlock);
 	if(pcicfgmode != -1)
@@ -384,6 +530,8 @@ pcicfginit(void)
 	if(pcicfgmode < 0)
 		goto out;
 
+	fmtinstall('T', tbdfconv);
+
 	if(p = getconf("*pcimaxdno"))
 		pcimaxdno = strtoul(p, 0, 0);
 
@@ -394,29 +542,31 @@ pcicfginit(void)
 			list = &(*list)->link;
 	}
 
-	if(NOBIOS){
+	if(pciroot == nil)
+		goto out;
+
+	if(NOBIOS) {
 		/*
 		 * Work out how big the top bus is
 		 */
 		mema = 0;
 		ioa = 0;
 		pcibusmap(pciroot, &mema, &ioa, 0);
-	
-		print("Sizes: mem=%lux io=%lux\n", mema, ioa);
+
+DBG("Sizes: mem=%8.8lux size=%8.8lux io=%8.8lux\n", mema, pcimask(mema), ioa);
 	
 		/*
 		 * Align the windows and map it
 		 */
-		size = pcimask(mema);
-		mema = (0xFE000000 & ~(size-1)) - size;
-		size = pcimask(ioa);
-		ioa = (0xFE00 & ~(size-1)) - size;
-	
+		ioa = 0x1000;
+		mema = 0x90000000;
+
+		pcilog("Mask sizes: mem=%lux io=%lux\n", mema, ioa);
+
 		pcibusmap(pciroot, &mema, &ioa, 1);
+DBG("Sizes2: mem=%lux io=%lux\n", mema, ioa);
 	
 		unlock(&pcicfginitlock);
-		pcihinv(nil);
-
 		return;
 	}
 out:
@@ -635,11 +785,12 @@ pcihinv(Pcidev* p)
 	Pcidev *t;
 
 	if(p == nil) {
+putstrn(PCICONS.output, PCICONS.ptr);
 		p = pciroot;
 		print("bus dev type vid  did intl memory\n");
 	}
 	for(t = p; t != nil; t = t->link) {
-		print("%d  %2d/%d %.2ux %.2ux %.2ux %.4ux %.4ux %2d  ",
+		print("%d  %2d/%d %.2ux %.2ux %.2ux %.4ux %.4ux %3d  ",
 			BUSBNO(t->tbdf), BUSDNO(t->tbdf), BUSFNO(t->tbdf),
 			t->ccrb, t->ccru, t->ccrp, t->vid, t->did, t->intl);
 
@@ -649,13 +800,24 @@ pcihinv(Pcidev* p)
 			print("%d:%.8lux %d ", i,
 				t->mem[i].bar, t->mem[i].size);
 		}
+		if(t->ioa.bar || t->ioa.size)
+			print("ioa:%.8lux %d ", t->ioa.bar, t->ioa.size);
+		if(t->mema.bar || t->mema.size)
+			print("mema:%.8lux %d ", t->mema.bar, t->mema.size);
+		if(t->bridge)
+			print("->%d", BUSBNO(t->bridge->tbdf));
 		print("\n");
 	}
+#define notdef
+#ifdef notdef
 	while(p != nil) {
 		if(p->bridge != nil)
 			pcihinv(p->bridge);
 		p = p->link;
 	}
+#else
+print("more...\n");
+#endif /* notdef */
 }
 
 void
@@ -680,6 +842,6 @@ pcisetbme(Pcidev* p)
 	int pcr;
 
 	pcr = pcicfgr16(p, PciPCR);
-	pcr |= 0x0004;
+	pcr |= MASen;
 	pcicfgw16(p, PciPCR, pcr);
 }
