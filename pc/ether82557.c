@@ -190,6 +190,10 @@ typedef struct Ctlr {
 	int	state;
 
 	int	port;
+	ushort	eeprom[0x40];
+
+	Rendez	timer;			/* watchdog timer for receive lockup errata */
+	int	tick;
 
 	Lock	rlock;			/* registers */
 	int	command;		/* last command issued */
@@ -208,6 +212,7 @@ typedef struct Ctlr {
 	Cb*	cbtail;
 	int	cbq;
 	int	cbqmax;
+	int	cbqmaxhw;
 
 	Lock	dlock;			/* dump statistical counters */
 	ulong	dump[17];
@@ -230,7 +235,7 @@ static uchar configdata[24] = {
 	0x60,				/* inter-frame spacing */
 	0x00,	
 	0xF2,	
-	0xC8,				/* promiscuous mode off */
+	0xC8,				/* 503, promiscuous mode off */
 	0x00,	
 	0x40,	
 	0xF3,				/* transmit padding enable */
@@ -314,15 +319,58 @@ rfdalloc(ulong link)
 }
 
 static void
+watchdog(void* arg)
+{
+	Ether *ether;
+	Ctlr *ctlr;
+	static void txstart(Ether*);
+
+	ether = arg;
+	for(;;){
+		ctlr = ether->ctlr;
+		tsleep(&ctlr->timer, return0, 0, 4000);
+
+		/*
+		 * Hmmm. This doesn't seem right. Currently
+		 * the device can't be disabled but it may be in
+		 * the future.
+		 */
+		ctlr = ether->ctlr;
+		if(ctlr == nil || ctlr->state == 0){
+			print("%s: exiting\n", up->text);
+			pexit("disabled", 0);
+		}
+
+		if(ctlr->tick++){
+			ilock(&ctlr->cblock);
+			ctlr->action = CbMAS;
+			txstart(ether);
+			iunlock(&ctlr->cblock);
+		}
+	}
+}
+
+static void
 attach(Ether* ether)
 {
 	Ctlr *ctlr;
+	char name[NAMELEN];
 
 	ctlr = ether->ctlr;
 	lock(&ctlr->slock);
 	if(ctlr->state == 0){
 		command(ctlr, RUstart, PADDR(ctlr->rfdhead->rp));
 		ctlr->state = 1;
+
+		/*
+		 * Start the watchdog timer for the receive lockup errata
+		 * unless the EEPROM compatibility word indicates it may be
+		 * omitted.
+		 */
+		if((ctlr->eeprom[0x03] & 0x0003) != 0x0003){
+			snprint(name, NAMELEN, "#l%dwatchdog", ether->ctlrno);
+			kproc(name, watchdog, ether);
+		}
 	}
 	unlock(&ctlr->slock);
 }
@@ -379,8 +427,11 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	len += snprint(p+len, READSTR-len, "receive overrun errors: %lud\n", dump[13]);
 	len += snprint(p+len, READSTR-len, "receive collision detect errors: %lud\n", dump[14]);
 	len += snprint(p+len, READSTR-len, "receive short frame errors: %lud\n", dump[15]);
-	snprint(p+len, READSTR-len, "cbqmax: %lud\n", ctlr->cbqmax);
-ctlr->cbqmax = 0;
+	if(ctlr->cbqmax > ctlr->cbqmaxhw)
+		ctlr->cbqmaxhw = ctlr->cbqmax;
+	len += snprint(p+len, READSTR-len, "cbqmax: %lud\n", ctlr->cbqmax);
+	ctlr->cbqmax = 0;
+	snprint(p+len, READSTR-len, "threshold: %lud\n", ctlr->threshold);
 
 	n = readstr(offset, a, n, p);
 	free(p);
@@ -422,6 +473,11 @@ txstart(Ether* ether)
 			memmove(cb->data, ether->ea, Eaddrlen);
 			ctlr->action = 0;
 		}
+		else if(ctlr->action == CbMAS){
+			cb->command = CbS|CbMAS;
+			memset(cb->data, 0, sizeof(cb->data));
+			ctlr->action = 0;
+		}
 		else{
 			print("#l%d: action 0x%uX\n", ether->ctlrno, ctlr->action);
 			ctlr->action = 0;
@@ -456,6 +512,7 @@ configure(Ether* ether, int promiscuous)
 	}
 	else{
 		ctlr->configdata[6] &= ~0x80;
+		ctlr->configdata[6] |= 0x40;
 		ctlr->configdata[7] |= 0x01;
 		ctlr->configdata[15] &= ~0x01;
 		ctlr->configdata[18] |= 0x01;		/* 0x03? */
@@ -504,6 +561,13 @@ interrupt(Ureg*, void* arg)
 
 		if(!(status & (StatCX|StatFR|StatCNA|StatRNR|StatMDI|StatSWI)))
 			break;
+
+		/*
+		 * If the watchdog timer for the receiver lockup errata is running,
+		 * let it know the receiver is active.
+		 */
+		if(status & (StatFR|StatRNR))
+			ctlr->tick = 0;
 
 		if(status & StatFR){
 			bp = ctlr->rfdhead;
@@ -648,30 +712,47 @@ ctlrinit(Ctlr* ctlr)
 
 	memmove(ctlr->configdata, configdata, sizeof(configdata));
 	ctlr->threshold = 8;
+	ctlr->tick = 0;
 
 	iunlock(&ctlr->cblock);
 }
 
 static int
-dp83840r(Ctlr* ctlr, int phyadd, int regadd)
+miir(Ctlr* ctlr, int phyadd, int regadd)
 {
 	int mcr, timo;
 
-	/*
-	 * DP83840
-	 * 10/100Mb/s Ethernet Physical Layer.
-	 */
 	csr32w(ctlr, Mcr, MDIread|(phyadd<<21)|(regadd<<16));
 	mcr = 0;
-	for(timo = 10; timo; timo--){
+	for(timo = 64; timo; timo--){
 		mcr = csr32r(ctlr, Mcr);
 		if(mcr & MDIready)
 			break;
-		delay(1);
+		microdelay(1);
 	}
 
 	if(mcr & MDIready)
 		return mcr & 0xFFFF;
+
+	return -1;
+}
+
+static int
+miiw(Ctlr* ctlr, int phyadd, int regadd, int data)
+{
+	int mcr, timo;
+
+	csr32w(ctlr, Mcr, MDIwrite|(phyadd<<21)|(regadd<<16)|(data & 0xFFFF));
+	mcr = 0;
+	for(timo = 64; timo; timo--){
+		mcr = csr32r(ctlr, Mcr);
+		if(mcr & MDIready)
+			break;
+		microdelay(1);
+	}
+
+	if(mcr & MDIready)
+		return 0;
 
 	return -1;
 }
@@ -685,7 +766,7 @@ hy93c46r(Ctlr* ctlr, int r)
 	 * Hyundai HY93C46 or equivalent serial EEPROM.
 	 * This sequence for reading a 16-bit register 'r'
 	 * in the EEPROM is taken straight from Section
-	 * 2.3.4.2 of the Intel 82557 User's Guide.
+	 * 3.3.4.2 of the Intel 82557 User's Guide.
 	 */
 	csr16w(ctlr, Ecr, EEcs);
 	op = EEstart|EEread;
@@ -693,9 +774,9 @@ hy93c46r(Ctlr* ctlr, int r)
 		data = (((op>>i) & 0x01)<<2)|EEcs;
 		csr16w(ctlr, Ecr, data);
 		csr16w(ctlr, Ecr, data|EEsk);
-		delay(1);
+		microdelay(1);
 		csr16w(ctlr, Ecr, data);
-		delay(1);
+		microdelay(1);
 	}
 
 	for(i = EEaddrsz-1; i >= 0; i--){
@@ -704,7 +785,7 @@ hy93c46r(Ctlr* ctlr, int r)
 		csr16w(ctlr, Ecr, data|EEsk);
 		delay(1);
 		csr16w(ctlr, Ecr, data);
-		delay(1);
+		microdelay(1);
 		if(!(csr16r(ctlr, Ecr) & EEdo))
 			break;
 	}
@@ -712,11 +793,11 @@ hy93c46r(Ctlr* ctlr, int r)
 	data = 0;
 	for(i = 15; i >= 0; i--){
 		csr16w(ctlr, Ecr, EEcs|EEsk);
-		delay(1);
+		microdelay(1);
 		if(csr16r(ctlr, Ecr) & EEdo)
 			data |= (1<<i);
 		csr16w(ctlr, Ecr, EEcs);
-		delay(1);
+		microdelay(1);
 	}
 
 	csr16w(ctlr, Ecr, 0);
@@ -766,7 +847,8 @@ i82557pci(void)
 static int
 reset(Ether* ether)
 {
-	int i, port, x;
+	int an, i, phyaddr, port, x;
+	unsigned short sum;
 	Block *bp, **bpp;
 	Adapter *ap;
 	uchar ea[Eaddrlen];
@@ -827,36 +909,68 @@ reset(Ether* ether)
 	ctlrinit(ctlr);
 
 	/*
-	 * Possibly need to configure the physical-layer chip here, but the
-	 * EtherExpress PRO/100B appears to bring it up with a sensible default
-	 * configuration. However, should check for the existence of the PHY
-	 * and, if found, check whether to use 82503 (serial) or MII (nibble)
-	 * mode. Verify the PHY is a National Semiconductor DP83840 (OUI 0x80017)
-	 * or an Intel 82555 (OUI 0xAA00) by looking at the Organizationally Unique
-	 * Identifier (OUI) in registers 2 and 3.
+	 * Read the EEPROM.
 	 */
-	for(i = 1; i < 32; i++){
-		if((x = dp83840r(ctlr, i, 2)) == 0xFFFF)
-			continue;
-		x <<= 6;
-		x |= dp83840r(ctlr, i, 3)>>10;
-		if(x != 0x80017 && x != 0xAA00)
-			print("#l%d: unrecognised PHY - OUI 0x%4.4uX\n", ether->ctlrno, x);
+	sum = 0;
+	for(i = 0; i < 0x40; i++){
+		x = hy93c46r(ctlr, i);
+		ctlr->eeprom[i] = x;
+		sum += x;
+	}
+	if(sum != 0xBABA)
+		print("#l%d: EEPROM checksum - 0x%4.4uX\n", ether->ctlrno, sum);
 
-		x = dp83840r(ctlr, i, 0x19);
-		if(!(x & 0x0040)){
+	/*
+	 * Eeprom[6] indicates whether there is a PHY and whether
+	 * it's not 10Mb-only, in which case use the given PHY address
+	 * to set any PHY specific options and determine the speed.
+	 * If no PHY, assume 82503 (serial) operation.
+	 */
+	if((ctlr->eeprom[6] & 0x1F00) && !(ctlr->eeprom[6] & 0x8000)){
+		phyaddr = ctlr->eeprom[6] & 0x00FF;
+
+		/*
+		 * Resolve the highest common ability of the two
+		 * link partners. In descending order:
+		 *	0x0100		100BASE-TX Full Duplex
+		 *	0x0200		100BASE-T4
+		 *	0x0080		100BASE-TX
+		 *	0x0040		10BASE-T Full Duplex
+		 *	0x0020		10BASE-T
+		 */
+		an = miir(ctlr, phyaddr, 0x04);
+		an &= miir(ctlr, phyaddr, 0x05) & 0x03E0;
+		if(an & 0x380)
 			ether->mbps = 100;
-			ctlr->configdata[8] = 1;
-			ctlr->configdata[15] &= ~0x80;
-		}
-		else{
-			x = dp83840r(ctlr, i, 0x1B);
-			if(!(x & 0x0200)){
-				ctlr->configdata[8] = 1;
-				ctlr->configdata[15] &= ~0x80;
+
+		switch((ctlr->eeprom[6]>>8) & 0x001F){
+
+		case 0x04:				/* DP83840 */
+		case 0x0A:				/* DP83840A */
+			/*
+			 * The DP83840[A] requires some tweaking for
+			 * reliable operation.
+			 */
+			x = miir(ctlr, phyaddr, 0x17) & ~0x0520;
+			x |= 0x0020;
+			for(i = 0; i < ether->nopt; i++){
+				if(cistrcmp(ether->opt[i], "congestioncontrol"))
+					continue;
+				x |= 0x0100;
+				break;
 			}
+			if(an & 0x0140)
+				x |= 0x0400;
+			miiw(ctlr, phyaddr, 0x17, x);
+			break;
 		}
-		break;
+
+		ctlr->configdata[8] = 1;
+		ctlr->configdata[15] &= ~0x80;
+	}
+	else{
+		ctlr->configdata[8] = 0;
+		ctlr->configdata[15] |= 0x80;
 	}
 
 	/*
@@ -875,7 +989,7 @@ reset(Ether* ether)
 	memset(ea, 0, Eaddrlen);
 	if(memcmp(ea, ether->ea, Eaddrlen) == 0){
 		for(i = 0; i < Eaddrlen/2; i++){
-			x = hy93c46r(ctlr, i);
+			x = ctlr->eeprom[i];
 			ether->ea[2*i] = x;
 			ether->ea[2*i+1] = x>>8;
 		}
