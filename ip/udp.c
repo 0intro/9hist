@@ -15,7 +15,7 @@ enum
 	UDP_HDRSIZE	= 20,
 	UDP_IPHDR	= 8,
 	IP_UDPPROTO	= 17,
-	UDP_USEAD	= 36,
+	UDP_USEAD	= 12,
 
 	Udprxms		= 200,
 	Udptickms	= 100,
