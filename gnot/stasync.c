@@ -61,7 +61,7 @@ static void asyncclose(Queue*);
 static void asyncreset(void);
 Qinfo asyncinfo = { asynciput, asyncoput, asyncopen, asyncclose, "async", asyncreset };
 
-int asyncdebug = 1;
+int asyncdebug = 10;
 int asyncerror;
 
 static ushort crc_table[256] = {

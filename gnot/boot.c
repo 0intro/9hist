@@ -6,6 +6,7 @@
 Fcall	hdr;
 char	buf[100];
 char	bootline[64];
+char	bootdevice;
 
 void	error(char*);
 void	sendmsg(int, char*);
@@ -26,19 +27,44 @@ main(int argc, char *argv[])
 		close(fd);
 	}
 
+	fd = open("#e/bootdevice", OREAD);
+	if(fd >= 0){
+		read(fd, &bootdevice, 1);
+		close(fd);
+	}
+
+	switch(bootdevice){
+	case 'a':
+		/*
+		 *  grab the rs232 line,
+		 *  make it 19200 baud,
+		 *  push the async protocol onto it,
+		 */
+		cfd = open("#c/rs232ctl", 2);
+		if(cfd < 0)
+			error("opening #c/rs232ctl");
+		sendmsg(cfd, "B19200");
+		sendmsg(cfd, "push async");
+		break;
+	default:
+		/*
+		 *  grab the incon,
+		 */
+		cfd = open("#i/ctl", 2);
+		if(cfd < 0)
+			error("opening #i/ctl");
+		break;
+	}
+
 	/*
-	 *  grab the incon,
-	 *  push the dk multiplexor onto it,
+	 *  push the dk multiplexor onto the communications link,
 	 *  and use line 1 as the signalling channel.
 	 */
-	cfd = open("#i/ctl", 2);
-	if(cfd < 0)
-		error("opening #i/ctl");
 	sendmsg(cfd, "push dkmux");
 	sendmsg(cfd, "config 1 16 norestart");
 
 	/*
-	 *  fork a process to hold the incon channel open
+	 *  fork a process to hold the device channel open
 	 */
 	switch(fork()){
 	case -1:
@@ -53,7 +79,7 @@ main(int argc, char *argv[])
 	}
 
 	/*
-	 *  open a datakit channel and call ken via r70, leave the
+	 *  open a datakit channel and call ken, leave the
 	 *  incon ctl channel open
 	 */
 	fd = open("#k/2/data", 2);
@@ -62,7 +88,7 @@ main(int argc, char *argv[])
 	cfd = open("#k/2/ctl", 2);
 	if(cfd < 0)
 		error("opening #k/2/ctl");
-	sendmsg(cfd, "connect helix.bootfs");
+	sendmsg(cfd, "connect nfs");
 	print("connected to helix.bootfs\n");
 	close(cfd);
 

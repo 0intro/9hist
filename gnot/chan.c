@@ -374,7 +374,6 @@ walk(Chan *ac, char *name, int domnt)
 
 	if(domnt){
 		if(waserror()){
-			print("domount error\n");
 			if(!first)
 				close(c);
 			return 0;

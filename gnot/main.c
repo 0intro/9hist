@@ -16,11 +16,13 @@ struct Boot
 	char user[NAMELEN];
 	char server[64];
 	char line[64];
+	char device;
 };
 #define BOOT ((Boot*)0)
 
 char protouser[NAMELEN];
 char bootline[64];
+char bootdevice[2];
 int bank[2];
 
 void unloadboot(void);
@@ -53,6 +55,7 @@ unloadboot(void)
 {
 	strncpy(protouser, BOOT->user, NAMELEN);
 	memcpy(bootline, BOOT->line, 64);
+	bootdevice[0] = BOOT->device;
 }
 
 void
@@ -107,6 +110,9 @@ init0(void)
 	if(!waserror()){
 		c = namec("#e/bootline", Acreate, OWRITE, 0600);
 		(*devtab[c->type].write)(c, bootline, 64);
+		close(c);
+		c = namec("#e/bootdevice", Acreate, OWRITE, 0600);
+		(*devtab[c->type].write)(c, bootdevice, 2);
 		close(c);
 	}
 	poperror();
