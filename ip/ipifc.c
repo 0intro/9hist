@@ -173,6 +173,7 @@ ipifcunbind(Ipifc *ifc)
 		(*ifc->m->unbind)(ifc);
 	memset(ifc->dev, 0, sizeof(ifc->dev));
 	ifc->arg = nil;
+	ifc->reassemble = 0;
 
 	/* hangup queues to stop queuing of packets */
 	qhangup(ifc->conv->rq, "unbind");
@@ -288,6 +289,7 @@ ipifccreate(Conv *c)
 	ifc->conv = c;
 	ifc->unbinding = 0;
 	ifc->m = nil;
+	ifc->reassemble = 0;
 }
 
 /* 
@@ -636,7 +638,10 @@ ipifcctl(Conv* c, char**argv, int argc)
 		return ipifcleavemulti(ifc, argv, argc);
 	else if(strcmp(argv[0], "mtu") == 0)
 		return ipifcsetmtu(ifc, argv, argc);
-	else if(strcmp(argv[0], "iprouting") == 0){
+	else if(strcmp(argv[0], "reassemble") == 0){
+		ifc->reassemble = 1;
+		return nil;
+	} else if(strcmp(argv[0], "iprouting") == 0){
 		i = 1;
 		if(argc > 1)
 			i = atoi(argv[1]);

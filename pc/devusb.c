@@ -2014,7 +2014,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 			n = sizeof(cmd)-1;
 		memmove(cmd, a, n);
 		cmd[n] = 0;
-		nf = getfields(cmd, fields, nelem(fields), 0, " \t\n");
+		nf = tokenize(cmd, fields, nelem(fields));
 		if(nf < 2)
 			error(Ebadarg);
 		id = strtol(fields[1], nil, 0);
@@ -2038,7 +2038,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 			n = sizeof(cmd)-1;
 		memmove(cmd, a, n);
 		cmd[n] = 0;
-		nf = getfields(cmd, fields, nelem(fields), 0, " \t\n");
+		nf = tokenize(cmd, fields, nelem(fields));
 		if(nf > 1 && strcmp(fields[0], "speed") == 0){
 			d->ls = strtoul(fields[1], nil, 0) == 0;
 		} else if(nf > 3 && strcmp(fields[0], "class") == 0){

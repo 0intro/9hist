@@ -649,7 +649,7 @@ tcpmtu(Conv *s)
 		mtu = ifc->maxmtu - ifc->m->hsize - (TCP_PKT + TCP_HDRSIZE);
 	if(mtu < 4)
 		mtu = DEF_MSS;
-	return mtu;
+	return restrict_mtu(s->raddr, mtu);
 }
 
 void
@@ -2183,24 +2183,45 @@ tcpadvise(Proto *tcp, Block *bp, char *msg)
 
 	/* Look for a connection */
 	qlock(tcp);
-	for(p = tcp->conv; *p; p++) {
-		s = *p;
-		tcb = (Tcpctl*)s->ptcl;
-		if(s->rport == pdest)
-		if(s->lport == psource)
-		if(tcb->state != Closed)
-		if(ipcmp(s->raddr, dest) == 0)
-		if(ipcmp(s->laddr, source) == 0){
-			qlock(s);
-			qunlock(tcp);
-			switch(tcb->state){
-			case Syn_sent:
-				localclose(s, msg);
-				break;
+	if(strcmp(msg, "unfragmentable") == 0){
+		for(p = tcp->conv; *p; p++) {
+			s = *p;
+			tcb = (Tcpctl*)s->ptcl;
+			if(tcb->state != Closed)
+			if(ipcmp(s->raddr, dest) == 0)
+			if(ipcmp(s->laddr, source) == 0){
+				qlock(s);
+				qunlock(tcp);
+				switch(tcb->state){
+				case Syn_sent:
+					localclose(s, msg);
+					break;
+				}
+				qunlock(s);
+				freeblist(bp);
+				return;
 			}
-			qunlock(s);
-			freeblist(bp);
-			return;
+		}
+	} else {
+		for(p = tcp->conv; *p; p++) {
+			s = *p;
+			tcb = (Tcpctl*)s->ptcl;
+			if(s->rport == pdest)
+			if(s->lport == psource)
+			if(tcb->state != Closed)
+			if(ipcmp(s->raddr, dest) == 0)
+			if(ipcmp(s->laddr, source) == 0){
+				qlock(s);
+				qunlock(tcp);
+				switch(tcb->state){
+				case Syn_sent:
+					localclose(s, msg);
+					break;
+				}
+				qunlock(s);
+				freeblist(bp);
+				return;
+			}
 		}
 	}
 	qunlock(tcp);

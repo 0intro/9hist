@@ -28,6 +28,7 @@ typedef struct Icmp {
 
 enum {			/* Packet Types */
 	EchoReply	= 0,
+	UnreachableV6	= 1,
 	Unreachable	= 3,
 	SrcQuench	= 4,
 	Redirect	= 5,
@@ -51,6 +52,7 @@ enum
 
 char *icmpnames[Maxtype+1] =
 {
+[UnreachableV6]		"UnreachableV6",
 [EchoReply]		"EchoReply",
 [Unreachable]		"Unreachable",
 [SrcQuench]		"SrcQuench",
@@ -293,7 +295,7 @@ static char *unreachcode[] =
 [1]	"host unreachable",
 [2]	"protocol unreachable",
 [3]	"port unreachable",
-[4]	"fragmentation needed and DF set",
+[4]	"unfragmentable",
 [5]	"source route failed",
 };
 
@@ -307,6 +309,9 @@ icmpiput(Proto *icmp, Ipifc*, Block *bp)
 	char	*msg;
 	char	m2[128];
 	Icmppriv *ipriv;
+	int	code;
+	ushort	x;
+	uchar	dst[IPaddrlen];
 
 	ipriv = icmp->priv;
 	
@@ -344,10 +349,23 @@ icmpiput(Proto *icmp, Ipifc*, Block *bp)
 		ipoput(icmp->f, r, 0, MAXTTL, DFLTTOS);
 		break;
 	case Unreachable:
-		if(p->code > 5 || p->code < 0)
+		code = p->code;
+		switch(code){
+		default:
 			msg = unreachcode[1];
-		else
+			break;
+		case 5:
+			x = nhgets(p->seq);
 			msg = unreachcode[p->code];
+			break;
+		case 0:
+		case 1:
+		case 2:
+		case 3:
+		case 4:
+			msg = unreachcode[p->code];
+			break;
+		}
 
 		bp->rp += ICMP_IPSIZE+ICMP_HDRSIZE;
 		if(blocklen(bp) < MinAdvise){
@@ -355,6 +373,10 @@ icmpiput(Proto *icmp, Ipifc*, Block *bp)
 			goto raise;
 		}
 		p = (Icmp *)bp->rp;
+		if(code == 5){
+			v4tov6(dst, p->dst);
+			update_mtucache(dst, x);
+		}
 		pr = Fsrcvpcolx(icmp->f, p->proto);
 		if(pr != nil && pr->advise != nil) {
 			(*pr->advise)(pr, bp, msg);

@@ -432,6 +432,20 @@ ipiput(Fs *f, Ipifc *ifc, Block *bp)
 			freeblist(bp);
 			return;
 		}
+		
+		/* reassemble if the interface expects it */
+		if(r->ifc->reassemble){
+			frag = nhgets(h->frag);
+			if(frag) {
+				h->tos = 0;
+				if(frag & IP_MF)
+					h->tos = 1;
+				bp = ipreassemble(ip, frag, bp, h);
+				if(bp == nil)
+					return;
+				h = (Iphdr *)(bp->rp);
+			}
+		}
 
 		ip->stats[ForwDatagrams]++;
 		ipoput(f, bp, 1, h->ttl - 1, h->tos);
@@ -439,8 +453,7 @@ ipiput(Fs *f, Ipifc *ifc, Block *bp)
 		return;
 	}
 
-
-
+	/* reassemble */
 	frag = nhgets(h->frag);
 	if(frag) {
 		h->tos = 0;
@@ -715,4 +728,72 @@ ipcsum(uchar *addr)
 	sum = (sum & 0xffff) + (sum >> 16);
 
 	return (sum^0xffff);
+}
+
+enum
+{
+	Nmtucache=	128,
+};
+
+typedef struct MTUcache MTUcache;
+
+struct MTUcache
+{
+	uchar	ip[IPaddrlen];
+	ulong	mtu;
+	ulong	ms;
+};
+
+static struct {
+	Lock;
+	MTUcache c[Nmtucache];
+} mc;
+
+void
+update_mtucache(uchar *ip, ulong mtu)
+{
+	MTUcache *oldest, *p;
+
+	if(mtu < 512)
+		return;
+
+	lock(&mc);
+	oldest = mc.c;
+	for(p = mc.c; p < &mc.c[Nmtucache]; p++){
+		if(ipcmp(ip, p->ip) == 0){
+			p->mtu = mtu;
+			p->ms = msec;
+			break;
+		}
+		if(p->ms < oldest->ms)
+			oldest = p;
+	}
+	if(p == &mc.c[Nmtucache]){
+		ipmove(oldest->ip, ip);
+		oldest->mtu = mtu;
+		oldest->ms = msec;
+	}
+	unlock(&mc);
+}
+
+ulong
+restrict_mtu(uchar *ip, ulong mtu)
+{
+	MTUcache *p;
+
+	lock(&mc);
+	for(p = mc.c; p < &mc.c[Nmtucache]; p++){
+		if(p->ms + 1000*10*60 < msec){
+			memset(p->ip, 0, sizeof(p->ip));
+			p->ms = 0;
+		}
+		if(ipcmp(ip, p->ip) == 0){
+			if(p->mtu < mtu)
+				mtu = p->mtu;
+			break;
+		}
+	}
+	unlock(&mc);
+
+	return mtu;
 }

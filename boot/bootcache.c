@@ -17,7 +17,7 @@ cache(int fd)
 
 	readfile("#e/cfs", buf, sizeof(buf));
 	if(*buf){
-		argc = getfields(buf, argv, 4, 1, " ");
+		argc = tokenize(buf, argv, 4);
 		for(i = 0; i < argc; i++){
 			if(strcmp(argv[i], "off") == 0)
 				return fd;

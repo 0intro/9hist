@@ -911,7 +911,7 @@ floppyformat(FDrive *dp, char *params)
 	/*
 	 *  set the type
 	 */
-	if(getfields(params, f, 3, 1, " ") > 1){
+	if(tokenize(params, f, 3) > 1){
 		for(t = floppytype; t < &floppytype[nelem(floppytype)]; t++){
 			if(strcmp(f[1], t->name)==0 && t->dt==dp->dt){
 				dp->t = t;

@@ -470,8 +470,6 @@ struct Palloc
 	Lock	hashlock;
 	Rendez	r;			/* Sleep for free mem */
 	QLock	pwait;			/* Queue of procs waiting for memory */
-	ulong	cmembase;		/* Key memory */
-	ulong	cmemtop;
 };
 
 struct Waitq
@@ -582,6 +580,7 @@ struct Proc
 	QLock	debug;		/* to access debugging elements of User */
 	Proc	*pdbg;		/* the debugging process */
 	ulong	procmode;	/* proc device file mode */
+	ulong	privatemem;	/* proc does not let anyone read mem */
 	int	hang;		/* hang at next exec for debug */
 	int	procctl;	/* Control for /proc debugging */
 	ulong	pc;		/* DEBUG only */
@@ -708,6 +707,11 @@ struct Log {
 struct Logflag {
 	char*	name;
 	int	mask;
+};
+
+enum
+{
+	NCMDFIELD = 128
 };
 
 struct Cmdbuf

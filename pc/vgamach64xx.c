@@ -1174,7 +1174,7 @@ mach64xxovlctl(VGAscr *scr, Chan *c, void *a, int)
 	if (!mach64type->m64_vtgt) 
 		error(Enodev);
 
-	nfields = getfields(a, field, nelem(field), 1, "\t\n\r ");
+	nfields = tokenize(a, field, nelem(field));
 	if (nfields < 1) 
 		error(Ebadarg);
 

@@ -338,6 +338,7 @@ newproc(void)
 	p->movetime = 0;
 	p->wired = 0;
 	p->ureg = 0;
+	p->privatemem = 0;
 	p->errstr = p->errbuf0;
 	p->syserrstr = p->errbuf1;
 	p->errbuf0[0] = '\0';

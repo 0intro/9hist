@@ -240,11 +240,14 @@ procopen(Chan *c, int omode)
 			error(Eperm);
 		break;
 
+	case Qmem:
+		if(p->privatemem)
+			error(Eperm);
+		/* fall through */
 	case Qargs:
 	case Qctl:
 	case Qnote:
 	case Qnoteid:
-	case Qmem:
 	case Qstatus:
 	case Qwait:
 	case Qregs:
@@ -507,17 +510,14 @@ procread(Chan *c, void *va, long n, vlong off)
 		|| (offset >= USTKTOP-USTKSIZE && offset < USTKTOP))
 			return procctlmemio(p, offset, n, va, 1);
 
-		/* Protect crypt key memory */
-		if(offset+n >= palloc.cmembase && offset < palloc.cmemtop)
-			error(Eperm);
-
-		/* validate physical kernel addresses */
+		/* validate kernel addresses */
 		if(offset < (ulong)end) {
 			if(offset+n > (ulong)end)
 				n = (ulong)end - offset;
 			memmove(a, (char*)offset, n);
 			return n;
 		}
+		/* conf.base* and conf.npage* are set by xinit to refer to kernel allocation, not user pages */
 		if(offset >= conf.base0 && offset < conf.npage0){
 			if(offset+n > conf.npage0)
 				n = conf.npage0 - offset;
@@ -1070,6 +1070,9 @@ procctlreq(Proc *p, char *va, int n)
 			error(Ebadctl);
 		procctlclosefiles(p, 0, atoi(buf+6));
 	}else
+	if(strncmp(buf, "private", 7) == 0)
+		p->privatemem = 1;
+	else
 	if(strncmp(buf, "pri", 3) == 0) {
 		if(n < 4)
 			error(Ebadctl);

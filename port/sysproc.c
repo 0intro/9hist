@@ -471,6 +471,7 @@ sysexec(ulong *arg)
 	up->nnote = 0;
 	up->notify = 0;
 	up->notified = 0;
+	up->privatemem = 0;
 	procsetup(up);
 	qunlock(&up->debug);
 	if(up->hang)

@@ -1326,7 +1326,7 @@ pccardwrite(Chan *c, void *v, long n, vlong)
 		memmove(buf, v, n);
 		buf[n] = '\0';
 
-		nf = getfields(buf, field, Ncmd, 1, " \t\n");
+		nf = tokenize(buf, field, Ncmd);
 		for (i = 0; i != nf; i++) {
 			if (!strcmp(field[i], "down")) {
 

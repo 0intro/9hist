@@ -232,7 +232,7 @@ rootserver(char *arg)
 		outin(prompt, reply, sizeof(reply));
 		mp = findmethod(reply);
 		if(mp){
-			bargc = getfields(reply, bargv, Nbarg-1, 1, " ");
+			bargc = tokenize(reply, bargv, Nbarg-1);
 			cp = strchr(reply, '!');
 			if(cp)
 				strcpy(sys, cp+1);

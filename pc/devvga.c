@@ -184,7 +184,7 @@ vgactl(char* a)
 	extern VGAdev *vgadev[];
 	extern VGAcur *vgacur[];
 
-	n = getfields(a, field, nelem(field), 1, " \t\n");
+	n = tokenize(a, field, nelem(field));
 	if(n < 1)
 		error(Ebadarg);
 

@@ -1159,7 +1159,7 @@ drawwrite(Chan *c, void *a, long n, vlong)
 			a = (char*)a + i;
 			m -= i;
 			*q = 0;
-			if(getfields(buf, fields, nelem(fields), 1, " ") != 4)
+			if(tokenize(buf, fields, nelem(fields)) != 4)
 				error(Ebadarg);
 			i = strtoul(fields[0], 0, 0);
 			red = strtoul(fields[1], 0, 0);

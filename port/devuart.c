@@ -318,7 +318,7 @@ uartctl(Uart *p, char *cmd)
 	char *f[16];
 	int i, n, nf;
 
-	nf = getfields(cmd, f, nelem(f), 1, " \t\n");
+	nf = tokenize(cmd, f, nelem(f));
 	for(i = 0; i < nf; i++){
 		if(strncmp(f[i], "break", 5) == 0){
 			(*p->phys->dobreak)(p, 0);

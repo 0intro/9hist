@@ -205,7 +205,7 @@ sdinitpart(SDunit* unit)
 		for(p = getconf(buf); p != nil; p = q){
 			if(q = strchr(p, '/'))
 				*q++ = '\0';
-			nf = getfields(p, f, nelem(f), 1, " \t\r");
+			nf = tokenize(p, f, nelem(f));
 			if(nf < 3)
 				continue;
 		
@@ -1100,7 +1100,7 @@ sdwrite(Chan *c, void *a, long n, vlong off)
 		cd.o_spec = '\0';
 		memset(&cd.o_cf, 0, sizeof(DevConf));
 
-		nf = getfields(buf, field, Ncmd, 1, " \t\n");
+		nf = tokenize(buf, field, Ncmd);
 		for (i = 0; i < nf; i++) {
 			char *opt = field[i++];
 			if (i >= nf)
