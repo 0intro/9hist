@@ -1,7 +1,6 @@
 #include	"u.h"
 #include	"../port/lib.h"
 #include	<libg.h>
-#include	<gnot.h>
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
@@ -57,6 +56,12 @@ struct Cursorinfo
 	int	disable;	/* from being used */
 	int	frozen;	/* from being used */
 	Rectangle r;		/* location */
+
+	int	l;
+	int	tl;
+	int	setop;
+	int	clrop;
+	Rectangle clipr;
 };
 
 Mouseinfo	mouse;
@@ -83,47 +88,37 @@ Cursor	arrow =
 };
 
 ulong setbits[16];
-GBitmap	set =
+Bitmap	set =
 {
-	setbits,
+	{0, 0, 16, 16},
+	{0, 0, 16, 16},
 	0,
+	setbits,
 	1,
 	0,
-	{0, 0, 16, 16},
-	{0, 0, 16, 16}
 };
 
 ulong clrbits[16];
-GBitmap	clr =
+Bitmap	clr =
 {
+	{0, 0, 16, 16},
+	{0, 0, 16, 16},
+	0,
 	clrbits,
-	0,
 	1,
 	0,
-	{0, 0, 16, 16},
-	{0, 0, 16, 16}
 };
 
-ulong cursorbackbits[16*4];
-GBitmap cursorback =
+ulong backbits[16*5];
+ulong workbits[16*5];
+Bitmap cursorwork =
 {
-	cursorbackbits,
+	{0, 0, 16+8, 16},
+	{0, 0, 16+8, 16},
 	0,
+	workbits,
 	1,
 	0,
-	{0, 0, 16, 16},
-	{0, 0, 16, 16}
-};
-
-ulong cursorworkbits[16*4];
-GBitmap cursorwork =
-{
-	cursorworkbits,
-	0,
-	1,
-	0,
-	{0, 0, 16, 16},
-	{0, 0, 16, 16}
 };
 
 void	Cursortocursor(Cursor*);
@@ -147,7 +142,7 @@ Dirtab mousedir[]={
 
 #define	NMOUSE	(sizeof(mousedir)/sizeof(Dirtab))
 
-extern	GBitmap	gscreen;
+extern	Bitmap	gscreen;
 
 void
 mousereset(void)
@@ -166,19 +161,35 @@ mousereset(void)
 }
 
 void
+cursorinit(void)
+{
+	cursorwork.ldepth = gscreen.ldepth;
+	cursorwork.width = ((cursorwork.r.max.x << gscreen.ldepth) + 31) >> 5;
+
+	cursor.l = cursorwork.width*BY2WD;
+
+	if(flipping){
+		cursor.setop = flipD[S|D];
+		cursor.clrop = flipD[D&~S];
+	} else {
+		cursor.setop = S|D;
+		cursor.clrop = D&~S;
+	}
+}
+
+void
 mouseinit(void)
 {
 	if(!conf.monitor)
 		return;
+
 	if(gscreen.ldepth > 3){
-		cursorback.ldepth = 0;
-		cursorwork.ldepth = 0;
-	}else{
-		cursorback.ldepth = gscreen.ldepth;
-		cursorback.width = ((16 << gscreen.ldepth) + 31) >> 5;
-		cursorwork.ldepth = gscreen.ldepth;
-		cursorwork.width = ((16 << gscreen.ldepth) + 31) >> 5;
+		print("mouse can't work ldepth > 3");
+		cursor.disable = 1;
 	}
+
+	cursorinit();
+
 	cursoron(1);
 }
 
@@ -187,6 +198,7 @@ mouseattach(char *spec)
 {
 	if(!conf.monitor)
 		error(Egreg);
+	cursorinit();
 	return devattach('m', spec);
 }
 
@@ -437,9 +449,24 @@ cursorunlock(void)
 	unlock(&cursor);
 }
 
+typedef struct
+{
+	Bitmap *dm;
+	Point p;
+	Bitmap *sm;
+	Rectangle r;
+	Fcode f;
+} XXX;
+
 void
 cursoron(int dolock)
 {
+	int off;
+	Rectangle r;
+	uchar *a;
+	XXX x;
+	extern int graphicssubtile(uchar*, int, int, Rectangle, Rectangle, uchar**);
+
 	if(cursor.disable)
 		return;
 	if(dolock)
@@ -451,15 +478,36 @@ cursoron(int dolock)
 			cursor.r.min = mouse.xy;
 			cursor.r.max = add(mouse.xy, Pt(16, 16));
 			cursor.r = raddp(cursor.r, cursor.offset);
-			screenunload(cursor.r, (uchar*)cursorworkbits,
-				(16>>3) << gscreen.ldepth, cursorwork.width*BY2WD, 0);
-			memmove(cursorbackbits, cursorworkbits, 16*cursorback.width*BY2WD);
-			gbitblt(&cursorwork, cursorwork.r.min,
-				&clr, Rect(0, 0, 16, 16), flipping? flipD[D&~S] : D&~S);
-			gbitblt(&cursorwork, cursorwork.r.min,
-				&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
-			screenload(cursor.r, (uchar*)cursorworkbits,
-				(16>>3) << gscreen.ldepth, cursorwork.width*BY2WD, 0);
+
+			/* bit offset into backup area */
+			off = ((1<<gscreen.ldepth)*cursor.r.min.x) & 7;
+
+			/* clip the cursor rectangle */
+			x.dm = &cursorwork;
+			x.p = Pt(off, 0);
+			x.sm = &gscreen;
+			x.r = cursor.r;
+			bitbltclip(&x);
+
+			/* tile width */
+			cursor.tl = graphicssubtile(0, cursor.l, gscreen.ldepth,
+					gscreen.r, x.r, &a);
+			if(cursor.tl > 0){
+				/* get tile */
+				screenunload(x.r, (uchar*)workbits, cursor.tl, cursor.l, 0);
+
+				/* save for cursoroff */
+				memmove(backbits, workbits, cursor.l*16);
+
+				/* add mouse into work area */
+				r = Rect(0, 0, Dx(x.r), Dy(x.r));
+				bitblt(&cursorwork, x.p, &clr, r, cursor.clrop);
+				bitblt(&cursorwork, x.p, &set, r, cursor.setop);
+
+				/* put back tile */
+				cursor.clipr = x.r;
+				screenload(x.r, (uchar*)workbits, cursor.tl, cursor.l, 0);
+			}
 		}
 	}
 	if(dolock)
@@ -473,11 +521,8 @@ cursoroff(int dolock)
 		return;
 	if(dolock)
 		lock(&cursor);
-	if(--cursor.visible == 0) {
-		if(!hwcurs)
-			screenload(cursor.r, (uchar*)cursorbackbits,
-				(16>>3) << gscreen.ldepth, cursorback.width*BY2WD, 0);
-	}
+	if(--cursor.visible == 0 && !hwcurs && cursor.tl > 0)
+		screenload(cursor.clipr, (uchar*)backbits, cursor.tl, cursor.l, 0);
 	if(dolock)
 		unlock(&cursor);
 }

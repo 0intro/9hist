@@ -993,19 +993,21 @@ hardintr(Ureg *ur, void *arg)
 		break;
 	case Cread:
 	case Cident:
+		loop = 0;
+		while((cp->status & (Serr|Sdrq)) == 0){
+			if(++loop > 10000) {
+				DPRINT("cmd=%lux status=%lux\n",
+					cp->cmd, inb(cp->pbase+Pstatus));
+				panic("hardintr: read/ident");
+			}
+			cp->status = inb(cp->pbase+Pstatus);
+		}
 		if(cp->status & Serr){
 			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			cp->error = inb(cp->pbase+Perror);
 			wakeup(&cp->r);
 			return;
-		}
-		loop = 0;
-		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
-			if(++loop > 10000) {
-				DPRINT("cmd=%lux status=%lux\n",
-					cp->cmd, inb(cp->pbase+Pstatus));
-				panic("hardintr: read/ident");
 		}
 		addr = cp->buf;
 		if(addr){

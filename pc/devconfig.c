@@ -7,7 +7,6 @@
 #include	"../port/error.h"
 
 #include	<libg.h>
-#include	<gnot.h>
 #include	"devtab.h"
 #include	"vga.h"
 

@@ -120,6 +120,19 @@ print(char *fmt, ...)
 }
 
 int
+fprint(int fd, char *fmt, ...)	/* needed so we can use user-level libg */
+{
+	char buf[PRINTSIZE];
+	int n;
+
+	USED(fd);
+	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	putstrn(buf, n);
+
+	return n;
+}
+
+int
 kprint(char *fmt, ...)
 {
 	char buf[PRINTSIZE];

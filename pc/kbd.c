@@ -7,7 +7,6 @@
 #include	"../port/error.h"
 
 #include	<libg.h>
-#include	<gnot.h>
 
 enum {
 	Data=		0x60,	/* data port */

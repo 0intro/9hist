@@ -8,7 +8,6 @@
 #include	"../port/error.h"
 
 #include	<libg.h>
-#include	<gnot.h>
 #include	"screen.h"
 
 #define	MINX	8
@@ -29,8 +28,7 @@ struct Dac
 
 char s1[] = { 0x00, 0x00, 0xC0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-	GSubfont*	defont;
-extern	GSubfont	defont0;
+extern	Subfont	defont0;
 static	ulong		rep(ulong, int);
 
 struct{
@@ -40,25 +38,26 @@ struct{
 
 Lock	screenlock;
 
-GBitmap	gscreen =
+Bitmap	gscreen =
 {
+	{ 0, 0, 1600, 1240 },
+	{ 0, 0, 1600, 1240 },
+	3,
 	Screenvirt+0x00017924,
 	0,
 	512,
-	3,
-	{ 0, 0, 1600, 1240 },
-	{ 0, 0, 1600, 1240 },
 	0
 };
 
-static GBitmap hwcursor=
+static Bitmap hwcursor=
 {
+	{0, 0, 64, 64},
+	{0, 0, 64, 64},
+	1,
 	0,		/* base filled in by malloc when needed */
 	0,
 	4,
-	1,
-	{0, 0, 64, 64},
-	{0, 0, 64, 64}
+	0,
 };
 
 uchar bdata[] =
@@ -66,14 +65,14 @@ uchar bdata[] =
 	0xC0,
 };
 
-GBitmap bgrnd =
+Bitmap bgrnd =
 {
+	{ 0, 0, 1, 1 },
+	{ 0, 0, 1, 1 },
+	3,
 	(ulong*)bdata,
 	0,
 	4,
-	3,
-	{ 0, 0, 1, 1 },
-	{ 0, 0, 1, 1 },
 	0
 };
 
@@ -99,22 +98,6 @@ static int h, w;
 extern Cursor arrow;
 
 void
-gborder(GBitmap *l, Rectangle r, int i, Fcode c)
-{
-	if(i < 0){
-		r = inset(r, i);
-		i = -i;
-	}
-	gbitblt(l, r.min, l, Rect(r.min.x, r.min.y, r.max.x, r.min.y+i), c);
-	gbitblt(l, Pt(r.min.x, r.max.y-i),
-		l, Rect(r.min.x, r.max.y-i, r.max.x, r.max.y), c);
-	gbitblt(l, Pt(r.min.x, r.min.y+i),
-		l, Rect(r.min.x, r.min.y+i, r.min.x+i, r.max.y-i), c);
-	gbitblt(l, Pt(r.max.x-i, r.min.y+i),
-		l, Rect(r.max.x-i, r.min.y+i, r.max.x, r.max.y-i), c);
-}
-
-void
 screenwin(void)
 {
 	Dac *d;
@@ -124,23 +107,24 @@ screenwin(void)
 
 	memset((void*)Screenvirt, 0xff, 3*1024*1024);
 
-	gtexture(&gscreen, gscreen.r, &bgrnd, S);
+	texture(&gscreen, gscreen.r, &bgrnd, S);
 	w = defont0.info[' '].width;
 	h = defont0.height;
 
 	window.min = Pt(100, 100);
 	window.max = add(window.min, Pt(10+w*120, 10+h*60));
 
-	gbitblt(&gscreen, add(window.min, Pt(5, 5)), &gscreen, window, F);
-	gbitblt(&gscreen, window.min, &gscreen, window, Zero);
-	gborder(&gscreen, window, 4, F);
+	bitblt(&gscreen, add(window.min, Pt(5, 5)), &gscreen, window, F);
+	bitblt(&gscreen, window.min, &gscreen, window, Zero);
+	border(&gscreen, window, 4, F);
 	window = inset(window, 5);
 	for(i = 0; i < h+6; i += 2) {
 		y = window.min.y+i;
-		gsegment(&gscreen, Pt(window.min.x, y), Pt(window.max.x, y), ~0, F);
+		bitblt(&gscreen, Pt(window.min.x, y),
+			&gscreen, Rect(window.min.x, y, window.max.x, y+1), F);
 	}
 	p = add(window.min, Pt(10, 2));
-	gsubfstring(&gscreen, p, &defont0, "Brazil Console ", S);
+	subfstring(&gscreen, p, &defont0, "Brazil Console ", S);
 	window.min.y += h+6;
 	cursor = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
@@ -240,8 +224,7 @@ screeninit(void)
 
 	memmove(&arrow, &fatarrow, sizeof(fatarrow));
 
-	defont = &defont0;	
-	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
+	bitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
@@ -266,9 +249,9 @@ scroll(void)
 
 	o = 5*h;
 	r = Rpt(Pt(window.min.x, window.min.y+o), window.max);
-	gbitblt(&gscreen, window.min, &gscreen, r, S);
+	bitblt(&gscreen, window.min, &gscreen, r, S);
 	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
-	gbitblt(&gscreen, r.min, &gscreen, r, Zero);
+	bitblt(&gscreen, r.min, &gscreen, r, Zero);
 	cursor.y -= o;
 }
 
@@ -299,14 +282,14 @@ screenputc(char *buf)
 			r.max.x = cursor.x;
 			r.min.y = cursor.y;
 			r.max.y = cursor.y+defont0.height;
-			gbitblt(&gscreen, r.min, &gscreen, r, Zero);
+			bitblt(&gscreen, r.min, &gscreen, r, Zero);
 			cursor.x -= w;
 		}
 		break;
 	default:
 		if(cursor.x >= window.max.x-w)
 			screenputc("\n");
-		cursor = gsubfstring(&gscreen, cursor, &defont0, buf, S);
+		cursor = subfstring(&gscreen, cursor, &defont0, buf, S);
 	}
 }
 
@@ -443,7 +426,7 @@ hwcursset(ulong *s, ulong *c, int offx, int offy)
 			spix = (s[y]>>(31-(x&0x1F)))&1;
 			cpix = (c[y]>>(31-(x&0x1F)))&1;
 			dpix = (spix<<1) | cpix;
-			gpoint(&hwcursor, add(Pt(x,y), org), dpix, S);
+			point(&hwcursor, add(Pt(x,y), org), dpix, S);
 		}
 
 	d = DAC;
@@ -514,7 +497,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 		return;
 
 	lock(&screenlock);
-	q = gbaddr(&gscreen, r.min);
+	q = byteaddr(&gscreen, r.min);
 	for(y=r.min.y; y<r.max.y; y++){
 		memmove(q, data, tl);
 		q += gscreen.width*sizeof(ulong);
@@ -528,7 +511,9 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
  * tile is at location r, first pixel in *data. 
  * tl is length of scan line to insert,
  * l is amount to advance data after each scan line.
- * gscreen.ldepth is known to be >= 3
+ * gscreen.ldepth is known to be >= 3.
+ * screenunload() doesn't clip, so must be
+ * called correctly.
  */
 void
 screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
@@ -538,11 +523,8 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	USED(dolock);
 
-	if(!rectclip(&r, gscreen.r) || tl<=0)
-		return;
-
 	lock(&screenlock);
-	q = gbaddr(&gscreen, r.min);
+	q = byteaddr(&gscreen, r.min);
 	for(y=r.min.y; y<r.max.y; y++){
 		memmove(data, q, tl);
 		q += gscreen.width*sizeof(ulong);

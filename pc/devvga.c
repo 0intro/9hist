@@ -7,7 +7,6 @@
 #include	"../port/error.h"
 
 #include	<libg.h>
-#include	<gnot.h>
 
 enum
 {
@@ -38,12 +37,12 @@ enum
 };
 
 /* imported */
-extern	GSubfont defont0;
+extern	Subfont defont0;
 extern Cursor arrow;
 
 /* exported */
-GSubfont *defont;
-GBitmap	gscreen;
+Subfont *defont;
+Bitmap	gscreen;
 
 /* vga screen */
 static	Lock	screenlock;
@@ -55,7 +54,7 @@ static	int	cga = 1;		/* true if in cga mode */
 /* system window */
 static	Rectangle window;
 static	int	h, w;
-static	Point	cursor;
+static	Point	curpos;
 
 /*
  *  screen dimensions
@@ -183,6 +182,9 @@ static void	screenputc(char*);
 static void	scroll(void);
 static ulong	x3to32(uchar);
 static ulong	x6to32(uchar);
+
+extern void cursorlock(Rectangle);
+extern void cursorunlock(void);
 
 /*
  *  vga device
@@ -392,9 +394,8 @@ screeninit(void)
 	/*
 	 *  swizzle the font longs.
 	 */
-	defont = &defont0;
-	l = defont->bits->base;
-	for(i = defont->bits->width*Dy(defont->bits->r); i > 0; i--, l++)
+	l = defont0.bits->base;
+	for(i = defont0.bits->width*Dy(defont0.bits->r); i > 0; i--, l++)
 		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
 
 	/*
@@ -498,9 +499,9 @@ setscreen(int maxx, int maxy, int ldepth)
 	window.max = add(window.min, Pt(10+w*64, Footprint/(BY2WD*gscreen.width)));
 
 	vgacard->setpage(0);
-	gbitblt(&gscreen, window.min, &gscreen, window, Zero);
+	bitblt(&gscreen, window.min, &gscreen, window, Zero);
 	window = inset(window, 5);
-	cursor = window.min;
+	curpos = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
 	hwcurs = 0;
 }
@@ -570,8 +571,6 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	int y, lpart, rpart, mx, m, mr, page, sw;
 	ulong off;
 	uchar *q, *e;
-	extern void cursorlock(Rectangle);
-	extern void cursorunlock(void);
 
 	if(!rectclip(&r, gscreen.r) || tl<=0)
 		return;
@@ -580,7 +579,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 		cursorlock(r);
 	lock(&screenlock);
 
-	q = gbaddr(&gscreen, r.min);
+	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
 	lpart = (r.min.x & mx) << gscreen.ldepth;
 	rpart = (r.max.x & mx) << gscreen.ldepth;
@@ -728,8 +727,6 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	int y, lpart, rpart, mx, m, mr, page, sw;
 	ulong off;
 	uchar *q, *e;
-	extern void cursorlock(Rectangle);
-	extern void cursorunlock(void);
 
 	if(!rectclip(&r, gscreen.r) || tl<=0)
 		return;
@@ -738,7 +735,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 		cursorlock(r);
 	lock(&screenlock);
 
-	q = gbaddr(&gscreen, r.min);
+	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
 	lpart = (r.min.x & mx) << gscreen.ldepth;
 	rpart = (r.max.x & mx) << gscreen.ldepth;
@@ -1072,12 +1069,13 @@ scroll(void)
 	int o;
 	Rectangle r;
 
+	o = 2*h;
 	vgacard->setpage(0);
-	r = Rpt(Pt(window.min.x, window.max.y+h), window.max);
-	gbitblt(&gscreen, window.min, &gscreen, r, S);
+	r = Rpt(Pt(window.min.x, window.min.y+o), window.max);
+	bitblt(&gscreen, window.min, &gscreen, r, S);
 	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
-	gbitblt(&gscreen, r.min, &gscreen, r, Zero);
-	cursor.y -= o;
+	bitblt(&gscreen, r.min, &gscreen, r, Zero);
+	curpos.y -= o;
 }
 
 static void
@@ -1087,28 +1085,28 @@ screenputc(char *buf)
 
 	switch(buf[0]) {
 	case '\n':
-		if(cursor.y+h >= window.max.y)
+		if(curpos.y+h >= window.max.y)
 			scroll();
-		cursor.y += h;
+		curpos.y += h;
 		screenputc("\r");
 		break;
 	case '\r':
-		cursor.x = window.min.x;
+		curpos.x = window.min.x;
 		break;
 	case '\t':
-		pos = (cursor.x-window.min.x)/w;
+		pos = (curpos.x-window.min.x)/w;
 		pos = 8-(pos%8);
-		cursor.x += pos*w;
+		curpos.x += pos*w;
 		break;
 	case '\b':
-		if(cursor.x-w >= window.min.x)
-			cursor.x -= w;
+		if(curpos.x-w >= window.min.x)
+			curpos.x -= w;
 		break;
 	default:
-		if(cursor.x >= window.max.x-w)
+		if(curpos.x >= window.max.x-w)
 			screenputc("\n");
 
-		cursor = gsubfstring(&gscreen, cursor, &defont0, buf, S);
+		curpos = subfstring(&gscreen, curpos, &defont0, buf, S);
 	}
 }
 
