@@ -708,6 +708,7 @@ pexit(char *exitstr, int freemem)
 
 	lock(&up->exl);		/* Prevent my children from leaving waits */
 	up->pid = 0;
+	wakeup(&up->waitr);
 	unlock(&up->exl);
 
 	for(f = up->waitq; f; f = next) {

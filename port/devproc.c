@@ -270,9 +270,9 @@ procread(Chan *c, void *va, long n, ulong offset)
 	Ureg kur;
 	uchar *rptr;
 	Mntwalk *mw;
-	int i, j, rsize;
 	Segment *sg, *s;
 	char *a = va, *sps;
+	int i, j, rsize, pid;
 	char statbuf[NSEG*32];
 
 	if(c->qid.path & CHDIR)
@@ -440,9 +440,12 @@ procread(Chan *c, void *va, long n, ulong offset)
 			unlock(&p->exl);
 			error(Enochild);
 		}
+		pid = p->pid;
 		while(p->waitq == 0) {
 			unlock(&p->exl);
 			sleep(&p->waitr, haswaitq, p);
+			if(p->pid != pid)
+				error(Eprocdied);
 			lock(&p->exl);
 		}
 		wq = p->waitq;
