@@ -251,7 +251,6 @@ struct Mount
 
 struct Mhead
 {
-	char	fromname[32];		/* temporary for debugging */
 	Ref;
 	RWlock	lock;
 	Chan*	from;			/* channel mounted upon */

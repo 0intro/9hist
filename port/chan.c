@@ -422,19 +422,19 @@ Mhead*
 newmhead(Chan *from)
 {
 	Mhead *mh;
-	int n;
 
 	mh = smalloc(sizeof(Mhead));
 	mh->ref = 1;
 	mh->from = from;
 	incref(from);
 
+/*
 	n = from->name->len;
 	if(n >= sizeof(mh->fromname))
 		n = sizeof(mh->fromname)-1;
 	memmove(mh->fromname, from->name->s, n);
 	mh->fromname[n] = 0;
-
+*/
 	return mh;
 }
 
