@@ -110,9 +110,9 @@ trapinit(void)
 	sethvec(11, intr11, SEGTG, 0);
 	sethvec(12, intr12, SEGTG, 0);
 	sethvec(13, intr13, SEGTG, 0);
-	sethvec(14, intr14, SEGIG, 0);
+	sethvec(14, intr14, SEGIG, 0);	/* page fault, interrupts off */
 	sethvec(15, intr15, SEGTG, 0);
-	sethvec(16, intr16, SEGTG, 0);
+	sethvec(16, intr16, SEGIG, 0);	/* math coprocessor, interrupts off */
 
 	/*
 	 *  device interrupts

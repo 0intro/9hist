@@ -14,6 +14,7 @@ void	firmware(void);
 void	flushcpucache(void);
 #define	flushpage(x) if(x)
 int	fpcr(int);
+ulong	fpiar(void);
 void	fpregrestore(char*);
 void	fpregsave(char*);
 void	fprestore(FPsave*);

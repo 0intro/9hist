@@ -287,16 +287,27 @@ matherror(Ureg *ur)
 	 */
 	outb(0xF0, 0xFF);
 
-	status = fpstatus() & 0xffff;
-	msg = "unknown";
+	/*
+	 *  save floating point state to check out error
+	 */
+	fpenv(&u->fpsave);
+	status = u->fpsave.status;
+
+	msg = 0;
 	for(i = 0; i < 8; i++)
 		if((1<<i) & status){
 			msg = mathmsg[i];
+			sprint(note, "sys: fp: %s fppc=0x%lux", msg, u->fpsave.pc);
+			postnote(u->p, 1, note, NDebug);
 			break;
 		}
-	sprint(note, "sys: fp: %s, status 0x%ux, pc 0x%lux", msg, status, ur->pc);
-print("%s cr0 %lux\n", note, getcr0());
-	postnote(u->p, 1, note, NDebug);
+	if(msg == 0){
+		sprint(note, "sys: fp: unknown fppc=0x%lux", u->fpsave.pc);
+		postnote(u->p, 1, note, NDebug);
+	}
+	if(ur->pc & KZERO)
+		panic("fp: status %lux fppc=0x%lux pc=0x%lux", status,
+			u->fpsave.pc, ur->pc);
 }
 
 /*

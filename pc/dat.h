@@ -45,7 +45,19 @@ enum
 
 struct	FPsave
 {
-	uchar	regs[108];
+	ushort	control;
+	ushort	r1;
+	ushort	status;
+	ushort	r2;
+	ushort	tag;
+	ushort	r3;
+	ulong	pc;
+	ushort	selector;
+	ushort	r4;
+	ulong	operand;
+	ushort	oselector;
+	ushort	r5;
+	uchar	regs[80];	/* floating point registers */
 };
 
 struct Conf

@@ -170,7 +170,6 @@ TEXT	fpcr(SB), $0
 	MOVL	R1, FPCR
 	RTS
 
-
 TEXT	rfnote(SB), $0
 
 	MOVL	uregp+0(FP), A7

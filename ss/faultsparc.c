@@ -28,8 +28,8 @@ faultsparc(Ureg *ur)
 		/*
 		 * According to the book, this isn't good enough.  We'll see.
 		 */
-		addr = getw2(SEVAR);
-		ser = getw2(SER);
+		addr = getsysspace(SEVAR);
+		ser = getsysspace(SER);
 		if(ser&(SE_WRITE|SE_PROT))
 			read = 0;
 	}
@@ -62,7 +62,7 @@ faultasync(Ureg *ur)
 {
 	int user;
 
-	print("interrupt 15 ASER %lux ASEVAR %lux SER %lux\n", getw2(ASER), getw2(ASEVAR), getw2(SER));
+	print("interrupt 15 ASER %lux ASEVAR %lux SER %lux\n", getsysspace(ASER), getsysspace(ASEVAR), getsysspace(SER));
 	dumpregs(ur);
 	/*
 	 * Clear interrupt by toggling low bit of interrupt register

@@ -45,7 +45,7 @@ char *excname[] =
 	/* the following is made up */
 	"trap: floating point exception"	/* FPEXC */
 };
-char	*fpexcname(ulong);
+char	*fpexcname(Ureg*, ulong, char*);
 
 char *regname[]={
 	"STATUS",	"PC",
@@ -77,7 +77,7 @@ trap(Ureg *ur)
 	int ecode;
 	int user, x;
 	ulong fcr31;
-	char buf[ERRLEN];
+	char buf[2*ERRLEN], buf1[ERRLEN];
 
 	SET(fcr31);
 	ecode = EXCCODE(ur->cause);
@@ -151,7 +151,7 @@ trap(Ureg *ur)
 		if(user){
 			spllo();
 			if(ecode == FPEXC)
-				sprint(buf, "sys: fp: %s FCR31 %lux", fpexcname(fcr31), fcr31);
+				sprint(buf, "sys: fp: %s", fpexcname(ur, fcr31, buf1));
 			else
 				sprint(buf, "sys: %s", excname[ecode]);
 
@@ -159,7 +159,7 @@ trap(Ureg *ur)
 		}else{
 			print("%s %s pc=%lux\n", user? "user": "kernel", excname[ecode], ur->pc);
 			if(ecode == FPEXC)
-				print("fp: %s FCR31 %lux\n", fpexcname(fcr31), fcr31);
+				print("fp: %s\n", fpexcname(ur, fcr31, buf1));
 			dumpregs(ur);
 			if(m->machno == 0)
 				spllo();
@@ -319,7 +319,7 @@ intr(Ureg *ur)
 }
 
 char*
-fpexcname(ulong fcr31)
+fpexcname(Ureg *ur, ulong fcr31, char *buf)
 {
 	static char *str[]={
 		"inexact operation",
@@ -329,15 +329,26 @@ fpexcname(ulong fcr31)
 		"invalid operation",
 	};
 	int i;
+	char *s;
+	ulong fppc;
 
+	fppc = ur->pc;
+	if(ur->cause & (1<<31))	/* branch delay */
+		fppc += 4;
+	s = 0;
 	if(fcr31 & (1<<17))
-		return "unimplemented operation";
-	fcr31 >>= 7;		/* trap enable bits */
-	fcr31 &= (fcr31>>5);	/* anded with exceptions */
-	for(i=0; i<5; i++)
-		if(fcr31 & (1<<i))
-			return str[i];
-	return "no floating point exception";
+		s = "unimplemented operation";
+	else{
+		fcr31 >>= 7;		/* trap enable bits */
+		fcr31 &= (fcr31>>5);	/* anded with exceptions */
+		for(i=0; i<5; i++)
+			if(fcr31 & (1<<i))
+				s = str[i];
+	}
+	if(s == 0)
+		return "no floating point exception";
+	sprint(buf, "%s fppc=0x%lux", s, fppc);
+	return buf;
 }
 
 void
@@ -396,7 +407,7 @@ notify(Ureg *ur)
 		l = strlen(n->msg);
 		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
 			l = ERRLEN-15;
-		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
+		sprint(n->msg+l, " pc=0x%lux", ur->pc);
 	}
 	if(n->flag!=NUser && (u->notified || u->notify==0)){
 		if(n->flag == NDebug)

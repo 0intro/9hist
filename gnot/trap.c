@@ -79,6 +79,7 @@ char*
 excname(unsigned vo, ulong pc)
 {
 	static char buf[32];	/* BUG: not reentrant! */
+	ulong fppc;
 
 	vo &= 0x0FFF;
 	vo >>= 2;
@@ -90,7 +91,10 @@ excname(unsigned vo, ulong pc)
 		return buf;
 	}
 	if(49<=vo && vo<=54){
-		sprint(buf, "fp: %s", fptrapname[vo-49]);
+		fppc = 0;
+		if(u)
+			fppc = *(ulong*)(u->fpsave.reg+8);
+		sprint(buf, "fp: %s fppc=0x%lux", fptrapname[vo-49], fppc);
 		return buf;
 	}
 	sprint(buf, "offset 0x%ux", vo<<2);
@@ -109,6 +113,9 @@ trap(Ureg *ur)
 		u->dbgreg = ur;
 
 	if(user){
+		splhi();
+		procsave(u->p);
+		spllo();
 		sprint(buf, "sys: %s", excname(ur->vo, ur->pc));
 		postnote(u->p, 1, buf, NDebug);
 	}else{
@@ -174,7 +181,7 @@ notify(Ureg *ur)
 		l = strlen(n->msg);
 		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
 			l = ERRLEN-15;
-		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
+		sprint(n->msg+l, " pc=0x%lux", ur->pc);
 	}
 	if(n->flag!=NUser && (u->notified || u->notify==0)){
 		if(n->flag == NDebug)

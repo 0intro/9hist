@@ -16,6 +16,7 @@ void	fault386(Ureg*);
 void	faultinit(void);
 void	fclock(Ureg*);
 void	fclockinit(void);
+void	fpenv(FPsave*);
 void	fpinit(void);
 void	fpoff(void);
 void	fprestore(FPsave*);

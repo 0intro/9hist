@@ -58,7 +58,7 @@ excname(ulong tbr)
 			if(m->fpunsafe==0 && u->p->fpstate!=FPactive)
 				panic("fptrap not active\n");
 			fsr = u->fpsave.fsr;
-			sprint(excbuf, "fp: %s FQpc=0x%lux",
+			sprint(excbuf, "fp: %s fppc=0x%lux",
 				fptrapname[(fsr>>14)&7],
 				u->fpsave.q[0].a, fsr);
 		}
@@ -110,7 +110,7 @@ trap(Ureg *ur)
 	tbr = (ur->tbr&0xFFF)>>4;
 	/* SS2 bug: flush cache line holding trap entry in table */
 	if(conf.ss2)
-		putw2(CACHETAGS+((TRAPS+16*tbr)&(VACSIZE-1)), 0);
+		putsysspace(CACHETAGS+((TRAPS+16*tbr)&(VACSIZE-1)), 0);
 	if(tbr > 16){			/* interrupt */
 		if(u && u->p->state==Running){
 			/* if active, FPop at head of Q is probably an excep */
@@ -407,7 +407,7 @@ notify(Ureg *ur)
 		l = strlen(n->msg);
 		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
 			l = ERRLEN-15;
-		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
+		sprint(n->msg+l, " pc=0x%lux", ur->pc);
 	}
 	if(n->flag!=NUser && (u->notified || u->notify==0)){
 		if(n->flag == NDebug)
@@ -521,7 +521,7 @@ syscall(Ureg *aur)
 
 	/* SS2 bug: flush cache line holding trap entry in table */
 	if(conf.ss2)
-		putw2(CACHETAGS+((TRAPS+16*128)&(VACSIZE-1)), 0);
+		putsysspace(CACHETAGS+((TRAPS+16*128)&(VACSIZE-1)), 0);
 
 	if(u->p->fpstate == FPactive) {
 		fpquiet();

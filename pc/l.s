@@ -330,6 +330,11 @@ TEXT	fpstatus(SB),$0		/* get floating point status */
 	FSTSW	AX
 	RET
 
+TEXT	fpenv(SB),$0		/* save floating point environment without waiting */
+	MOVL	p+0(FP),AX
+	FSTENV	0(AX)
+	RET
+
 /*
  *  special traps
  */

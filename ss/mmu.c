@@ -5,16 +5,29 @@
 #include	"fns.h"
 #include	"io.h"
 
+void	compile(void);
+#define	NCODE	1024
+static	ulong	code[NCODE];
+static	ulong	*codep = code;
+
+void	(*putcontext)(ulong);
+void	(*putenab)(ulong);
+ulong	(*getenab)(void);
+void	(*putpmegspace)(ulong, ulong);
+void	(*putsysspace)(ulong, ulong);
+ulong	(*getsysspace)(ulong);
+ulong	(*flushcx)(ulong);
+ulong	(*flushpg)(ulong);
+
 struct
 {
 	Lock;
-	int	init;
 	int	lowpmeg;
 	KMap	*free;
 	KMap	arena[(IOEND-IOSEGM)/BY2PG];
 }kmapalloc;
 
-#define	NKLUDGE	12
+#define	NKLUDGE	11		/* <= ((TOPPMEG-kmap.lowpmeg)/NCONTEXT) */
 
 /*
  * On SPARC, tlbpid i == context i-1 so that 0 means unallocated
@@ -112,21 +125,14 @@ newpid(Proc *p)
 }
 
 void
-putcontext(int c)
-{
-	putcxreg(c);
-}
-
-void
 flushcontext(void)
 {
-	int i;
+	ulong a;
 
-	/*
-	 * Clear context from cache
-	 */
-	for(i=0; i<VACSIZE; i+=16*VACLINESZ)
-		putwE16(i, 0);
+	a = 0;
+	do
+		a = flushcx(a);
+	while(a < VACSIZE);
 }
 
 void
@@ -141,10 +147,11 @@ mmuinit(void)
 {
 	ulong ktop, l, i, j, c, pte;
 
+	compile();
 	/*
-	 * TEMP: just map the first 4M of bank 0 for the kernel - philw
+	 * xinit sets conf.npage0 to maximum kernel address
 	 */
-	ktop = 4*1024*1024;
+	ktop = PADDR(conf.npage0);
 	/*
 	 * First map lots of memory as kernel addressable in all contexts
 	 */
@@ -263,16 +270,26 @@ print("putmmu %lux %d %s\n", tlbvirt, seg, p->text);
 void
 putpmeg(ulong virt, ulong phys)
 {
-	int i;
+	ulong a, evirt;
 
 	virt &= VAMASK;
 	virt &= ~(BY2PG-1);
+#ifdef asdf
+	if(conf.ss2)
+		putw6(virt, 0);
+	else
+		for(i=0; i<BY2PG; i+=16*VACLINESZ)
+			putwD16(virt+i, 0);
+#endif
 	/*
 	 * Flush old entries from cache
 	 */
-	for(i=0; i<BY2PG; i+=16*VACLINESZ)
-		putwD16(virt+i, 0);
-	putw4(virt, phys);
+	a = virt;
+	evirt = virt+BY2PG;
+	do
+		a = flushpg(a);
+	while(a < evirt);
+	putpmegspace(virt, phys);
 }
 
 void
@@ -280,14 +297,12 @@ putpmegnf(ulong virt, ulong phys)	/* no need to flush */
 {
 	virt &= VAMASK;
 	virt &= ~(BY2PG-1);
-	putw4(virt, phys);
+	putpmegspace(virt, phys);
 }
 
-int nflushmmu;
 void
 flushmmu(void)
 {
-nflushmmu++;
 	splhi();
 	u->p->newtlb = 1;
 	mapstack(u->p);
@@ -297,23 +312,20 @@ nflushmmu++;
 void
 cacheinit(void)
 {
-	int c, i;
+	int i;
 
+	putcontext(0);
 	/*
 	 * Initialize cache by clearing the valid bit
 	 * (along with the others) in all cache entries
 	 */
-	for(c=0; c<NCONTEXT; c++){	/* necessary? */
-		putcontext(c);
-		for(i=0; i<VACSIZE; i+=VACLINESZ)
-			putw2(CACHETAGS+i, 0);
-	}
-	putcontext(0);
+	for(i=0; i<VACSIZE; i+=VACLINESZ)
+		putsysspace(CACHETAGS+i, 0);
 
 	/*
 	 * Turn cache on
 	 */
-	putb2(ENAB, getb2(ENAB)|ENABCACHE); /**/
+	putenab(getenab()|ENABCACHE); /**/
 }
 
 void
@@ -321,8 +333,6 @@ kmapinit(void)
 {
 	KMap *k;
 	int i;
-
-	print("low pmeg %d high pmeg %d\n", kmapalloc.lowpmeg, TOPPMEG);
 
 	kmapalloc.free = 0;
 	k = kmapalloc.arena;
@@ -388,4 +398,161 @@ void
 invalidateu(void)
 {
 	putpmeg(USERADDR, INVALIDPTE);
+}
+
+/*
+ * Compile MMU code for this machine, since the MMU can only
+ * be addressed from parameterless machine instructions.
+ * What's wrong with MMUs you can talk to from C?
+ */
+
+/* op3 */
+#define	LD	0
+#define	ADD	0
+#define	OR	2
+#define	LDA	16
+#define	LDUBA	17
+#define	STA	20
+#define	STBA	21
+#define	JMPL	56
+/* op2 */
+#define	SETHI	4
+
+void	*compileconst(int, ulong, int);	/* value to/from constant address */
+void	*compileldaddr(int, int);	/* value from parameter address */
+void	*compilestaddr(int, int);	/* value to parameter address */
+void	*compile16(ulong, int);		/* 16 stores of zero */
+void	*compile1(ulong, int);		/* 1 stores of zero */
+
+#define	ret()	{*codep++ = (2<<30)|(0<<25)|(JMPL<<19)|(15<<14)|(1<<13)|8;}
+#define	nop()	{*codep++ = (0<<30)|(0<<25)|(SETHI<<22)|(0>>10);}
+
+void
+compile(void)
+{
+	putcontext = compileconst(STBA, CONTEXT, 2);
+	getenab = compileconst(LDUBA, ENAB, 2);
+	putenab = compileconst(STBA, ENAB, 2);
+	putpmegspace = compilestaddr(STA, 4);
+	putsysspace = compilestaddr(STA, 2);
+	getsysspace = compileldaddr(LDA, 2);
+	if(conf.ss2){
+		flushpg = compile1(BY2PG, 6);
+		flushcx = compile16(VACLINESZ, 7);
+	}else{
+		flushpg = compile16(VACLINESZ, 0xD);
+		flushcx = compile16(VACLINESZ, 0xE);
+	}
+}
+
+void
+parameter(int param, int reg)
+{
+	param += 1;	/* 0th parameter is 1st word on stack */
+	param *= 4;
+	/* LD #param(R1), Rreg */
+	*codep++ = (3<<30)|(reg<<25)|(LD<<19)|(1<<14)|(1<<13)|param;
+}
+
+void
+constant(ulong c, int reg)
+{
+	*codep++ = (0<<30)|(reg<<25)|(SETHI<<22)|(c>>10);
+	if(c & 0x3FF)
+		*codep++ = (2<<30)|(reg<<25)|(OR<<19)|(reg<<14)|(1<<13)|(c&0x3FF);
+}
+
+/*
+ * void f(int c) { *(word*,asi)addr = c } for stores
+ * ulong f(void)  { return *(word*,asi)addr } for loads
+ */
+void*
+compileconst(int op3, ulong addr, int asi)
+{
+	void *a;
+
+	a = codep;
+	constant(addr, 8);	/* MOVW $CONSTANT, R8 */
+	ret();			/* JMPL 8(R15), R0 */
+	/* in delay slot 	   st or ld R7, (R8+R0, asi)	*/
+	*codep++ = (3<<30)|(7<<25)|(op3<<19)|(8<<14)|(asi<<5);
+	return a;
+}
+
+/*
+ * ulong f(ulong addr)  { return *(word*,asi)addr }
+ */
+void*
+compileldaddr(int op3, int asi)
+{
+	void *a;
+
+	a = codep;
+	ret();			/* JMPL 8(R15), R0 */
+	/* in delay slot 	   ld (R7+R0, asi), R7	*/
+	*codep++ = (3<<30)|(7<<25)|(op3<<19)|(7<<14)|(asi<<5);
+	return a;
+}
+
+/*
+ * void f(ulong addr, int c) { *(word*,asi)addr = c }
+ */
+void*
+compilestaddr(int op3, int asi)
+{
+	void *a;
+
+	a = codep;
+	parameter(1, 8);	/* MOVW (4*1)(FP), R8 */
+	ret();			/* JMPL 8(R15), R0 */
+	/* in delay slot 	   st R8, (R7+R0, asi)	*/
+	*codep++ = (3<<30)|(8<<25)|(op3<<19)|(7<<14)|(asi<<5);
+	return a;
+}
+
+/*
+ * ulong f(ulong addr) { *addr=0; addr+=offset; return addr}
+ * offset can be anything
+ */
+void*
+compile1(ulong offset, int asi)
+{
+	void *a;
+
+	a = codep;
+	/* ST R0, (R7+R0, asi)	*/
+	*codep++ = (3<<30)|(0<<25)|(STA<<19)|(7<<14)|(asi<<5);
+	if(offset < (1<<12)){
+		ret();			/* JMPL 8(R15), R0 */
+		/* in delay slot ADD $offset, R7 */
+		*codep++ = (2<<30)|(7<<25)|(ADD<<19)|(7<<14)|(1<<13)|offset;
+	}else{
+		constant(offset, 8);
+		ret();			/* JMPL 8(R15), R0 */
+		/* in delay slot ADD R8, R7 */
+		*codep++ = (2<<30)|(7<<25)|(ADD<<19)|(7<<14)|(0<<13)|8;
+	}
+	return a;
+}
+
+/*
+ * ulong f(ulong addr) { for(i=0;i<16;i++) {*addr=0; addr+=offset}; return addr}
+ * offset must be less than 1<<12
+ */
+void*
+compile16(ulong offset, int asi)
+{
+	void *a;
+	int i;
+
+	a = codep;
+	for(i=0; i<16; i++){
+		/* ST R0, (R7+R0, asi)	*/
+		*codep++ = (3<<30)|(0<<25)|(STA<<19)|(7<<14)|(asi<<5);
+		/* ADD $offset, R7 */
+		*codep++ = (2<<30)|(7<<25)|(ADD<<19)|(7<<14)|(1<<13)|offset;
+	}
+	ret();			/* JMPL 8(R15), R0 */
+	nop();
+	return a;
 }

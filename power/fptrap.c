@@ -30,6 +30,7 @@ fptrap(Ureg *ur, ulong fcr31)
 	ulong iw, npc;
 
 	savefpregs(&u->fpsave);
+	u->p->fpstate = FPinactive;	/* will get turned on again in trap() */
 	if((fcr31&(1<<17)) == 0)
 		return 0;
 	if(ur->cause & (1<<31))
@@ -45,7 +46,7 @@ fptrap(Ureg *ur, ulong fcr31)
 				return 0;
 		}else
 			ur->pc += 4;
-		restfpregs(&u->fpsave, fcr31);
+		u->fpsave.fpstatus = fcr31 & ~(1<<17);
 	}
 	return 1;
 }

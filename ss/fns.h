@@ -19,10 +19,9 @@ void	fpregsave(char*);
 void	fprestore(FPsave*);
 void	fpsave(FPsave*);
 int	fptrap(void);
-int	getb2(ulong);
 int	getfpq(ulong*);
 ulong	getfsr(void);
-int	getw2(ulong);
+ulong	(*getsysspace)(ulong);
 void	intrinit(void);
 void	ioinit(void);
 int	kbdstate(IOQ*, int);
@@ -46,22 +45,14 @@ void	printinit(void);
 #define	procrestore(p)
 #define	procsave(p)
 #define	procsetup(x)	((p)->fpstate = FPinit)
-void	putb2(ulong, int);
-void	putcontext(int);
-void	putcxreg(int);
 void	putcxsegm(int, ulong, int);
+void	(*putenab)(ulong);
 void	putpmeg(ulong, ulong);
 void	putsegm(ulong, int);
+void	(*putsysspace)(ulong, ulong);
 void	putstr(char*);
 void	putstrn(char*, long);
 void	puttbr(ulong);
-void	putw2(ulong, ulong);
-void	putw4(ulong, ulong);
-void	putwC(ulong, ulong);
-void	putwD16(ulong, ulong);
-void	putwD(ulong, ulong);
-void	putwE16(ulong, ulong);
-void	putwE(ulong, ulong);
 void	systemreset(void);
 void	restfpregs(FPsave*, ulong);
 void	screeninit(void);
