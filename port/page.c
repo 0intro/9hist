@@ -66,6 +66,7 @@ newpage(int clear, Segment **s, ulong va)
 	KMap *k;
 	int hw, i, dontalloc;
 
+retry:
 	lock(&palloc);
 
 	hw = swapalloc.highwater;
@@ -112,10 +113,10 @@ newpage(int clear, Segment **s, ulong va)
 	unlock(&palloc);
 
 	lock(p);
-
-	if(p->ref != 0)
-		panic("newpage");
-
+	if(p->ref != 0) {			/* lookpage has priority on steal */
+		unlock(p);
+		goto retry;
+	}
 	uncachepage(p);
 	p->ref++;
 	p->va = va;
@@ -185,6 +186,8 @@ putpage(Page *p)
 void
 simpleputpage(Page *pg)			/* Always call with palloc locked */
 {
+	if(pg->ref != 1)
+		panic("simpleputpage");
 	pg->ref = 0;
 	palloc.freecount++;
 	if(palloc.head == 0) {
@@ -237,7 +240,7 @@ duppage(Page *p)				/* Always call with p locked */
 	unlock(&palloc);
 
 	lock(np);				/* Cache the new version */
-	if(np->ref != 0) {			/* Stolen by new page */
+	if(np->ref != 0) {			/* Stolen by lookpage */
 		uncachepage(p);
 		unlock(np);
 		return;

@@ -35,6 +35,7 @@ struct Video
 	uchar	pad2[3];
 	uchar	ovrl;		/* overlay palette */
 	uchar	pad3[3];
+#ifdef notright
 	/* Sun-4 video chip */
 	uchar	mcr;		/* master control register */
 	uchar	sr;		/* status register */
@@ -52,7 +53,8 @@ struct Video
 	uchar	vsc;		/* vertical sync clear */
 	uchar	xcs;		/* transfer cycle hold off set */
 	uchar	xcc;		/* transfer cycle hold off clear */
-}*vid;
+#endif
+} *vid;
 
 GBitmap gscreen;
 
@@ -143,16 +145,6 @@ screeninit(char *str, int slot)
 	}
 }
 
-void
-mapcrap(void)
-{
-	uchar *v;
-	int i;
-
-	v = &vid->mcr;
-	for(i=0; i<16; i++,v++)
-		print("%lux %.2ux\n", v, *v);
-}
 
 void
 screenputnl(void)

@@ -15,7 +15,7 @@ int	canflush(Proc *p, Segment*);
 
 enum
 {
-	Maxpages = 500,		/* Max number of pageouts per segment pass */
+	Maxpages = 500,	/* Max number of pageouts per segment pass */
 };
 
 Image 	swapimage;

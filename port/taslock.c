@@ -5,9 +5,6 @@
 #include "fns.h"
 #include "../port/error.h"
 
-ulong spinner;
-ulong spinpc;
-
 void
 lock(Lock *l)
 {
@@ -16,21 +13,13 @@ lock(Lock *l)
 	ulong pc;
 
 	pc = getcallerpc(((uchar*)&l) - sizeof(l));
-    	if (tas(&ll->key) == 0){
-		if(u)
-			u->p->hasspin = 1;
-		ll->pc = pc;
-		return;
-	}
-	for(i = 0; i < 1000000; i++){
+	for(i = 0; i < 10000000; i++){
     		if (tas(&ll->key) == 0){
 			if(u)
 				u->p->hasspin = 1;
 			ll->pc = pc;
 			return;
 		}
-spinner++;
-spinpc = pc;
 	}
 	i = l->key;
 	l->key = 0;

@@ -600,6 +600,13 @@ typedef struct {
 	};
 } Wd8013;
 
+enum {
+	MENB		= 0x40,			/* memory enable */
+
+	L16EN		= 0x40,			/* enable 16-bit LAN operation */
+	M16EN		= 0x80,			/* enable 16-bit memory access */
+};
+
 #define IN(hw, m)	inb((hw)->addr+OFFSETOF(Wd8013, m))
 #define OUT(hw, m, x)	outb((hw)->addr+OFFSETOF(Wd8013, m), (x))
 
@@ -611,6 +618,27 @@ typedef struct {
 	uchar	data[256-4];
 } Ring;
 
+
+static void
+wd8013dumpregs(Hw *hw)
+{
+	print("msr=#%2.2ux\n", IN(hw, msr));
+	print("icr=#%2.2ux\n", IN(hw, icr));
+	print("iar=#%2.2ux\n", IN(hw, iar));
+	print("bio=#%2.2ux\n", IN(hw, bio));
+	print("irr=#%2.2ux\n", IN(hw, irr));
+	print("laar=#%2.2ux\n", IN(hw, laar));
+	print("ijr=#%2.2ux\n", IN(hw, ijr));
+	print("gp2=#%2.2ux\n", IN(hw, gp2));
+	print("lan0=#%2.2ux\n", IN(hw, lan[0]));
+	print("lan1=#%2.2ux\n", IN(hw, lan[1]));
+	print("lan2=#%2.2ux\n", IN(hw, lan[2]));
+	print("lan3=#%2.2ux\n", IN(hw, lan[3]));
+	print("lan4=#%2.2ux\n", IN(hw, lan[4]));
+	print("lan5=#%2.2ux\n", IN(hw, lan[5]));
+	print("id=#%2.2ux\n", IN(hw, id));
+}
+
 /*
  */
 static void
@@ -619,6 +647,7 @@ wd8013reset(Ctlr *cp)
 	Hw *hw = cp->hw;
 	int i;
 	uchar msr;
+	ulong ram;
 
 	cp->rb = xspanalloc(sizeof(Buffer)*Nrb, BY2PG, 0);
 	cp->nrb = Nrb;
@@ -626,10 +655,16 @@ wd8013reset(Ctlr *cp)
 	cp->ntb = Ntb;
 
 	msr = IN(hw, msr);
-	OUT(hw, msr, 0x40|msr);
+	OUT(hw, msr, MENB|msr);
 
 	for(i = 0; i < sizeof(cp->ea); i++)
 		cp->ea[i] = IN(hw, lan[i]);
+
+	/* get configuration info from card */
+	ram = (IN(hw, msr) & 0x3f) << 13;
+	ram |= KZERO|0x80000;
+	hw->ram = (uchar*)ram;
+print("ether ram is at %lux\n", ram);
 
 	(*hw->init)(cp);
 	setvec(Ethervec, hw->intr);
@@ -704,6 +739,17 @@ wd8013online(Ctlr *cp, int on)
 }
 
 static void
+bmemmove(void *a, void *b, int n)
+{
+	uchar *to, *from;
+
+	to = a;
+	from = b;
+	while(n-- > 0)
+		*to++ = *from++;
+}
+
+static void
 wd8013receive(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
@@ -723,14 +769,18 @@ wd8013receive(Ctlr *cp)
 		if(next == curr)
 			break;
 		cp->inpackets++;
+print("*");
+OUT(hw, laar, 0xC1);
+print("!");
 		p = &((Ring*)hw->ram)[next];
+{ int ii; for(ii = 0; ii < 30; ii++) print("%2.2ux ", p->data[ii]); for(;;); }
 		len = ((p->len1<<8)|p->len0)-4;
 		if(p->next < hw->pstart || p->next >= hw->pstop || len < 60){
 			print("%d/%d : #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next, len,
 				p->status, p->next, p->len0, p->len1);
-			panic("receive");
+OUT(hw, laar, 0x01);
 			dp8390rinit(cp);
-			return;
+			break;
 		}
 
 		rb = &cp->rb[cp->ri];
@@ -738,22 +788,25 @@ wd8013receive(Ctlr *cp)
 			rb->len = len;
 			if((p->data+len) >= (hw->ram+hw->size)){
 				len = (hw->ram+hw->size) - p->data;
-				memmove(rb->pkt+len,
+				bmemmove(rb->pkt+len,
 					&((Ring*)hw->ram)[hw->pstart],
 					(p->data+rb->len) - (hw->ram+hw->size));
 			}
-			memmove(rb->pkt, p->data, len);
+			bmemmove(rb->pkt, p->data, len);
 			rb->owner = Host;
 			cp->ri = NEXT(cp->ri, cp->nrb);
 		}
 
 		p->status = 0;
 		next = p->next;
+OUT(hw, laar, 0x01);
+print("?");
 		bnry = next-1;
 		if(bnry < hw->pstart)
 			bnry = hw->pstop-1;
 		OUT(hw, w.bnry, bnry);
 	}
+print(">");
 }
 
 static void
@@ -767,7 +820,7 @@ wd8013transmit(Ctlr *cp)
 	tb = &cp->tb[cp->ti];
 	if(tb->busy == 0 && tb->owner == Interface){
 		hw = cp->hw;
-		memmove(hw->ram, tb->pkt, tb->len);
+		bmemmove(hw->ram, tb->pkt, tb->len);
 		OUT(hw, w.tbcr0, tb->len & 0xFF);
 		OUT(hw, w.tbcr1, (tb->len>>8) & 0xFF);
 		OUT(hw, w.cr, 0x26);		/* Page0|RD2|TXP|STA */
@@ -823,7 +876,7 @@ wd8013intr(Ureg *ur)
 
 static Hw wd8013 = {
 	0x360,					/* I/O base address */
-	KZERO|0xC8000,				/* shared memory address */
+	KZERO|0xF0000,				/* shared memory address */
 	8*1024,
 	0,
 	HOWMANY(sizeof(Etherpkt), 256),
@@ -836,8 +889,3 @@ static Hw wd8013 = {
 	wd8013transmit,
 	wd8013intr,
 };
-
-void
-consdebug(void)
-{
-}

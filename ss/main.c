@@ -141,7 +141,6 @@ init0(void)
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
 	print("frame buffer id %lux slot %ld %s\n", conf.monitor, fbslot, fbstr);
 	print("NKLUDGE %d\n", NKLUDGE);
-mapcrap();
 	if(conf.npage1 != conf.base1)
 		print("kernel mem from second bank: reboot and fix!\n");
 
