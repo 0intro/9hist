@@ -1058,7 +1058,7 @@ mntrepl(char *buf)
 }
 
 Dev mntdevtab = {
-	'm',
+	'M',
 	"mnt",
 
 	mntreset,

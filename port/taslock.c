@@ -69,8 +69,18 @@ ilock(Lock *l)
 	}
 
 	for(;;){
+#ifdef notdef
 		while(l->key)
 			;
+#else
+{   int i;
+    i = 0;
+    while(l->key){
+	if(i++ > 100000000)
+	    panic("ilock loop: caller pc %luX, held by %luX\n", pc, l->pc);
+    }
+}
+#endif /* notdef */
 		if(tas(&l->key) == 0){
 			l->sr = x;
 			l->pc = pc;
