@@ -6,6 +6,8 @@
 #include	"io.h"
 #include	"errno.h"
 
+/* NEC PD765A (8272A compatible) floppy controller */
+
 typedef	struct Drive		Drive;
 typedef	struct Controller	Controller;
 typedef struct Type		Type;
@@ -42,6 +44,7 @@ enum
 	/* file types */
 	Qdir=		0,
 	Qdata=		(1<<2),
+	Qctl=		(2<<2),
 	Qmask=		(3<<2),
 };
 
@@ -160,9 +163,13 @@ static void	floppyintr(Ureg*);
 
 Dirtab floppydir[]={
 	"fd0disk",		{Qdata + 0},	0,	0600,
+	"fd0ctl",		{Qctl + 0},	0,	0600,
 	"fd1disk",		{Qdata + 1},	0,	0600,
+	"fd1ctl",		{Qctl + 1},	0,	0600,
 	"fd2disk",		{Qdata + 2},	0,	0600,
+	"fd2ctl",		{Qctl + 2},	0,	0600,
 	"fd3disk",		{Qdata + 3},	0,	0600,
+	"fd3ctl",		{Qctl + 3},	0,	0600,
 };
 #define NFDIR	2	/* directory entries/drive */
 
@@ -215,15 +222,20 @@ floppyreset(void)
 void
 floppyinit(void)
 {
-	/*
-	 *  watchdog to turn off the motors
-	 */
-	kproc("floppy", floppykproc, 0);
 }
 
 Chan*
 floppyattach(char *spec)
 {
+	static int kstarted;
+
+	if(kstarted == 0){
+		/*
+		 *  watchdog to turn off the motors
+		 */
+		kstarted = 1;
+		kproc("floppy", floppykproc, 0);
+	}
 	return devattach('f', spec);
 }
 
@@ -274,15 +286,6 @@ floppywstat(Chan *c, char *dp)
 	error(Eperm);
 }
 
-static void
-ul2user(uchar *a, ulong x)
-{
-	a[0] = x >> 24;
-	a[1] = x >> 16;
-	a[2] = x >> 8;
-	a[3] = x;
-}
-
 /*
  *  look for a floppy change
  */
@@ -292,7 +295,7 @@ floppychanged(Drive *dp)
 	if((inb(Fchanged) & Fchange) == 0)
 		return;
 
-	
+	print("floppy has changed\n");
 }
 
 /*
