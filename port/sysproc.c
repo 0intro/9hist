@@ -380,6 +380,11 @@ sysexec(ulong *arg)
 	s->top = USTKTOP;
 	relocateseg(s, USTKTOP-TSTKTOP);
 
+	/*
+	 *  '/' processes are high priority (hack to make /ip more responsive)
+	 */
+	if(devchar[tc->type] == L'/')
+		up->priority = 1;
 	close(tc);
 
 	/*

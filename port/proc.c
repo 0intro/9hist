@@ -22,7 +22,7 @@ struct
 }waitqalloc;
 
 int	nrdy;
-Schedq	runhiq;
+Schedq	runhiq;		/* for hi priority process, don't bother with affinity */
 
 char *statename[] =
 {			/* BUG: generate automatically */
@@ -113,7 +113,9 @@ ready(Proc *p)
 
 	s = splhi();
 
-	if(p->state == Running)
+	if(p->priority)
+		rq = &runhiq;
+	else if(p->state == Running)
 		rq = &balance(p)->loq;
 	else
 		rq = &affinity(p)->hiq;
@@ -140,16 +142,18 @@ runproc(void)
 
 loop:
 	spllo();
-	while(m->hiq.head == 0 && m->loq.head == 0)
+	while(runhiq.head == 0 && m->hiq.head == 0 && m->loq.head == 0)
 		;
 	splhi();
 
-	if(m->hiq.head)
+	lock(&runhiq);
+	if(runhiq.head)
+		rq = &runhiq;
+	else if(m->hiq.head)
 		rq = &m->hiq;
 	else
 		rq = &m->loq;
 
-	lock(&runhiq);
 	p = rq->head;
 	/* p->mach==0 only when process state is saved */
 	if(p == 0 || p->mach){	

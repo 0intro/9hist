@@ -579,6 +579,7 @@ struct Proc
 	Mach	*mp;		/* machine this process last ran on */
 	ulong	affinity;	/* affinity counter for that mach */
 	ulong	movetime;	/* ticks when proc was last reassigned */
+	ulong	priority;
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */
@@ -689,3 +690,4 @@ extern int mouseshifted;
 extern int mousetype;
 extern int mouseswap;
 extern int nsyscall;
+extern Physseg physseg[];
