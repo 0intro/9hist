@@ -64,7 +64,7 @@
 #define MACHADDR	(KZERO+0x00001000)
 #define	EVECTORS	0xFFFF0000		/* virt base of exception vectors */
 
-#define KSTACK		(16*1024)		/* Size of kernel stack */
+#define KSTACK		(32*1024)		/* Size of kernel stack */
 
 /*
  *  Offsets into flash

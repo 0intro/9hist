@@ -139,8 +139,12 @@ sacinit(void)
 	p = (uchar*)Flash_tar+4;
 	data = tarlookup(p, sacfs, &i);
 	if(data == 0) {
-		print("devsac: could not find file: %s\n", sacfs);
-		return;
+		p = (uchar*)Flash_tar;
+		data = tarlookup(p, sacfs, &i);
+		if(data == 0) {
+			print("devsac: could not find file: %s\n", sacfs);
+			return;
+		}
 	}
 	hdr = (SacHeader*)data;
 	if(getl(hdr->magic) != Magic) {
@@ -177,6 +181,16 @@ sacattach(char* spec)
 	c->dev = dev;
 	c->aux = saccpy(&root);
 	return c;
+}
+
+static void listprint(char **name, int nname, int j)
+{
+	int i;
+
+	print("%d ", j);
+	for(i = 0; i< nname; i++)
+		print("%s/", name[i]);
+	print("\n");
 }
 
 static Walkqid*
@@ -225,6 +239,7 @@ sacwalk(Chan *c, Chan *nc, char **name, int nname)
 	}
 	poperror();
 	if(wq->nqid < nname){
+//		listprint(name, wq->nqid, j);
 		if(alloc)
 			cclose(wq->clone);
 		wq->clone = nil;

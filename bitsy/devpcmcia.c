@@ -34,15 +34,23 @@ enum
 	 Clevel=	 (1<<6),	/*  level sensitive interrupt line */
 };
 
-#define SLOTNO(c)	((ulong)((c->qid.path>>8)&0xff))
-#define TYPE(c)	((ulong)(c->qid.path&0xff))
-#define QID(s,t)	(((s)<<8)|(t))
-
 static void increfp(PCMslot*);
 static void decrefp(PCMslot*);
 static void slotmap(int, ulong, ulong, ulong);
 static void slottiming(int, int, int, int, int);
 static void slotinfo(Ureg*, void*);
+
+#define TYPE(c)		(((ulong)c->qid.path)&0xff)
+#define PATH(s,t)	(((s)<<8)|(t))
+
+static PCMslot*
+slotno(Chan *c)
+{
+	ulong x;
+
+	x = c->qid.path;
+	return slot + ((x>>8)&0xff);
+}
 
 static int
 pcmgen(Chan *c, char *, Dirtab * , int, int i, Dir *dp)
@@ -66,17 +74,17 @@ pcmgen(Chan *c, char *, Dirtab * , int, int i, Dir *dp)
 	len = 0;
 	switch(i%Nents){
 	case 0:
-		qid.path = QID(slotno, Qmem);
+		qid.path = PATH(slotno, Qmem);
 		snprint(up->genbuf, sizeof up->genbuf, "pcm%dmem", slotno);
 		len = sp->memlen;
 		break;
 	case 1:
-		qid.path = QID(slotno, Qattr);
+		qid.path = PATH(slotno, Qattr);
 		snprint(up->genbuf, sizeof up->genbuf, "pcm%dattr", slotno);
 		len = sp->memlen;
 		break;
 	case 2:
-		qid.path = QID(slotno, Qctl);
+		qid.path = PATH(slotno, Qctl);
 		snprint(up->genbuf, sizeof up->genbuf, "pcm%dctl", slotno);
 		break;
 	}
@@ -140,11 +148,12 @@ pcmciastat(Chan *c, uchar *db, int n)
 static Chan*
 pcmciaopen(Chan *c, int omode)
 {
+	print("pcmciaopen\n");
 	if(c->qid.type & QTDIR){
 		if(omode != OREAD)
 			error(Eperm);
 	} else
-		increfp(slot + SLOTNO(c));
+		increfp(slotno(c));
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -156,7 +165,7 @@ pcmciaclose(Chan *c)
 {
 	if(c->flag & COPEN)
 		if((c->qid.type & QTDIR) == 0)
-			decrefp(slot+SLOTNO(c));
+			decrefp(slotno(c));
 }
 
 /* a memmove using only bytes */
@@ -235,7 +244,7 @@ pcmciaread(Chan *c, void *a, long n, vlong off)
 	PCMslot *sp;
 	ulong offset = off;
 
-	sp = slot + SLOTNO(c);
+	sp = slotno(c);
 
 	switch(TYPE(c)){
 	case Qdir:
@@ -346,7 +355,7 @@ pcmciawrite(Chan *c, void *a, long n, vlong off)
 	PCMslot *sp;
 	ulong offset = off;
 
-	sp = slot + SLOTNO(c);
+	sp = slotno(c);
 
 	switch(TYPE(c)){
 	case Qmem:
@@ -420,6 +429,7 @@ slotinfo(Ureg*, void*)
 static void
 increfp(PCMslot *sp)
 {
+	print("increfp\n");
 	wlock(sp);
 	if(waserror()){
 		wunlock(sp);
@@ -436,8 +446,9 @@ increfp(PCMslot *sp)
 	}
 	incref(&sp->ref);
 	slotinfo(nil, nil);
-	if(sp->occupied && sp->cisread == 0)
+	if(sp->occupied && sp->cisread == 0) {
 		pcmcisread(sp);
+	}
 
 	wunlock(sp);
 	poperror();

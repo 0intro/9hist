@@ -189,85 +189,6 @@ enum
 	OneMeg=	1024*1024,
 };
 
-#ifdef NDEF
-/*
- *  routines to access UART hardware
- */
-struct PhysUart
-{
-	void	(*enable)(Uart*, int);
-	void	(*disable)(Uart*);
-	void	(*kick)(Uart*);
-	void	(*intr)(Ureg*, void*);
-	void	(*dobreak)(Uart*, int);
-	void	(*baud)(Uart*, int);
-	void	(*bits)(Uart*, int);
-	void	(*stop)(Uart*, int);
-	void	(*parity)(Uart*, int);
-	void	(*modemctl)(Uart*, int);
-	void	(*rts)(Uart*, int);
-	void	(*dtr)(Uart*, int);
-	long	(*status)(Uart*, void*, long, long);
-};
-
-enum {
-	Stagesize=	1024
-};
-
-/*
- *  software UART
- */
-struct Uart
-{
-	QLock;
-	int	type;
-	int	dev;
-	int	opens;
-	void	*regs;
-	PhysUart	*phys;
-
-	int	enabled;
-	Uart	*elist;			/* next enabled interface */
-	char	name[NAMELEN];
-
-	uchar	sticky[4];		/* sticky write register values */
-	ulong	freq;			/* clock frequency */
-	uchar	mask;			/* bits/char */
-	int	baud;			/* baud rate */
-
-	int	parity;			/* parity errors */
-	int	frame;			/* framing errors */
-	int	overrun;		/* rcvr overruns */
-
-	/* buffers */
-	int	(*putc)(Queue*, int);
-	Queue	*iq;
-	Queue	*oq;
-
-	uchar	istage[Stagesize];
-	uchar	*iw;
-	uchar	*ir;
-	uchar	*ie;
-
-	Lock	tlock;			/* transmit */
-	uchar	ostage[Stagesize];
-	uchar	*op;
-	uchar	*oe;
-
-	int	modem;			/* hardware flow control on */
-	int	xonoff;			/* software flow control on */
-	int	blocked;
-	int	cts, dsr, dcd, dcdts;		/* keep track of modem status */ 
-	int	ctsbackoff;
-	int	hup_dsr, hup_dcd;	/* send hangup upstream? */
-	int	dohup;
-
-	int	kinuse;		/* device in use by kernel */
-
-	Rendez	r;
-};
-#endif
-
 /*
  * PCMCIA structures known by both port/cis.c and the pcmcia driver
  */
@@ -357,10 +278,10 @@ struct PCMslot
  */
 struct DevConf
 {
-	ulong	mem;		/* mapped memory address */
+	ulong	mem;	/* mapped memory address */
 	ulong	port;		/* mapped i/o regs */
-	int	size;		/* access size */
-	int	itype;		/* type of interrupt */
+	int		size;		/* access size */
+	int		itype;	/* type of interrupt */
 	ulong	interrupt;	/* interrupt number */
-	char	*type;	/* card type, mallocated */
+	char		*type;	/* card type, mallocated */
 };
