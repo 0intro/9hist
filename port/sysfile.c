@@ -470,7 +470,7 @@ syswrite(ulong *arg)
 
 	if(m < n){
 		lock(c);
-		c->offset = oo + m;
+		c->offset -= n - m;
 		unlock(c);
 	}
 

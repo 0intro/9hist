@@ -884,7 +884,10 @@ ilpullup(Conv *s)
 		bp = concatblock(bp);
 		if(bp == 0)
 			panic("ilpullup");
-		qpassnolim(s->rq, packblock(bp));
+		bp = packblock(bp);
+		if(bp == 0)
+			panic("ilpullup2");
+		qpassnolim(s->rq, bp);
 	}
 	qunlock(&ic->outo);
 }

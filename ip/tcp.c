@@ -1384,7 +1384,10 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 				 * receive queue
 				 */
 				if(bp) {
-					qpassnolim(s->rq, packblock(bp));
+					bp = packblock(bp);
+					if(bp == nil)
+						panic("tcp packblock");
+					qpassnolim(s->rq, bp);
 					bp = nil;
 				}
 				tcb->rcv.nxt += length;

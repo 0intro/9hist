@@ -96,19 +96,6 @@ checkb(Block *b, char *msg)
 }
 
 void
-checkqlen(Queue *q)
-{
-	int len;
-	Block *b;
-
-	len = 0;
-	for(b = q->bfirst; b; b = b->next)
-		len += BALLOC(b);
-	if(len != q->len)
-		panic("checkqlen");
-}
-
-void
 ixsummary(void)
 {
 	debugging ^= 1;
@@ -693,7 +680,6 @@ qpass(Queue *q, Block *b)
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
-checkqlen(q);
 	iunlock(q);
 
 	if(dowakeup)
@@ -736,7 +722,6 @@ qpassnolim(Queue *q, Block *b)
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
-checkqlen(q);
 	iunlock(q);
 
 	if(dowakeup)
@@ -752,19 +737,19 @@ checkqlen(q);
 Block*
 packblock(Block *bp)
 {
-	int len, alen;
-	Block *nbp;
+	Block **l, *nbp;
+	int n;
 
-	len = alen = 0;
-	for(nbp = bp; nbp; nbp = bp->next){
-		len += BLEN(bp);
-		alen += BALLOC(bp);
-	}
-
-	if(alen >= (len<<2)){
-		nbp = allocb(len);
-		nbp->next = bp;
-		return pullupblock(nbp, len);
+	for(l = &bp; *l; l = &(*l)->next){
+		nbp = *l;
+		n = BLEN(nbp);
+		if((n<<2) < BALLOC(nbp)){
+			*l = allocb(n);
+			memmove((*l)->wp, nbp->rp, n);
+			(*l)->wp += n;
+			(*l)->next = nbp->next;
+			freeb(nbp);
+		}
 	}
 
 	return bp;
@@ -811,7 +796,6 @@ qproduce(Queue *q, void *vp, int len)
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
-checkqlen(q);
 	iunlock(q);
 
 	if(dowakeup)
@@ -981,7 +965,6 @@ qbread(Queue *q, int len)
 		nb->wp = nb->rp + len;
 	}
 
-checkqlen(q);
 	iunlock(q);
 
 	/* wakeup flow controlled writers */
@@ -1080,7 +1063,6 @@ qbwrite(Queue *q, Block *b)
 		dowakeup = 1;
 	}
 
-checkqlen(q);
 	iunlock(q);
 
 	if(dowakeup){
@@ -1169,7 +1151,6 @@ qiwrite(Queue *q, void *vp, int len)
 			dowakeup = 1;
 		}
 
-checkqlen(q);
 		iunlock(q);
 
 		if(dowakeup){

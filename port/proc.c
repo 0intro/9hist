@@ -219,6 +219,7 @@ loop:
 				p = rq->head;
 				if(p != nil)
 					p->movetime = 0;
+				goto found;
 			}
 		} else {
 			/*
