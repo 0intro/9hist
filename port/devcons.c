@@ -331,6 +331,7 @@ enum{
 	Qconsctl,
 	Qcputime,
 	Qcrypt,
+	Qhz,
 	Qkey,
 	Qklog,
 	Qlights,
@@ -355,6 +356,7 @@ Dirtab consdir[]={
 	"consctl",	{Qconsctl},	0,		0220,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
 	"crypt",	{Qcrypt},	0,		0666,
+	"hz",		{Qhz},		NUMSIZE,	0666,
 	"key",		{Qkey},		DESKEYLEN,	0622,
 	"klog",		{Qklog},	0,		0444,
 	"lights",	{Qlights},	0,		0220,
@@ -646,6 +648,9 @@ consread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qmsec:
 		return readnum(offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);
+
+	case Qhz:
+		return readnum(offset, buf, n, HZ, NUMSIZE);
 
 	case Qsysstat:
 		j = 0;

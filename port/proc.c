@@ -313,6 +313,15 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 	}
 }
 
+int
+tfn(void *arg)
+{
+	Proc *p;
+
+	p = u->p;
+	return MACHP(0)->ticks >= p->twhen || (*p->tfn)(arg);
+}
+
 void
 tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 {
@@ -335,10 +344,11 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 	p->trend = r;
 	p->twhen = when;
 	p->tlink = *i;
+	p->tfn = fn;
 	*i = p;
 	unlock(&talarm);
 
-	sleep(r, fn, arg);
+	sleep(r, tfn, arg);
 	p->twhen = 0;
 }
 

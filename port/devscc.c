@@ -31,6 +31,7 @@ enum
 	Rx7bits=	1<<6,
 	Rx6bits=	2<<6,
 	Rx8bits=	3<<6,
+	Rxbitmask=	3<<6,
 
 	/* wr 4 */
 	ParEven=	3<<0,
@@ -52,6 +53,7 @@ enum
 	Tx7bits=	1<<5,
 	Tx6bits=	2<<5,
 	Tx8bits=	3<<5,
+	Txbitmask=	3<<5,
 
 	/* wr 9 */
 	IntEna=		1<<3,
@@ -184,6 +186,40 @@ sccparity(SCC *sp, char type)
 	}
 	sp->sticky[4] = (sp->sticky[4] & ~ParMask) | val;
 	sccwrreg(sp, 4, 0);
+}
+
+/*
+ *  set bits/character, default 8
+ */
+void
+sccbits(SCC *sp, int n)
+{
+	int val;
+	int rbits, tbits;
+
+	switch(n){
+	case 5:
+		rbits = Rx5bits;
+		tbits = Tx5bits;
+		break;
+	case 6:
+		rbits = Rx6bits;
+		tbits = Tx6bits;
+		break;
+	case 7:
+		rbits = Rx7bits;
+		tbits = Tx7bits;
+		break;
+	case 8:
+	default:
+		rbits = Rx8bits;
+		tbits = Tx8bits;
+		break;
+	}
+	sp->sticky[3] = (sp->sticky[3]&~Rxbitmask) | rbits;
+	sccwrreg(sp, 3, 0);
+	sp->sticky[5] = (sp->sticky[5]&~Txbitmask) | tbits;
+	sccwrreg(sp, 5, 0);
 }
 
 /*
@@ -530,6 +566,11 @@ sccoput(Queue *q, Block *bp)
 		case 'd':
 			sccdtr(sp, n);
 			break;
+		case 'L':
+		case 'l':
+			sccbits(sp, n);
+			break;
+
 		case 'P':
 		case 'p':
 			sccparity(sp, *(bp->rptr+1));

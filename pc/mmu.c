@@ -195,24 +195,13 @@ flushmmu(void)
 {
 	int s;
 	Proc *p;
-	Page *pg;
-	ulong *top;
 
 	if(u == 0)
 		return;
-
 	p = u->p;
+	p->newtlb = 1;
 	s = splhi();
-	if(p->mmutop && p->mmuused){
-		top = (ulong*)p->mmutop->va;
-		for(pg = p->mmuused; pg->next; pg = pg->next)
-			top[pg->daddr] = 0;
-		top[pg->daddr] = 0;
-		pg->next = p->mmufree;
-		p->mmufree = p->mmuused;
-		p->mmuused = 0;
-	}
-	mapstack(u->p);
+	mapstack(p);
 	splx(s);
 }
 
@@ -227,9 +216,28 @@ mapstack(Proc *p)
 	ulong tlbphys;
 	int i;
 	Page *pg;
+	ulong *top;
 
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)) && p->pid != 0)
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
+
+	if(p->newtlb){
+		/*
+		 *  bin the current second level page tables.  newtlb
+		 *  set means that they are inconsistent with the segment.c
+		 *  data structures.
+		 */
+		if(p->mmutop && p->mmuused){
+			top = (ulong*)p->mmutop->va;
+			for(pg = p->mmuused; pg->next; pg = pg->next)
+				top[pg->daddr] = 0;
+			top[pg->daddr] = 0;
+			pg->next = p->mmufree;
+			p->mmufree = p->mmuused;
+			p->mmuused = 0;
+		}
+		p->newtlb = 0;
+	}
 
 	/* map in u area */
 	upt[0] = PPN(p->upage->pa) | PTEVALID | PTEKERNEL | PTEWRITE;

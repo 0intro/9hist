@@ -129,12 +129,14 @@ outin(char *prompt, char *def, int len)
 	int n;
 	char buf[256];
 
-	alarm(60*1000);
+	if(cpuflag)
+		alarm(60*1000);
 	do{
 		print("%s[%s]: ", prompt, *def ? def : "no default");
 		n = read(0, buf, len);
 	}while(n==0);
-	alarm(0);
+	if(cpuflag)
+		alarm(0);
 	if(n < 0)
 		fatal("can't read #c/cons or timeout; please reboot");
 	if(n != 1){

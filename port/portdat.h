@@ -561,6 +561,7 @@ struct Proc
 	ulong	twhen;
 	Rendez	*trend;
 	Proc	*tlink;
+	int	(*tfn)(void*);
 
 	/*
 	 *  machine specific MMU goo
