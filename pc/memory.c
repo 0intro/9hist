@@ -21,7 +21,7 @@ enum {
 	KB		= 1024,
 
 	MemMinMB	= 4,		/* minimum physical memory (<=4MB) */
-	MemMaxMB	= 512,		/* maximum physical memory to check */
+	MemMaxMB	= 768,		/* maximum physical memory to check */
 
 	NMemBase	= 10,
 };

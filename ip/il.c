@@ -136,8 +136,8 @@ enum
 	Querytime	= 5*Seconds,	/* time between subsequent queries */
 	Keepalivetime	= 60*Seconds,	/* time before first query */
 	Deathtime	= 120*Seconds,	/* time between first query and hangup */
-
 	Defaultwin	= 20,
+
 	LogAGain	= 3,
 	AGain		= 1<<LogAGain,
 	LogDGain	= 2,
@@ -373,15 +373,8 @@ ilackq(Ilcb *ic, Block *bp)
 	ic->unackedbytes += n;
 }
 
+static
 void
-ilinitrtt(Ilcb *ic)
-{
-	ic->delay = Iltickms<<LogAGain;
-	ic->mdev = Iltickms<<LogDGain;
-	ic->rate = DefByteRate<<LogAGain;		/* 10 meg ether */
-}
-
-static void
 ilrttcalc(Ilcb *ic)
 {
 	int rtt, tt, pt, delay, rate;
@@ -552,7 +545,9 @@ iliput(Media *m, Block *bp)
 	ic->recvd = 0;
 	ic->rstart = nhgetl(ih->ilid);
 	ic->slowtime = Slowtime;
-	ilinitrtt(ic);
+	ic->delay = Iltickms<<LogAGain;
+	ic->mdev = Iltickms<<LogDGain;
+	ic->rate = DefByteRate<<LogAGain;
 	ic->querytime = Keepalivetime;
 	ic->deathtime = Deathtime;
 	ic->window = Defaultwin;
@@ -1040,7 +1035,9 @@ ilstart(Conv *c, int type, int window)
 	ic->unacked = nil;
 	ic->outoforder = nil;
 	ic->unackedbytes = 0;
-	ilinitrtt(ic);
+	ic->delay = Iltickms<<LogAGain;
+	ic->mdev = Iltickms<<LogDGain;
+	ic->rate = DefByteRate<<LogAGain;
 	iltimers(ic);
 
 	initseq += msec;
