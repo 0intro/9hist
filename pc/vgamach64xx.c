@@ -78,7 +78,7 @@ mach64xxenable(VGAscr* scr)
 		 */
 		scr->io = p->mem[1].bar & ~0x03;
 
-		if(scr->io == 0 && p->did == ('C'<<8)|'T')
+		if(scr->io == 0)
 			scr->io = 0x2EC;
 	}
 }
