@@ -255,7 +255,7 @@ drawgen(Chan *c, char*, Dirtab*, int, int s, Dir *dp)
 	/*
 	 * Third level.
 	 */
-	path = c->qid.path&~(((1<<QSHIFT)-1));	/* slot component */
+	path = c->qid.path&~((1<<QSHIFT)-1);	/* slot component */
 	q.vers = c->qid.vers;
 	q.type = QTFILE;
 	switch(s){
@@ -860,7 +860,7 @@ initscreenimage(void)
 	}
 
 	screenimage->width = width;
-	screenimage->clipr  = screenimage->r;
+	screenimage->clipr = screenimage->r;
 	return 1;
 }
 

@@ -125,6 +125,7 @@ mmurestart(void) {
 
 	/* enable mmu */
 	wbflush();
+	icacheinvalidate();	/* you never know ... (sape) */
 	mmuinvalidate();
 	mmuenable();
 	cacheflush();

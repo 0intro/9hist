@@ -213,6 +213,10 @@ faultarm(Ureg *ureg, ulong va, int user, int read)
 	int n, insyscall;
 	char buf[ERRMAX];
 
+	if (up == nil) {
+		warnregs(ureg, "kernel fault");
+		panic("fault: nil up in faultarm, accessing 0x%lux\n", va);
+	}
 	insyscall = up->insyscall;
 	up->insyscall = 1;
 	n = fault(va, read);

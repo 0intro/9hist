@@ -51,8 +51,9 @@ dumpitall(void)
 	iprint("dram: mdcnfg msc %lux %lux %lux mecr %lux\n",
 		memconfregs->msc0, memconfregs->msc1,memconfregs->msc2,
 		memconfregs->mecr);
-
-	
+	iprint("powerregs: pmcr %lux pssr %lux pcfr %lux ppcr %lux pwer %lux pspr %lux pgsr %lux posr %lux\n",
+		powerregs->pmcr, powerregs->pssr, powerregs->pcfr, powerregs->ppcr,
+		powerregs->pwer, powerregs->pspr, powerregs->pgsr, powerregs->posr);
 }
 
 static void
@@ -76,12 +77,12 @@ gpiosave(GPIOregs *to, GPIOregs *from)
 static void
 gpiorestore(GPIOregs *to, GPIOregs *from)
 {
-	to->rising = from->rising;		// gpio intrs enabled
-	to->falling= from->falling;		// gpio intrs enabled
-	to->altfunc = from->altfunc;
 	to->direction = from->direction;
+	to->altfunc = from->altfunc;
 	to->set = from->level & 0x0fffffff;
 	to->clear = ~from->level & 0x0fffffff;
+	to->rising = from->rising;		// gpio intrs enabled
+	to->falling= from->falling;		// gpio intrs enabled
 }
 
 void	(*restart)(void) = nil;
@@ -143,19 +144,19 @@ deepsleep(void) {
 	static int power_pl;
 	ulong xsp, xlink;
 
-	power_pl = splhi();
-	delay(50);
 	xlink = getcallerpc(&xlink);
 	/* Power down */
-	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%lux\n", &xsp, xlink, power_pl);
-	dumpitall();
-	uartpower(0);
-	clockpower(0);
 	irpower(0);
 	audiopower(0);
 	screenpower(0);
 	µcpower(0);
+	power_pl = splhi();
+	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%lux\n", &xsp, xlink, power_pl);
+	dumpitall();
+	delay(100);
+	uartpower(0);
 	rs232power(0);
+	clockpower(0);
 	gpiosave(&savedgpioregs, gpioregs);
 	intrcpy(&savedintrregs, intrregs);
 	cacheflush();
@@ -173,21 +174,23 @@ deepsleep(void) {
 			intrregs->icip = (1<<IRQgpio0);
 		}
 		trapresume();
-		rs232power(1);
-		uartpower(1);
-//		irpower(1);
-//		audiopower(1);
 		clockpower(1);
 		gpclkregs->r0 = 1<<0;
-		µcpower(1);
-		screenpower(1);
+		rs232power(1);
+		uartpower(1);
 		dumpitall();
+		delay(100);
 		xlink = getcallerpc(&xlink);
 		iprint("\nresuming execution, sp = 0x%lux, pc = 0x%lux, psw = 0x%lux\n", &xsp, xlink, splhi());
-		delay(800);
 		splx(power_pl);
+//		irpower(1);
+//		audiopower(1);
+		µcpower(1);
+		screenpower(1);
 		return;
 	}
+	wbflush();
+	delay(50);
 	sa1100_power_off();
 	/* no return */
 }

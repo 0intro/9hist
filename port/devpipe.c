@@ -90,9 +90,9 @@ pipeattach(char *spec)
 static int
 pipegen(Chan *c, char*, Dirtab *tab, int ntab, int i, Dir *dp)
 {
+	Qid q;
 	int len;
 	Pipe *p;
-	Qid q;
 
 	if(i == DEVDOTDOT){
 		devdir(c, c->qid, "#|", 0, eve, DMDIR|0555, dp);

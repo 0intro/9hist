@@ -12,7 +12,7 @@ typedef struct OSTimer
 	ulong	osmr[4];	/* match registers */
 	ulong	oscr;		/* counter register */
 	ulong	ossr;		/* status register */
-	ulong	ower;		/* watchdog enable register */
+	ulong	ower;	/* watchdog enable register */
 	ulong	oier;		/* timer interrupt enable register */
 } OSTimer;
 
