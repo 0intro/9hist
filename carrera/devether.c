@@ -563,7 +563,7 @@ initbufs(Ether *c)
 	int i;
 	uchar *mem, *base;
 
-	mem = xspanalloc(64*1024, BY2PG, 0);
+	mem = xspanalloc(64*1024, 8, 64*1024);
 	base = mem;
 	mem = CACHELINE(uchar, mem);
 
@@ -581,12 +581,7 @@ initbufs(Ether *c)
 
 	c->cda = UNCACHED(Cam, mem);
 
-	/*
-	 * DMA buffers are cache coherent - but we must not straddle
-	 * a cache line
-	 */
 	mem = CACHELINE(uchar, mem+sizeof(Cam));
-
 	for(i = 0; i < Nrb; i++) {
 		c->rb[i] = UNCACHED(uchar, mem);
 		mem += sizeof(Pbuf)+4;

@@ -126,33 +126,28 @@ xinit(void)
 void*
 xspanalloc(ulong size, int align, ulong span)
 {
-	int i, j;
-	ulong a, p, sinc;
-	ulong ptr[Spanlist];
+	ulong a, v, t;
 
-	sinc = size/8;
-	span = ~(span-1);
-	for(i = 0; i < Spanlist; i++) {
-		p = (ulong)xalloc(size+align);
-		if(p == 0)
-			break;
+	a = (ulong)xalloc(size+align+span);
+	if(a == 0)
+		panic("xspanalloc: %d %d %lux\n", size, align, span);
 
-		a = p+align;
-		a &= ~(align-1);
-		if((a&span) == ((a+size)&span)) {
-			for(j = 0; j < i; j++)
-				if(ptr[j])
-					xfree((void*)ptr[j]);
-
-			return (void*)a;
-		}
-		xfree((void*)p);
-		ptr[i] = (ulong)xalloc(sinc);
+	if(span > 2) {
+		v = (a + span) & ~(span-1);
+		t = v - a;
+		if(t > 0)
+			xhole(PADDR(a), t);
+		t = a + span - v;
+		if(t > 0)
+			xhole(PADDR(v+size+align), t);
 	}
-	USED(sinc);
-	xsummary();
-	panic("xspanalloc: %d %d %lux\n", size, align, span);	
-	return 0;
+	else
+		v = a;
+
+	if(align > 1)
+		v = (v + align) & ~(align-1);
+
+	return (void*)v;
 }
 
 void*

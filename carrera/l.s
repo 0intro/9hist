@@ -742,9 +742,9 @@ TEXT	icflush(SB), $-4			/* icflush(virtaddr, count) */
 	ADDU	R1, R9			/* R9 = last address */
 	MOVW	$(~0x3f), R8
 	AND	R1, R8			/* R8 = first address, rounded down */
-	ADD	$0x3f, R9
+	ADDU	$0x3f, R9
 	AND	$(~0x3f), R9		/* round last address up */
-	SUB	R8, R9			/* R9 = revised count */
+	SUBU	R8, R9			/* R9 = revised count */
 icflush1:			/* primary cache line size is 16 bytes */
 	CACHE	PD+HWB, 0x00(R8)
 	CACHE	PI+HI, 0x00(R8)
@@ -754,8 +754,8 @@ icflush1:			/* primary cache line size is 16 bytes */
 	CACHE	PI+HI, 0x20(R8)
 	CACHE	PD+HWB, 0x30(R8)
 	CACHE	PI+HI, 0x30(R8)
-	SUB	$0x40, R9
-	ADD	$0x40, R8
+	SUBU	$0x40, R9
+	ADDU	$0x40, R8
 	BGTZ	R9, icflush1
 	MOVW	R10, M(STATUS)
 	WAIT
@@ -773,9 +773,9 @@ TEXT	dcflush(SB), $-4			/* dcflush(virtaddr, count) */
 	ADDU	R1, R9			/* R9 = last address */
 	MOVW	$(~0x3f), R8
 	AND	R1, R8			/* R8 = first address, rounded down */
-	ADD	$0x3f, R9
+	ADDU	$0x3f, R9
 	AND	$(~0x3f), R9		/* round last address up */
-	SUB	R8, R9			/* R9 = revised count */
+	SUBU	R8, R9			/* R9 = revised count */
 dcflush1:			/* primary cache line size is 16 bytes */
 	CACHE	PI+HI, 0x00(R8)
 	CACHE	PI+HI, 0x10(R8)
@@ -785,8 +785,8 @@ dcflush1:			/* primary cache line size is 16 bytes */
 	CACHE	PD+HWBI, 0x10(R8)
 	CACHE	PD+HWBI, 0x20(R8)
 	CACHE	PD+HWBI, 0x30(R8)
-	SUB	$0x40, R9
-	ADD	$0x40, R8
+	SUBU	$0x40, R9
+	ADDU	$0x40, R8
 	BGTZ	R9, dcflush1
 	MOVW	R10, M(STATUS)
 	WAIT
