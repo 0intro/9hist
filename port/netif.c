@@ -181,6 +181,7 @@ netifopen(Netif *nif, Chan *c, int omode)
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
+	c->iounit = qiomaxatomic;
 	return c;
 }
 

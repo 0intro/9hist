@@ -116,38 +116,6 @@ char *regname[]={
 };
 
 void
-sethvec(int v, void (*r)(void))
-{
-	ulong *vp, pa, o;
-
-	vp = KADDR(v);
-	vp[0] = 0x7c1043a6;	/* MOVW R0, SPR(SPRG0) */
-	vp[1] = 0x7c0802a6;	/* MOVW LR, R0 */
-	vp[2] = 0x7c1243a6;	/* MOVW R0, SPR(SPRG2) */
-	pa = PADDR(r);
-	o = pa >> 25;
-	if(o != 0 && o != 0x7F){
-		/* a branch too far */
-		vp[3] = (15<<26)|(pa>>16);	/* MOVW $r&~0xFFFF, R0 */
-		vp[4] = (24<<26)|(pa&0xFFFF);	/* OR $r&0xFFFF, R0 */
-		vp[5] = 0x7c0803a6;	/* MOVW	R0, LR */
-		vp[6] = 0x4e800021;	/* BL (LR) */
-	}else
-		vp[3] = (18<<26)|(pa&0x3FFFFFC)|3;	/* bla */
-	dcflush(vp, 8*sizeof(ulong));
-}
-
-void
-sethvec2(int v, void (*r)(void))
-{
-	ulong *vp;
-
-	vp = (ulong*)KADDR(v);
-	vp[0] = (18<<26)|(PADDR(r))|2;	/* ba */
-	dcflush(vp, sizeof(*vp));
-}
-
-void
 trap(Ureg *ur)
 {
 	int ecode;
@@ -155,6 +123,7 @@ trap(Ureg *ur)
 	int user;
 	char buf[ERRMAX];
 
+print("trap\n");
 	m->intrts = fastticks(nil);
 	ecode = (ur->cause >> 8) & 0xff;
 	user = (ur->srr1 & MSR_PR) != 0;
@@ -256,38 +225,40 @@ spurious(Ureg *ur, void *a)
 Lock	veclock;
 
 void
+sethvec(int v, void (*r)(void))
+{
+	ulong *vp, pa, o;
+
+	vp = KADDR(v);
+	vp[0] = 0x7c1043a6;	/* MOVW R0, SPR(SPRG0) */
+	vp[1] = 0x7c0802a6;	/* MOVW LR, R0 */
+	vp[2] = 0x7c1243a6;	/* MOVW R0, SPR(SPRG2) */
+	pa = PADDR(r);
+	o = pa >> 25;
+	if(o != 0 && o != 0x7F){
+		/* a branch too far */
+		vp[3] = (15<<26)|(pa>>16);	/* MOVW $r&~0xFFFF, R0 */
+		vp[4] = (24<<26)|(pa&0xFFFF);	/* OR $r&0xFFFF, R0 */
+		vp[5] = 0x7c0803a6;	/* MOVW	R0, LR */
+		vp[6] = 0x4e800021;	/* BL (LR) */
+	}else
+		vp[3] = (18<<26)|(pa&0x3FFFFFC)|3;	/* bla */
+	dcflush(vp, 8*sizeof(ulong));
+}
+
+void
 trapinit(void)
 {
-#ifdef	BLOG
 	int i;
-	IMM *io;
 
-
-	io = m->iomem;
-	io->sypcr &= ~(1<<3);	/* disable watchdog (821/823) */
-	io->simask = 0;	/* mask all */
-	io->siel = ~0;	/* edge sensitive, wake on all */
-	io->cicr = 0;	/* disable CPM interrupts */
-	io->cipr = ~0;	/* clear all interrupts */
-	io->cimr = 0;	/* mask all events */
-	io->cicr = (0xE1<<16)|(CPIClevel<<13)|(0x1F<<8);
-	io->cicr |= 1 << 7;	/* enable */
-	io->tbscr = 1;	/* TBE */
-	io->simask |= 1<<(31-LEV(CPIClevel));	/* CPM's level */
-	eieio();
 	putdec(~0);
+	putmsr(getmsr() & ~MSR_IP);
 
 	/*
 	 * set all exceptions to trap
 	 */
 	for(i = 0x0; i < 0x2000; i += 0x100)
 		sethvec(i, trapvec);
-
-	//sethvec(CEI<<8, intrvec);
-	sethvec2(CIMISS<<8, itlbmiss);
-	sethvec2(CDMISS<<8, dtlbmiss);
-	sethvec2(CDTLBE<<8, dtlberror);
-#endif
 }
 
 void
@@ -432,25 +403,46 @@ kernfault(Ureg *ur, int code)
 		sched();
 }
 
+/*
+ * Fill in enough of Ureg to get a stack trace, and call a function.
+ * Used by debugging interface rdb.
+ */
 void
-dumpstack(void)
+callwithureg(void (*fn)(Ureg*))
+{
+	Ureg ureg;
+	ureg.pc = getcallerpc(&fn);
+	ureg.sp = (ulong)&fn;
+	fn(&ureg);
+}
+
+void
+_dumpstack(Ureg *ureg)
 {
 	ulong l, v;
 	int i;
 
 	if(up == 0)
 		return;
+
+	print("ktrace /kernel/path %.8lux %.8lux\n", ureg->pc, ureg->sp);
 	i = 0;
 	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)etext){
-			print("%lux=%lux, ", l, v);
+			print("%.8lux=%.8lux ", l, v);
 			if(i++ == 4){
 				print("\n");
 				i = 0;
 			}
 		}
 	}
+}
+
+void
+dumpstack(void)
+{
+	callwithureg(_dumpstack);
 }
 
 void

@@ -37,6 +37,7 @@ enum
 
 #define	NHASH		(1<<5)
 #define	HASHMASK	(NHASH-1)
+#define	IOUNIT	(64*1024)
 
 typedef struct Client Client;
 typedef struct Draw Draw;
@@ -908,7 +909,7 @@ drawopen(Chan *c, int omode)
 
 	if(c->qid.type & QTDIR){
 		c = devopen(c, omode, 0, 0, drawgen);
-		c->iounit = 32*1024;
+		c->iounit = IOUNIT;
 	}
 
 	qlock(&sdraw);
@@ -949,7 +950,7 @@ drawopen(Chan *c, int omode)
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
-	c->iounit = 32*1024;
+	c->iounit = IOUNIT;
 	return c;
 }
 

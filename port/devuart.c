@@ -242,6 +242,7 @@ uartopen(Chan *c, int omode)
 		break;
 	}
 
+	c->iounit = qiomaxatomic;
 	return c;
 }
 

@@ -632,6 +632,7 @@ consopen(Chan *c, int omode)
 			qnoblock(kprintoq, 1);
 		}else
 			qreopen(kprintoq);
+		c->iounit = qiomaxatomic;
 		break;
 	}
 	return c;
@@ -846,7 +847,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return n;
 
 	case Qosversion:
-		snprint(tmp, sizeof tmp, "2000 %d", qiomaxatomic);
+		snprint(tmp, sizeof tmp, "2000");
 		n = readstr((ulong)offset, buf, n, tmp);
 		return n;
 

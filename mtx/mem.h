@@ -81,7 +81,7 @@
 #define SIA		955		/* Sampled Instruction Address */
 #define SDA		959		/* Sampled Data Address */
 
-#define BIT(i)	(1<<(32-(i)))	/* Silly backwards register bit numbering scheme */
+#define BIT(i)	(1<<(31-(i)))	/* Silly backwards register bit numbering scheme */
 
 /*
  * Bit encodings for Machine State Register (MSR)
@@ -222,3 +222,5 @@
 #define	FLASHAorB	0xfff00000
 
 #define isphys(x) (((ulong)x&KZERO)!=0)
+
+#define getpgcolor(a)	0
