@@ -159,24 +159,6 @@ sslwstat(Chan *c, char *dp)
 	error(Eperm);
 }
 
-static void
-dighangup(Dstate *s)
-{
-	Block *b;
-
-	qlock(&s->in);
-	for(b = s->processed; b; b = s->processed){
-		s->processed = b->next;
-		freeb(b);
-	}
-	if(s->unprocessed){
-		freeb(s->unprocessed);
-		s->unprocessed = 0;
-	}
-	s->state = Closed;
-	qunlock(&s->in);
-}
-
 void
 sslclose(Chan *c)
 {
@@ -335,62 +317,175 @@ sslwrite(Chan *c, char *a, long n, ulong offset)
 	return n;
 }
 
-void
-digestb(Dstate *s, Block *b, OneWay *w)
+/*
+ *  use SSL record format, add in count and digest or encrypt
+ */
+long
+sslbwrite(Chan *c, Block *b, ulong offset)
 {
+	Dstate *s;
 	Block *nb;
-	uchar *p;
-	DigestState ss;
-	uchar msgid[4];
-	ulong n, h;
+	int h, n, m, pad, rv;
 
-	memset(&ss, 0, sizeof(ss));
-	h = s->diglen + 2;
-	n = BLEN(b) - h;
+	s = c->aux;
+	if(s == 0 || s->state != Established)
+		error(Ebadusefd);
 
-	/* hash secret + message */
-	(*s->hf)(w->secret, w->slen, 0, &ss);
-	(*s->hf)(nb->rp + h, n, 0, &ss);
-
-	/* hash message id */
-	p = msgid;
-	n = w->mid++;
-	*p++ = n>>24;
-	*p++ = n>>16;
-	*p++ = n>>8;
-	*p = n;
-	(*s->func)(msgid, 4, nb->rp + 2, &ss);
-}
-
-long
-encryptb(Dstate *s, Block *b)
-{
-	ulong n, h;
-	int j;
-	uchar *p, *ep, *ip;
-	DESstate *ds;
-
-	h = s->diglen + 2;
-
-	switch(s->encryptalg){
-	case DESEBC:
-		ds = s->out.state;
-		ep = b->rp + BLEN(b);
-		for(p = b->rp + h; p < ep; p += 8)
-			block_cipher(ds->expanded, p, 0);
-		break;
-	case DESCBC:
-		ds = s->out.state;
-		ep = b->rp + BLEN(b);
-		for(p = b->rp + h; p < ep; p += 8)
-			bCBCEncrypt(p, ds->ivec, ds->expanded, 8);
-		break;
+	if(waserror()){
+		qunlock(&s->out);
+		if(b)
+			freeb(b);
+		dighangup(s);
+		nexterror();
 	}
-	
+	qlock(&s->out);
+
+	rv = 0;
+	while(b){
+		m = n = BLEN(b);
+		h = s->diglen + 2;
+
+		/* padded blocks are shorter than unpadded ones (strange) */
+		pad = 0;
+		if(m > s->max){
+			m = s->max;
+		} else if(s->blocklen != 1){
+			pad = m%s->blocklen;
+			if(pad){
+				pad = s->blocklen - pad;
+				if(m > s->maxpad){
+					pad = 0;
+					m = s->maxpad;
+				}
+			}
+		}
+
+		rv += m;
+		if(m != n){
+			nb = allocb(m + h + pad);
+			memmove(nb->wp + h, m, b->rp);
+			nb->wp += m + h;
+			b->rp += m;
+		} else {
+			/* add header */
+			nb = padblock(b, h);
+			nb->rp -= h;
+
+			/* add pad */
+			if(pad)
+				nb = padblock(nb, -pad);
+			b = 0;
+		}
+		m += s->diglen;
+
+		/* SSL style count */
+		if(pad){
+			memset(nb->wp, 0, pad);
+			m += pad;
+			nb->wp += pad;
+		} else
+			m |= 0x8000;
+		np->rp[0] = (m>>8);
+		np->rp[1] = m;
+
+		if(encryptalg)
+			encryptb(s, nb);
+		else
+			digestb(s, nb);
+
+		(*devtab[s->c->type].bwrite)(s->c, nb, offset);
+
+	}
+	qunlock(&s->out);
+	poperror();
+
+	return rv;
 }
 
-long
-decryptb(Dstate *s, Block *b)
+Block*
+sslbread(Chan *c, long n, ulong offset)
+{
+	Block *bp, **l;
+	uchar count[2];
+	int len;
+	int pad;
+
+	USED(offset);
+
+	s = c->aux;
+	if(s == 0 || s->state != Established)
+		error(Ebadusefd);
+
+	if(waserror()){
+		qunlock(&s->in);
+		dighangup(s);
+		nexterror();
+	}
+	qlock(&s->in);
+
+	if(s->processed == 0){
+	
+		/* read in the whole message */
+		s->processed = s->unprocessed;
+		s->unprocessed =- 0;
+		ensure(s, &s->processed, 2);
+		consume(&s->processed, count, 2);
+		if(count[0] & 0x80){
+			len = ((count[0] & 0x7f)<<8) | count[1];
+			pad = 0;
+		} else {
+			len = ((count[0] & 0x3f)<<8) | count[1];
+			ensure(s, &s->processed, 1);
+			consume(&s->processed, count, 1);
+			pad = count[0];
+		}
+		ensure(s, &s->processed, len);
+
+		/* put remainder on unprocessed */
+		i = 0;
+		for(b = s->processed; b; b = b->next){
+			i = BLEN(b);
+			if(i >= len)
+				break;
+			(*s->func)(b->rp, i, 0, &ss);
+			len -= i;
+		}
+		if(b == 0)
+			panic("digestbread");
+		if(i > len){
+			i -= len;
+			s->unprocessed = allocb(i);
+			memmove(s->unprocessed->wp, b->rp+len, i);
+			s->unprocessed->wp += i;
+			b->wp -= i;
+		}
+			
+		if(s->encrypalg)
+			decryptb(s, len);
+		else
+			checkdigestb(s, len);
+
+		if(pad){
+			for(b = s->processed; b; b = b->next){
+	}
+
+	b = s->processed;
+	if(BLEN(b) > n){
+		b = allocb(n);
+		memmove(b->wp, s->processed->rp, n);
+		b->wp += n;
+		s->processed->rp += n;
+	} else 
+		s->processed = b->next;
+
+	qunlock(&s->in);
+	poperror();
+
+	return b;
+}
+
+Block*
+decryptb(Dstate *s, Block *b, int len)
 {
 	ulong n, h;
 	uchar *p, *ep;
@@ -549,55 +644,64 @@ digestbread(Dstate *s, long n)
 	return b;
 }
 
-static Block*
-sslbread(Chan *c, long n, ulong offset)
+void
+digestb(Dstate *s, Block *b)
 {
-	Block *bp;
-	uchar count[2];
-	int len;
-	int pad;
+	Block *nb;
+	uchar *p;
+	DigestState ss;
+	uchar msgid[4];
+	ulong n, h;
+	OneWay *w;
 
-	USED(offset);
+	w = &s->out;
 
-	s = c->aux;
-	if(s == 0 || s->state != Established)
-		error(Ebadusefd);
+	memset(&ss, 0, sizeof(ss));
+	h = s->diglen + 2;
+	n = BLEN(b) - h;
 
-	if(waserror()){
-		qunlock(&s->in);
-		dighangup(s);
-		nexterror();
-	}
+	/* hash secret + message */
+	(*s->hf)(w->secret, w->slen, 0, &ss);
+	(*s->hf)(nb->rp + h, n, 0, &ss);
 
-	qlock(&s->in);
-
-	/* get the whole message */
-	ensure(s, &s->unprocessed, 2);
-	consume(&s->unprocessed, count, 2);
-	if(count[0] & 0x80){
-		len = ((count[0] & 0x7f)<<8) | count[1];
-		pad = 0;
-	} else {
-		len = ((count[0] & 0x3f)<<8) | count[1];
-		ensure(s, &s->unprocessed, 1);
-		consume(&s->unprocessed, count, 1);
-		pad = count[0];
-	}
-	ensure(s, &s->unprocessed, len);
-		
-	if(s->encrypalg)
-		b = decryptb(s, len);
-	else
-		b = digestb(s, len);
-
-	if(pad)
-
-	qunlock(&s->in);
-	poperror();
-
-	return b;
+	/* hash message id */
+	p = msgid;
+	n = w->mid++;
+	*p++ = n>>24;
+	*p++ = n>>16;
+	*p++ = n>>8;
+	*p = n;
+	(*s->func)(msgid, 4, nb->rp + 2, &ss);
 }
 
+long
+encryptb(Dstate *s, Block *b)
+{
+	ulong n, h;
+	int j;
+	uchar *p, *ep, *ip;
+	DESstate *ds;
+
+	h = s->diglen + 2;
+
+	switch(s->encryptalg){
+	case DESEBC:
+		ds = s->out.state;
+		ep = b->rp + BLEN(b);
+		for(p = b->rp + h; p < ep; p += 8)
+			block_cipher(ds->expanded, p, 0);
+		break;
+	case DESCBC:
+		ds = s->out.state;
+		ep = b->rp + BLEN(b);
+		for(p = b->rp + h; p < ep; p += 8)
+			bCBCEncrypt(p, ds->ivec, ds->expanded, 8);
+		break;
+	}
+	
+}
+
+/* get channel associated with an fd */
 static Chan*
 buftochan(char *a, long n)
 {
@@ -615,88 +719,23 @@ buftochan(char *a, long n)
 	return c;
 }
 
-/*
- *  use SSL record format, add in count and digest or encrypt
- */
-long
-sslbwrite(Chan *c, Block *b, ulong offset)
+/* hand up a digest connection */
+static void
+dighangup(Dstate *s)
 {
-	Dstate *s;
-	Block *nb;
-	int h, n, m, pad, rv;
+	Block *b;
 
-	s = c->aux;
-	if(s == 0 || s->state != Established)
-		error(Ebadusefd);
-
-	if(waserror()){
-		qunlock(&s->out);
-		if(b)
-			freeb(b);
-		dighangup(s);
-		nexterror();
+	qlock(&s->in);
+	for(b = s->processed; b; b = s->processed){
+		s->processed = b->next;
+		freeb(b);
 	}
-	qlock(&s->out);
-
-	rv = 0;
-	while(b){
-		m = n = BLEN(b);
-		h = s->diglen + 2;
-
-		/* padded blocks are shorter than unpadded ones (strange) */
-		pad = 0;
-		if(m > s->max){
-			m = s->max;
-		} else if(s->blocklen != 1){
-			pad = m%s->blocklen;
-			if(pad){
-				pad = s->blocklen - pad;
-				if(m > s->maxpad){
-					pad = 0;
-					m = s->maxpad;
-				}
-			}
-		}
-
-		rv += m;
-		if(m != n){
-			nb = allocb(m + h + pad);
-			memmove(nb->wp + h, m, nb->rptr);
-			nb->wp += m + h;
-			b->rp += m;
-		} else {
-			/* add header */
-			nb = padblock(b, h);
-			nb->rp -= h;
-
-			/* add pad */
-			if(pad)
-				nb = padblock(nb, -pad);
-			b = 0;
-		}
-
-		/* SSL style count */
-		if(pad){
-			memset(nb->wp, 0, pad);
-			m += pad;
-			nb->wp += pad;
-		} else
-			m |= 0x8000;
-		np->rp[0] = (m>>8);
-		np->rp[1] = m;
-
-		if(encryptalg)
-			encryptb(s, nb);
-		else
-			digestb(s, nb);
-
-		(*devtab[s->c->type].bwrite)(s->c, nb, offset);
-
+	if(s->unprocessed){
+		freeb(s->unprocessed);
+		s->unprocessed = 0;
 	}
-	qunlock(&s->out);
-	poperror();
-
-	return rv;
+	s->state = Closed;
+	qunlock(&s->in);
 }
 
 /*
