@@ -133,7 +133,10 @@ enum
 
 	Defaultwin	= 20,
 	LogAGain	= 3,
+	AGain		= 1<<LogAGain,
 	LogDGain	= 2,
+	DGain		= 1<<LogDGain,
+	DefByteRate	= 1000,
 };
 
 void	ilrcvmsg(Conv*, Block*);
@@ -365,8 +368,76 @@ ilinitrtt(Ilcb *ic)
 {
 	ic->delay = Iltickms<<LogAGain;
 	ic->mdev = Iltickms<<LogDGain;
-	ic->rate = 10000<<LogAGain;		/* 10 meg ether */
-	ic->lrttlen = -1;
+	ic->rate = DefByteRate<<LogAGain;		/* 10 meg ether */
+	ic->lrtt = 0;
+	ic->lrttlen = 0;
+}
+
+static void
+ilrttcalc(Ilcb *ic)
+{
+	int dlen, dt, t, pt, x;
+
+	t = msec - ic->rttms;
+
+	/* Guard against the ulong zero wrap of MACHP(0)->ticks */
+	if(t > 120000)
+		return;
+
+
+	/* seed connection parameters with time of first ack */
+	if(ic->lrttlen == 0){
+		ic->lrttlen = ic->rttlen;
+		/* account pessimisticly for clock resolution */
+		if(t == 0)
+			t = TK2MS(1);
+		ic->lrtt = t;
+		x = (ic->rttlen/t)<<LogAGain;
+		if(x < AGain)
+			x = AGain;
+		ic->rate = x;
+		ic->delay = t<<LogAGain;
+		ic->mdev = t<<LogDGain;
+		goto out;
+	}
+
+	dlen = ic->rttlen - ic->lrttlen;
+	dt = t - ic->lrtt;
+
+	/*  fixed delay */
+	if(dlen == 0)
+		x = t - ic->rttlen/(ic->rate>>LogAGain);
+	else
+		x = (ic->lrtt*ic->rttlen - t*ic->lrttlen)/dlen;
+	if(x > 0){
+		x += ic->delay - (ic->delay>>LogAGain);
+		if(x < AGain)
+			x = AGain;
+		ic->delay = x;
+	}
+
+	/* rate */
+	if(dt == 0){
+		if(dlen)
+			x = DefByteRate;
+		else
+			x = -1;
+	} else
+		x = dlen/dt;
+	if(x > 0){
+		x += ic->rate - (ic->rate>>LogAGain);
+		if(x < AGain)
+			x = AGain;
+		ic->rate = x;
+	}
+
+	/* mdev */
+	pt = ic->rttlen/(ic->rate>>LogAGain) + (ic->delay>>LogAGain);
+	ic->mdev += abs(t-pt) - (ic->mdev>>LogDGain);
+
+out:
+	ic->lrtt = t;
+	ic->lrttlen = ic->rttlen;
 }
 
 void
@@ -375,45 +446,9 @@ ilackto(Ilcb *ic, ulong ackto)
 	Ilhdr *h;
 	Block *bp;
 	ulong id;
-	int x, t, pt;
 
-	if(ic->rttack == ackto) {
-		t = msec - ic->rttms;
-		/* Guard against the ulong zero wrap of MACHP(0)->ticks */
-		if(t > 120000){
-			/* seed connection parameters with time of first ack */
-			if(ic->lrttlen < 0){
-				ic->rate = (ic->rttlen/t)<<LogAGain;
-				ic->delay = t<<LogAGain;
-				ic->mdev = t<<LogDGain;
-				ic->lrttlen = ic->rttlen;
-				ic->lrtt = t;
-			}
-
-			pt = ic->rttlen/(ic->rate>>LogAGain) + (ic->delay>>LogAGain);
-	
-			/* mdev */
-			ic->mdev += abs(t-pt) - (ic->mdev>>LogDGain);
-	
-			/*  fixed delay */
-			if(ic->rttlen != ic->lrttlen){
-				x = (ic->lrtt*ic->rttlen - t*ic->lrttlen)/(ic->rttlen-ic->lrttlen);
-				ic->delay += x - (ic->delay>>LogAGain);
-			}
-	
-			/* rate */
-			if(ic->lrtt != t){
-				x = (ic->lrttlen - ic->rttlen)/(ic->lrtt - t);
-				ic->rate += x - (ic->rate>>LogAGain);
-			}
-
-			ic->lrtt = t;
-			ic->lrttlen = ic->rttlen;
-		}
-
-		if(ic->delay < (Iltickms<<LogAGain))
-			ic->delay = Iltickms<<LogAGain;
-	}
+	if(ic->rttack == ackto)
+		ilrttcalc(ic);
 
 	/* Cancel if we lost the packet we were interested in */
 	if(ic->rttack <= ackto)
@@ -1060,8 +1095,7 @@ iltimers(Ilcb *ic)
 	int pt;
 
 	ic->timeout = 0;
-	pt = ic->delay>>LogAGain;
-	pt += ic->unackedbytes/(ic->rate>>LogAGain);
+	pt = (ic->delay>>LogAGain) + ic->unackedbytes/(ic->rate>>LogAGain) + ic->mdev;
 	ic->fasttime = (Fasttime*pt)/Iltickms;
 	ic->slowtime = (Slowtime*pt)/Iltickms;
 }
