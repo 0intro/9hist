@@ -361,7 +361,7 @@ struct Tcppriv
  *  it that number gets acked by the other end, we shut down the connection.
  *  Look for tcpporthogedefense in the code.
  */
-int tcpporthogdefense = 1;
+int tcpporthogdefense = 0;
 
 int	addreseq(Tcpctl*, Tcppriv*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
@@ -3013,6 +3013,18 @@ tcpadvise(Proto *tcp, Block *bp, char *msg)
 	freeblist(bp);
 }
 
+static char*
+tcpporthogdefensectl(char *val)
+{
+	if(strcmp(val, "on") == 0)
+		tcpporthogdefense = 1;
+	else if(strcmp(val, "off") == 0)
+		tcpporthogdefense = 0;
+	else
+		return "unknown value for tcpporthogdefense";
+	return nil;
+}
+
 /* called with c qlocked */
 char*
 tcpctl(Conv* c, char** f, int n)
@@ -3023,6 +3035,8 @@ tcpctl(Conv* c, char** f, int n)
 		return tcpstartka(c, f, n);
 	if(n >= 1 && strcmp(f[0], "checksum") == 0)
 		return tcpsetchecksum(c, f, n);
+	if(n >= 1 && strcmp(f[0], "tcpporthogdefense") == 0)
+		return tcpporthogdefensectl(f[1]);
 	return "unknown control request";
 }
 

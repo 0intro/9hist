@@ -441,7 +441,7 @@ ipiput4(Fs *f, Ipifc *ifc, Block *bp)
 	h = (Ip4hdr*)(bp->rp);
 
 	/* dump anything that whose header doesn't checksum */
-	if(ipcsum(&h->vihl)) {
+	if((bp->flag & Bipck) == 0 && ipcsum(&h->vihl)) {
 		ip->stats[InHdrErrors]++;
 		netlog(f, Logip, "ip: checksum error %V\n", h->src);
 		freeblist(bp);
