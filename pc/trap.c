@@ -191,7 +191,7 @@ trapinit(void)
 
 	/*
 	 *  Set up the second 8259 interrupt processor.
-	 *  Make 8259 interrupts start at CPU vector Int0vec.
+	 *  Make 8259 interrupts start at CPU vector Int1vec.
 	 *  Set the 8259 as master with level triggered
 	 *  input with fully nested interrupts.
 	 */
