@@ -214,6 +214,7 @@ void
 i8042reset(void)
 {
 	ushort *s = (ushort*)(KZERO|0x472);
+	int i, x;
 
 	*s = 0x1234;		/* BIOS warm-boot flag */
 
@@ -223,19 +224,19 @@ i8042reset(void)
 	outready();
 	outb(Cmd, 0xFE);	/* pulse reset line (means resend on AT&T machines) */
 	outready();
+
 	/*
-	 *  this is the old IBM way
+	 *  Pulse it by hand (old somewhat reliable)
 	 */
-	outready();
-	outb(Cmd, 0xD1);
-	outready();
-	outb(Data, 0xDE);	/* set reset line high */
-	outready();
-	delay(100);
-	outb(Cmd, 0xD1);
-	outready();
-	outb(Data, 0xDF);	/* set reset line low */
-	outready();
+	x = 0xDF;
+	for(i = 0; i < 5; i++){
+		x ^= 1;
+		outready();
+		outb(Cmd, 0xD1);
+		outready();
+		outb(Data, x);	/* toggle reset */
+		delay(100);
+	}
 }
 
 /*
