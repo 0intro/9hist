@@ -22,6 +22,7 @@ Page*		auxpage(void);
 int		blocklen(Block*);
 void		cachedel(Image*, ulong);
 void		cachepage(Page*, Image*);
+void		callwithureg(void(*)(Ureg*));
 int		cangetc(void*);
 int		canlock(Lock*);
 int		canpage(Proc*);

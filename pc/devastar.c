@@ -458,8 +458,8 @@ astarreset(void)
 			a->gcb = (GCB*)(a->mem+0x10000);
 
 			sprint(name, "astar%d", i);
-			if(ioalloc(a->port, p->mem[2].size, 0, name) < 0){
-				print("#G%d: port 0x%lux in use", a->id, a->port);
+			if(ioalloc(a->port, p->mem[1].size, 0, name) < 0){
+				print("#G%d: port 0x%lux in use\n", a->id, a->port);
 				xfree(a);
 				astar[nastar] = 0;
 				continue;

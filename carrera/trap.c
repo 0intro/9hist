@@ -469,30 +469,36 @@ kernfault(Ureg *ur, int code)
 	panic("kfault");
 }
 
-note rsc_wrote_this_but_has_not_checked_it yet;
-void
+static void
 getpcsp(ulong *pc, ulong *sp)
 {
 	*pc = getcallerpc(&pc);
-	sp = (ulong)&pc-4;
+	*sp = (ulong)&pc-4;
+}
+
+void
+callwithureg(void (*fn)(Ureg*))
+{
+	Ureg ureg;
+
+	getpcsp((ulong*)&ureg.pc, (ulong*)&ureg.sp);
+	ureg.r31 = getcallerpc(&fn);
+	fn(&ureg);
 }
 
 static void
-_dumpstack(ulong dummy)
+_dumpstack(Ureg *ureg)
 {
-	ulong pc, sp, link, l, v, top, i;
+	ulong l, v, top, i;
 	extern ulong etext;
 
 	if(up == 0)
 		return;
 
-	getpcsp(&pc, &sp);
-	link = getcallerpc(&dummy);
-
-	print("ktrace /kernel/path %.8lux %.8lux %.8lux\n", pc, sp, r31);
+	print("ktrace /kernel/path %.8lux %.8lux %.8lux\n", ureg->pc, ureg->sp, ureg->r31);
 	top = (ulong)up->kstack + KSTACK;
 	i = 0;
-	for(l=(ulong)&l; l < top; l += BY2WD) {
+	for(l=ureg->sp; l < top; l += BY2WD) {
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext) {
 			print("%.8lux=%.8lux ", l, v);
@@ -508,7 +514,7 @@ _dumpstack(ulong dummy)
 void
 dumpstack(void)
 {
-	_dumpstack(0);
+	callwithureg(_dumpstack);
 }
 
 ulong

@@ -314,26 +314,31 @@ dumpregs(Ureg* ureg)
 	print("\n  ur %lux up %lux\n", ureg, up);
 }
 
+
+/*
+ * Fill in enough of Ureg to get a stack trace, and call a function.
+ * Used by debugging interface rdb.
+ */
 void
-getpcsp(ulong *pc, ulong *sp)
+callwithureg(void (*fn)(Ureg*))
 {
-	*pc = getcallerpc(&pc);
-	*sp = (ulong)&pc;
+	Ureg ureg;
+	ureg.pc = getcallerpc(&fn);
+	ureg.sp = (ulong)&fn;
+	fn(&ureg);
 }
 
-void
-dumpstack(void)
+static void
+_dumpstack(Ureg *ureg)
 {
 	ulong l, v, i;
-	ulong sp, pc;
 	uchar *p;
 	extern ulong etext;
 
 	if(up == 0)
 		return;
 
-	getpcsp(&pc, &sp);
-	print("ktrace /kernel/path %.8lux %.8lux\n", pc, sp);
+	print("ktrace /kernel/path %.8lux %.8lux\n", ureg->pc, ureg->sp);
 	i = 0;
 	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
 		v = *(ulong*)l;
@@ -356,6 +361,12 @@ dumpstack(void)
 	}
 	if(i)
 		print("\n");
+}
+
+void
+dumpstack(void)
+{
+	callwithureg(_dumpstack);
 }
 
 static void
