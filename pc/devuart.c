@@ -36,6 +36,7 @@ enum
 	 Loop=	(1<<4),		/*  loop bask */
 	Lstat=	5,		/* line status */
 	 Inready=(1<<0),	/*  receive buffer full */
+	 Overrun=(1<<1),	/*  we lost an input char */
 	 Outready=(1<<5),	/*  output buffer full */
 	Mstat=	6,		/* modem status */
 	Scratch=7,		/* scratchpad */
@@ -212,6 +213,9 @@ uartintr(Uart *up)
 	IOQ *cq;
 	int s, l;
 
+	/*
+	 *  the for loop takes care of multiple events per interrupt
+	 */
 	for(;;){
 		s = uartrdreg(up, Istat);
 		switch(s){
@@ -229,6 +233,9 @@ uartintr(Uart *up)
 				if(up->delim[ch/8] & (1<<(ch&7)) )
 					wakeup(&cq->r);
 			}
+			l = uartrdreg(up, Lstat);
+			if(l & Overrun)
+				screenputc('!');
 			break;
 	
 		case 2:	/* transmitter empty */
@@ -281,11 +288,6 @@ uartenable(Uart *up)
 		if(serial(0) < 0)
 			print("can't turn on serial port power\n");
 	}
-
-	/*
-	 *  speed up the clock to poll the uart
-	fclockinit();
-	 */
 
 	/*
 	 *  set up i/o routines

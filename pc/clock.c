@@ -94,37 +94,3 @@ clock(Ureg *ur)
 		}
 	}
 }
-
-/*
- *  a faster (1 MS) clock tick for a non-interrupting serial port or
- *  kernel profiling.  m->ticks still increments as usual.
- */
-void
-fclock(Ureg *ur)
-{
-	static ulong ticks;
-
-	uartintr0(ur);		/* poll the serial port */
-	if((ticks++ % (FHZ/HZ)) == 0)
-		clock(ur);
-}
-
-void
-fclockinit(void)
-{
-	int x;
-
-	/*
-	 *  set vector for clock interrupts
-	 */
-	setvec(Clockvec, fclock);
-
-	/*
-	 *  make clock output a square wave with a 1/FHZ period
-	 */
-	x = splhi();
-	outb(Tmode, Load0square);
-	outb(T0cntr, (Freq/FHZ));	/* low byte */
-	outb(T0cntr, (Freq/FHZ)>>8);	/* high byte */
-	splx(x);
-}

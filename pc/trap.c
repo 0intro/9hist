@@ -191,6 +191,12 @@ trap(Ureg *ur)
 	}
 
 	/*
+	 *  check for a waiting character, the uart is at too low
+	 *  a priority level to work correctly at 9600 baud.
+	 */
+	uartintr0(ur);
+
+	/*
 	 *  call the trap routine
 	 */
 	(*ivec[v])(ur);
@@ -264,7 +270,7 @@ syscall(Ureg *ur)
 	u->p->pc = ur->pc;
 	if((ur->cs)&0xffff == KESEL)
 		panic("recursive system call");
-	u->p->insyscall = 0;
+	spllo();
 
 	/*
 	 *  do something about floating point!!!
@@ -274,7 +280,6 @@ syscall(Ureg *ur)
 	sp = ur->usp;
 	u->nerrlab = 0;
 	ret = -1;
-	spllo();
 	if(!waserror()){
 		if(ax >= sizeof systab/BY2WD){
 			pprint("bad sys call number %d pc %lux\n", ax, ur->pc);

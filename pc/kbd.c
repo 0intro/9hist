@@ -398,14 +398,6 @@ kbdintr0(void)
 		return 0;
 	}
 
-	keyup = c&0x80;
-	c &= 0x7f;
-	if(c > sizeof kbtab){
-		print("unknown key %ux\n", c|keyup);
-		kbdputc(&kbdq, k1);
-		return 0;
-	}
-
 	/*
 	 *  e0's is the first of a 2 character sequence
 	 */
@@ -417,10 +409,19 @@ kbdintr0(void)
 		return 0;
 	}
 
+	keyup = c&0x80;
+	c &= 0x7f;
+	if(c > sizeof kbtab){
+		print("unknown key %ux\n", c|keyup);
+		kbdputc(&kbdq, k1);
+		return 0;
+	}
+
 	if(esc1){
-print("\nescape1 %lux\n", c);
 		c = kbtabesc1[c];
 		esc1 = 0;
+		kbdputc(&kbdq, c);
+		return 0;
 	} else if(esc2){
 		esc2--;
 		return 0;
