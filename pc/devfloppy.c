@@ -230,9 +230,8 @@ floppyopen(Chan *c, int omode)
 }
 
 static void
-floppyclose(Chan *c)
+floppyclose(Chan *)
 {
-	USED(c);
 }
 
 static void
@@ -319,13 +318,14 @@ readtrack(FDrive *dp, int cyl, int head)
 }
 
 static long
-floppyread(Chan *c, void *a, long n, ulong offset)
+floppyread(Chan *c, void *a, long n, vlong off)
 {
 	FDrive *dp;
 	long rv;
 	int sec, head, cyl;
 	long len;
 	uchar *aa;
+	ulong offset = off;
 
 	if(c->qid.path == CHDIR)
 		return devdirread(c, a, n, floppydir, fl.ndrive*NFDIR, devgen);
@@ -373,12 +373,13 @@ floppyread(Chan *c, void *a, long n, ulong offset)
 
 #define SNCMP(a, b) strncmp(a, b, sizeof(b)-1)
 static long
-floppywrite(Chan *c, void *a, long n, ulong offset)
+floppywrite(Chan *c, void *a, long n, vlong off)
 {
 	FDrive *dp;
 	long rv, i;
 	char *aa = a;
 	char ctlmsg[64];
+	ulong offset = off;
 
 	rv = 0;
 	dp = &fl.d[c->qid.path & ~Qmask];
@@ -438,11 +439,10 @@ floppywrite(Chan *c, void *a, long n, ulong offset)
 }
 
 static void
-floppykproc(void *a)
+floppykproc(void *)
 {
 	FDrive *dp;
 
-	USED(a);
 	while(waserror())
 		;
 	for(;;){
@@ -622,9 +622,8 @@ floppysense(void)
 }
 
 static int
-cmddone(void *a)
+cmddone(void *)
 {
-	USED(a);
 	return fl.ncmd == 0;
 }
 
@@ -982,9 +981,8 @@ floppyformat(FDrive *dp, char *params)
 }
 
 static void
-floppyintr(Ureg *ur)
+floppyintr(Ureg *)
 {
-	USED(ur);
 	switch(fl.cmd[0]&~Fmulti){
 	case Fread:
 	case Fwrite:

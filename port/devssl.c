@@ -515,13 +515,14 @@ sslbread(Chan *c, long n, ulong offset)
 }
 
 static long
-sslread(Chan *c, void *a, long n, ulong offset)
+sslread(Chan *c, void *a, long n, vlong off)
 {
 	volatile struct { Block *b; } b;
 	Block *nb;
 	uchar *va;
 	int i;
 	char buf[128];
+	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, sslgen);
@@ -780,12 +781,13 @@ parseencryptalg(char *p, Dstate *s)
 }
 
 static long
-sslwrite(Chan *c, void *a, long n, ulong offset)
+sslwrite(Chan *c, void *a, long n, vlong off)
 {
 	volatile struct { Dstate *s; } s;
 	volatile struct { Block *b; } b;
 	int m, t;
 	char *p, *np, *e, buf[32];
+	ulong offset = off;
 
 	s.s = dstate[CONV(c->qid)];
 	if(s.s == 0)

@@ -65,9 +65,10 @@ etherclose(Chan* chan)
 }
 
 static long
-etherread(Chan* chan, void* buf, long n, ulong offset)
+etherread(Chan* chan, void* buf, long n, vlong off)
 {
 	Ether *ether;
+	ulong offset = off;
 
 	ether = etherxx[chan->dev];
 	if((chan->qid.path & CHDIR) == 0 && ether->dev && ether->dev->ifstat){
@@ -231,7 +232,7 @@ etheroq(Ether* ether, Block* bp)
 }
 
 static long
-etherwrite(Chan* chan, void* buf, long n, ulong)
+etherwrite(Chan* chan, void* buf, long n, vlong)
 {
 	Ether *ether;
 	Block *bp;

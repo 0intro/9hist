@@ -109,11 +109,12 @@ kprofclose(Chan*)
 }
 
 static long
-kprofread(Chan *c, void *va, long n, ulong offset)
+kprofread(Chan *c, void *va, long n, vlong off)
 {
 	ulong end;
 	ulong w, *bp;
 	uchar *a, *ea;
+	ulong offset = off;
 
 	switch(c->qid.path & ~CHDIR){
 	case Kprofdirqid:
@@ -150,7 +151,7 @@ kprofread(Chan *c, void *va, long n, ulong offset)
 }
 
 static long
-kprofwrite(Chan *c, char *a, long n, ulong)
+kprofwrite(Chan *c, char *a, long n, vlong)
 {
 	switch((int)(c->qid.path&~CHDIR)){
 	case Kprofctlqid:

@@ -37,8 +37,8 @@ devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db)
 		db->mode |= CHMOUNT;
 	db->atime = seconds();
 	db->mtime = kerndate;
-	db->hlength = 0;
-	db->length = length;
+	db->length1 = length;	/* BOTCH */
+	db->length2 = length;	/* BOTCH */
 	memmove(db->uid, user, NAMELEN);
 	memmove(db->gid, eve, NAMELEN);
 }

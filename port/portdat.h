@@ -141,7 +141,7 @@ struct Chan
 	Ref;
 	Chan*	next;			/* allocation */
 	Chan*	link;
-	ulong	offset;			/* in file */
+	vlong	offset;			/* in file */
 	ushort	type;
 	ulong	dev;
 	ushort	mode;			/* read/write */
@@ -179,9 +179,9 @@ struct Dev
 	Chan*	(*open)(Chan*, int);
 	void	(*create)(Chan*, char*, int, ulong);
 	void	(*close)(Chan*);
-	long	(*read)(Chan*, void*, long, ulong);
+	long	(*read)(Chan*, void*, long, vlong);
 	Block*	(*bread)(Chan*, long, ulong);
-	long	(*write)(Chan*, void*, long, ulong);
+	long	(*write)(Chan*, void*, long, vlong);
 	long	(*bwrite)(Chan*, Block*, ulong);
 	void	(*remove)(Chan*);
 	void	(*wstat)(Chan*, char*);

@@ -68,7 +68,7 @@ dupclose(Chan*)
 }
 
 static long
-dupread(Chan *c, void *va, long n, ulong)
+dupread(Chan *c, void *va, long n, vlong)
 {
 	char *a = va;
 
@@ -78,7 +78,7 @@ dupread(Chan *c, void *va, long n, ulong)
 }
 
 static long
-dupwrite(Chan*, void*, long, ulong)
+dupwrite(Chan*, void*, long, vlong)
 {
 	panic("dupwrite");
 	return 0;		/* not reached */

@@ -112,9 +112,8 @@ rtcopen(Chan *c, int omode)
 }
 
 static void	 
-rtcclose(Chan *c)
+rtcclose(Chan*)
 {
-	USED(c);
 }
 
 static long	 
@@ -200,9 +199,10 @@ rtctime(void)
 }
 
 static long	 
-rtcread(Chan *c, void *buf, long n, ulong offset)
+rtcread(Chan *c, void *buf, long n, vlong off)
 {
 	uchar *f, *to, *e;
+	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, buf, n, rtcdir, nelem(rtcdir), devgen);
@@ -227,15 +227,15 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 }
 
 static long	 
-rtcwrite(Chan *c, void *buf, long n, ulong offset)
+rtcwrite(Chan *c, void *buf, long n, vlong off)
 {
 	Rtc rtc;
 	ulong secs;
 	char *cp, *ep;
 	uchar *f, *t, *e;
 	uchar x;
+	ulong offset = off;
 
-	USED(c);
 	switch(c->qid.path){
 	case Qrtc:
 		/*

@@ -808,9 +808,10 @@ for(j = 0; j < 8; j++) i+=sprint(str+i, " %ux", uartrdreg(p, j));
 }
 
 static long
-ns16552read(Chan *c, void *buf, long n, ulong offset)
+ns16552read(Chan *c, void *buf, long n, vlong off)
 {
 	Uart *p;
+	ulong offset = off;
 
 	if(c->qid.path & CHDIR){
 		setlength(-1);
@@ -907,7 +908,7 @@ ns16552ctl(Uart *p, char *cmd)
 }
 
 static long
-ns16552write(Chan *c, void *buf, long n, ulong)
+ns16552write(Chan *c, void *buf, long n, vlong)
 {
 	Uart *p;
 	char cmd[32];

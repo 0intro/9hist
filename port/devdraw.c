@@ -938,7 +938,7 @@ drawclose(Chan *c)
 }
 
 long
-drawread(Chan *c, void *a, long n, ulong offset)
+drawread(Chan *c, void *a, long n, vlong off)
 {
 	int index, m;
 	ulong red, green, blue;
@@ -947,6 +947,7 @@ drawread(Chan *c, void *a, long n, ulong offset)
 	Refresh *r;
 	DImage *di;
 	Memimage *i;
+	ulong offset = off;
 
 	USED(offset);
 	if(c->qid.path & CHDIR)
@@ -1053,11 +1054,12 @@ drawwakeall(void)
 }
 
 static long
-drawwrite(Chan *c, void *a, long n, ulong offset)
+drawwrite(Chan *c, void *a, long n, vlong off)
 {
 	char buf[128], *fields[4], *q;
 	Client *cl;
 	int i, m, red, green, blue, x;
+	ulong offset = off;
 
 	USED(offset);
 	if(c->qid.path & CHDIR)

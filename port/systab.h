@@ -20,6 +20,7 @@ Syscall sysmount;
 Syscall sysopen;
 Syscall sysread;
 Syscall sysseek;
+Syscall sysvseek;
 Syscall syssleep;
 Syscall sysstat;
 Syscall sysrfork;
@@ -42,7 +43,6 @@ Syscall sysunmount;
 Syscall syswait;
 Syscall syswrite9p;
 Syscall sysread9p;
-Syscall	sysdeath;
 
 Syscall *systab[]={
 	[SYSR1]		sysr1,
@@ -62,6 +62,7 @@ Syscall *systab[]={
 	[OPEN]		sysopen,
 	[READ]		sysread,
 	[SEEK]		sysseek,
+	[VSEEK]		sysvseek,
 	[SLEEP]		syssleep,
 	[STAT]		sysstat,
 	[RFORK]		sysrfork,
@@ -104,6 +105,7 @@ char *sysctab[]={
 	[OPEN]		"Open",
 	[READ]		"Read",
 	[SEEK]		"Seek",
+	[VSEEK]		"Vseek",
 	[SLEEP]		"Sleep",
 	[STAT]		"Stat",
 	[RFORK]		"Rfork",

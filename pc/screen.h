@@ -14,16 +14,6 @@ extern int mouseputc(void*, int);
 extern int mouseswap;
 
 extern Cursorinfo cursor;
-
-/* mouse.c */
-extern void mousectl(char*);
-
-/* screen.c */
-extern void flushmemscreen(Rectangle);
-extern int cursoron(int);
-extern void cursoroff(int);
-extern void setcursor(Cursor*);
-
 extern Cursor arrow;
 
 /*
@@ -114,3 +104,18 @@ extern VGAscr vgascreen[];
 enum {
 	Backgnd		= Pwhite,
 };
+
+/* mouse.c */
+extern void mousectl(char*);
+
+/* screen.c */
+extern void	flushmemscreen(Rectangle);
+extern int	cursoron(int);
+extern void	cursoroff(int);
+extern void	setcursor(Cursor*);
+extern int	screensize(int, int, int);
+extern int	screenaperture(int, int);
+
+/* vga.c */
+extern void	vgascreenwin(VGAscr*);
+

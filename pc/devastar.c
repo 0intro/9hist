@@ -334,14 +334,13 @@ setpage(Astar *a, ulong offset)
  *  generate the astar directory entries
  */
 static int
-astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
+astargen(Chan *c, Dirtab *, int , int i, Dir *db)
 {
 	int dev, sofar, ch, t;
 	extern ulong kerndate;
 
 	memset(db, 0, sizeof(Dir));
 
-	USED(tab, ntab);
 	sofar = 0;
 
 	for(dev = 0; dev < nastar; dev++){
@@ -349,7 +348,8 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 			sprint(db->name, "astar%dmem", astar[dev]->id);
 			db->qid.path = QID(dev, 0, Qmem);
 			db->mode = 0660;
-			db->length = astar[dev]->memsize;
+			db->length1 = astar[dev]->memsize; /* BOTCH */
+			db->length2 = astar[dev]->memsize; /* BOTCH */
 			break;
 		}
 		sofar++;
@@ -779,10 +779,11 @@ statread(Astarchan *ac, void *buf, long n, ulong offset)
 }
 
 static long
-astarread(Chan *c, void *buf, long n, ulong offset)
+astarread(Chan *c, void *buf, long n, vlong off)
 {
 	Astar *a;
 	Astarchan *ac;
+	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, buf, n, 0, 0, astargen);
@@ -1382,11 +1383,12 @@ astarctl(Astarchan *ac, char *cmd)
 }
 
 static long
-astarwrite(Chan *c, void *buf, long n, ulong offset)
+astarwrite(Chan *c, void *buf, long n, vlong off)
 {
 	Astar *a;
 	Astarchan *ac;
 	char cmsg[32];
+	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
 		error(Eperm);

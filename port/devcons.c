@@ -490,7 +490,7 @@ consclose(Chan *c)
 }
 
 static long
-consread(Chan *c, void *buf, long n, ulong offset)
+consread(Chan *c, void *buf, long n, vlong off)
 {
 	ulong l;
 	Mach *mp;
@@ -498,6 +498,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	char tmp[128];		/* must be >= 6*NUMSIZE */
 	char *cbuf = buf;
 	int ch, i, k, id, eol;
+	ulong offset = off;
 
 	if(n <= 0)
 		return n;
@@ -689,7 +690,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 }
 
 static long
-conswrite(Chan *c, void *va, long n, ulong offset)
+conswrite(Chan *c, void *va, long n, vlong off)
 {
 	char cbuf[64];
 	char buf[256];
@@ -698,6 +699,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	Mach *mp;
 	int id, fd;
 	Chan *swc;
+	ulong offset = off;
 
 	switch(c->qid.path){
 	case Qcons:

@@ -162,10 +162,11 @@ envclose(Chan*)
 }
 
 static long
-envread(Chan *c, void *a, long n, ulong offset)
+envread(Chan *c, void *a, long n, vlong off)
 {
 	Egrp *eg;
 	Evalue *e;
+	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, envgen);
@@ -192,12 +193,13 @@ envread(Chan *c, void *a, long n, ulong offset)
 }
 
 static long
-envwrite(Chan *c, void *a, long n, ulong offset)
+envwrite(Chan *c, void *a, long n, vlong off)
 {
 	char *s;
 	int vend;
 	Egrp *eg;
 	Evalue *e;
+	ulong offset = off;
 
 	if(n <= 0)
 		return 0;

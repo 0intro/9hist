@@ -895,13 +895,14 @@ audioclose(Chan *c)
 }
 
 static long
-audioread(Chan *c, char *a, long n, ulong offset)
+audioread(Chan *c, char *a, long n, vlong off)
 {
 	int liv, riv, lov, rov;
 	long m, n0;
 	char buf[300];
 	Buf *b;
 	int j;
+	ulong offset = off;
 
 	n0 = n;
 	switch(c->qid.path & ~CHDIR) {
@@ -989,7 +990,7 @@ audioread(Chan *c, char *a, long n, ulong offset)
 }
 
 static long
-audiowrite(Chan *c, char *a, long n, ulong)
+audiowrite(Chan *c, char *a, long n, vlong)
 {
 	long m, n0;
 	int i, nf, v, left, right, in, out;

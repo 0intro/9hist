@@ -1411,7 +1411,7 @@ static struct xxx {
 #endif /* notdef */
 
 static int
-autoselect(int port, int xcvr, int is9)
+autoselect(int port, int , int is9)
 {
 	int media, x;
 

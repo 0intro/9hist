@@ -108,29 +108,31 @@ lptopen(Chan *c, int omode)
 }
 
 static void
-lptclose(Chan *c)
+lptclose(Chan *)
 {
-	USED(c);
 }
 
 static long
-lptread(Chan *c, void *a, long n, ulong)
+lptread(Chan *c, void *a, long n, vlong)
 {
-	char str[16]; int size;
+	char str[16];
+	int size;
+	ulong o;
 
 	if(c->qid.path == CHDIR)
 		return devdirread(c, a, n, lptdir, nelem(lptdir), lptgen);
 	size = sprint(str, "0x%2.2ux\n", inb(c->qid.path));
-	if(c->offset >= size)
+	o = c->offset;
+	if(o >= size)
 		return 0;
-	if(c->offset+n > size)
+	if(o+n > size)
 		n = size-c->offset;
-	memmove(a, str+c->offset, n);
+	memmove(a, str+o, n);
 	return n;
 }
 
 static long
-lptwrite(Chan *c, void *a, long n, ulong)
+lptwrite(Chan *c, void *a, long n, vlong)
 {
 	char str[16], *p;
 	long base, k;
@@ -186,9 +188,8 @@ lptready(void *base)
 }
 
 static void
-lptintr(Ureg *ur, void *arg)
+lptintr(Ureg *, void *)
 {
-	USED(ur, arg);
 	wakeup(&lptrendez);
 }
 

@@ -634,7 +634,7 @@ ataclose(Chan* c)
 }
 
 static long
-ataread(Chan* c, void* a, long n, ulong offset)
+ataread(Chan* c, void* a, long n, vlong off)
 {
 	Drive *dp;
 	long rv, i;
@@ -642,6 +642,7 @@ ataread(Chan* c, void* a, long n, ulong offset)
 	uchar *aa = a;
 	Partition *pp;
 	uchar *buf;
+	ulong offset = off;
 
 	if(c->qid.path == CHDIR)
 		return devdirread(c, a, n, 0, 0, atagen);
@@ -688,13 +689,14 @@ ataread(Chan* c, void* a, long n, ulong offset)
 }
 
 static long
-atawrite(Chan *c, void *a, long n, ulong offset)
+atawrite(Chan *c, void *a, long n, vlong off)
 {
 	Drive *dp;
 	long rv, i, partial;
 	uchar *aa = a;
 	Partition *pp;
 	uchar *buf;
+	ulong offset = off;
 
 	if(c->qid.path == CHDIR)
 		error(Eisdir);

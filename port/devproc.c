@@ -284,7 +284,7 @@ procclose(Chan * c)
 }
 
 static long
-procread(Chan *c, void *va, long n, ulong offset)
+procread(Chan *c, void *va, long n, vlong off)
 {
 	long l;
 	Proc *p;
@@ -296,6 +296,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 	char *a = va, *sps;
 	int i, j, rsize, pid;
 	char statbuf[NSEG*32];
+	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, procgen);
@@ -563,11 +564,12 @@ mntscan(Mntwalk *mw)
 }
 
 static long
-procwrite(Chan *c, void *va, long n, ulong offset)
+procwrite(Chan *c, void *va, long n, vlong off)
 {
 	int id;
 	Proc *p, *t, *et;
 	char *a, buf[ERRLEN];
+	ulong offset = off;
 
 	a = va;
 	if(c->qid.path & CHDIR)

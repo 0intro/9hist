@@ -159,11 +159,12 @@ mouseclose(Chan *c)
 
 
 static long
-mouseread(Chan *c, void *va, long n, ulong offset)
+mouseread(Chan *c, void *va, long n, vlong off)
 {
 	char buf[4*12+1];
 	uchar *p;
 	static int map[8] = {0, 4, 2, 6, 1, 5, 3, 7 };
+	ulong offset = off;
 
 	p = va;
 	switch(c->qid.path){
@@ -206,7 +207,7 @@ mouseread(Chan *c, void *va, long n, ulong offset)
 }
 
 static long
-mousewrite(Chan *c, void *va, long n, ulong)
+mousewrite(Chan *c, void *va, long n, vlong)
 {
 	char *p;
 	Point pt;

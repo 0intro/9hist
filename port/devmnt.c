@@ -481,10 +481,11 @@ mntread9p(Chan *c, void *buf, long n, ulong offset)
 }
 
 static long	 
-mntread(Chan *c, void *buf, long n, ulong offset)
+mntread(Chan *c, void *buf, long n, vlong off)
 {
 	uchar *p, *e;
 	int nc, cache, isdir;
+	ulong offset = off;
 
 	isdir = 0;
 	cache = c->flag & CCACHE;
@@ -524,8 +525,10 @@ mntwrite9p(Chan *c, void *buf, long n, ulong offset)
 }
 
 static long	 
-mntwrite(Chan *c, void *buf, long n, ulong offset)
+mntwrite(Chan *c, void *buf, long n, vlong off)
 {
+	ulong offset = off;
+
 	return mntrdwr(Twrite, c, buf, n, offset);
 }
 

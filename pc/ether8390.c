@@ -633,12 +633,10 @@ setfilter(Ether *ether, Dp8390 *ctlr)
 }
 
 static void
-promiscuous(void *arg, int on)
+promiscuous(void *arg, int )
 {
 	Ether *ether;
 	Dp8390 *ctlr;
-
-	USED(on);
 
 	ether = arg;
 	ctlr = ether->ctlr;
@@ -675,8 +673,6 @@ multicast(void* arg, uchar *addr, int on)
 	Dp8390 *ctlr;
 	int i;
 	ulong h;
-
-	USED(on);
 
 	ether = arg;
 	ctlr = ether->ctlr;

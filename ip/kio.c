@@ -88,7 +88,7 @@ kread(int fd, void *va, long n)
 }
 
 long
-kseek(int fd, int offset, int whence)
+kseek(int fd, vlong offset, int whence)
 {
 	Chan *c;
 	char buf[DIRLEN];
@@ -112,7 +112,8 @@ kseek(int fd, int offset, int whence)
 	off = 0;
 	switch(whence) {
 	case 0:
-		off = c->offset = offset;
+		off = offset;
+		c->offset = offset;
 		break;
 	case 1:
 		lock(c);	/* lock for read/write update */
@@ -123,7 +124,7 @@ kseek(int fd, int offset, int whence)
 	case 2:
 		devtab[c->type]->stat(c, buf);
 		convM2D(buf, &dir);
-		c->offset = dir.length + offset;
+		c->offset = dir.length2 + offset;	/* BOTCH */
 		off = c->offset;
 		break;
 	}

@@ -243,7 +243,7 @@ pipeclose(Chan *c)
 }
 
 static long
-piperead(Chan *c, void *va, long n, ulong)
+piperead(Chan *c, void *va, long n, vlong)
 {
 	Pipe *p;
 
@@ -284,7 +284,7 @@ pipebread(Chan *c, long n, ulong offset)
  *  the process.
  */
 static long
-pipewrite(Chan *c, void *va, long n, ulong)
+pipewrite(Chan *c, void *va, long n, vlong)
 {
 	Pipe *p;
 

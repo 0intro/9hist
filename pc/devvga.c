@@ -65,13 +65,14 @@ vgaclose(Chan*)
 }
 
 static long
-vgaread(Chan* c, void* a, long n, ulong offset)
+vgaread(Chan* c, void* a, long n, vlong off)
 {
 	int len, port;
 	char *p, *s;
 	ushort *sp;
 	ulong *lp;
 	VGAscr *scr;
+	ulong offset = off;
 
 	switch(c->qid.path & ~CHDIR){
 
@@ -246,12 +247,13 @@ vgactl(char* a)
 }
 
 static long
-vgawrite(Chan* c, void* a, long n, ulong offset)
+vgawrite(Chan* c, void* a, long n, vlong off)
 {
 	int port;
 	char *p;
 	ushort *sp;
 	ulong *lp;
+	ulong offset = off;
 
 	switch(c->qid.path & ~CHDIR){
 

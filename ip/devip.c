@@ -509,13 +509,14 @@ enum
 };
 
 static long
-ipread(Chan *ch, void *a, long n, ulong offset)
+ipread(Chan *ch, void *a, long n, vlong off)
 {
 	Conv *c;
 	Proto *x;
 	char *buf, *p;
 	long m, rv;
 	Fs *f;
+	ulong offset = off;
 
 	f = ipfs[ch->dev];
 
@@ -839,7 +840,7 @@ ttlctlmsg(Conv *c, Cmdbuf *cb)
 }
 
 static long
-ipwrite(Chan* ch, char* a, long n, ulong)
+ipwrite(Chan* ch, char* a, long n, vlong)
 {
 	Conv *c;
 	Proto *x;

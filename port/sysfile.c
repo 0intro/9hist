@@ -468,12 +468,16 @@ syswrite(ulong *arg)
 }
 
 long
-sysseek(ulong *arg)
+sysvseek(ulong *arg)
 {
 	Chan *c;
 	char buf[DIRLEN];
 	Dir dir;
-	long off;
+	vlong off;
+	union {
+		vlong v;
+		ulong u[2];
+	} o;
 
 	c = fdtochan(arg[0], -1, 1, 0);
 	if(c->qid.path & CHDIR)
@@ -483,26 +487,46 @@ sysseek(ulong *arg)
 		error(Eisstream);
 
 	off = 0;
-	switch(arg[2]){
+	o.u[0] = arg[1];
+	o.u[1] = arg[2];
+	switch(arg[3]){
 	case 0:
-		off = c->offset = arg[1];
+		off = o.v;
+		c->offset = off;
 		break;
 
 	case 1:
 		lock(c);	/* lock for read/write update */
-		c->offset += (long)arg[1];
-		off = c->offset;
+		off = o.v + c->offset;
+		c->offset = off;
 		unlock(c);
 		break;
 
 	case 2:
 		devtab[c->type]->stat(c, buf);
 		convM2D(buf, &dir);
-		c->offset = dir.length + (long)arg[1];
-		off = c->offset;
+		off = (long)dir.length2 + o.v;	/* BOTCH */
+		c->offset = off;
 		break;
 	}
 	return off;
+}
+
+long
+sysseek(ulong *arg)
+{
+	union {
+		vlong v;
+		ulong u[2];
+	} o;
+	ulong a[4];
+
+	o.v = arg[1];
+	a[0] = arg[0];
+	a[1] = o.u[0];
+	a[2] = o.u[1];
+	a[3] = arg[2];
+	return sysvseek(a);
 }
 
 long

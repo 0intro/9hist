@@ -278,12 +278,11 @@ slotdis(Slot *pp)
  *  status change interrupt
  */
 static void
-i82365intr(Ureg *ur, void *a)
+i82365intr(Ureg *, void *)
 {
 	uchar csc, was;
 	Slot *pp;
 
-	USED(ur,a);
 	if(slot == 0)
 		return;
 
@@ -469,7 +468,7 @@ enum
 #define QID(s,t)	(((s)<<8)|(t))
 
 static int
-pcmgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
+pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 {
 	int slotno;
 	Qid qid;
@@ -477,8 +476,7 @@ pcmgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	Slot *pp;
 	char name[NAMELEN];
 
-	USED(tab, ntab);
-	if(i>=3*nslot)
+	if(i >= 3*nslot)
 		return -1;
 	slotno = i/3;
 	pp = slot + slotno;
@@ -755,11 +753,12 @@ pcmread(int slotno, int attr, void *a, long n, ulong offset)
 }
 
 static long
-i82365read(Chan *c, void *a, long n, ulong offset)
+i82365read(Chan *c, void *a, long n, vlong off)
 {
 	char *p;
 	int len;
 	Slot *pp;
+	ulong offset = off;
 
 	switch(TYPE(c)){
 	case Qdir:
@@ -836,10 +835,11 @@ pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 }
 
 static long
-i82365write(Chan *c, void *a, long n, ulong offset)
+i82365write(Chan *c, void *a, long n, vlong off)
 {
 	Slot *pp;
 	char buf[32];
+	ulong offset = off;
 
 	switch(TYPE(c)){
 	case Qctl:
@@ -1086,12 +1086,11 @@ getlong(Slot *pp, int size)
 }
 
 static void
-tcfig(Slot *pp, int ttype)
+tcfig(Slot *pp, int )
 {
 	uchar size, rasize, rmsize;
 	uchar last;
 
-	USED(ttype);
 	if(readc(pp, &size) != 1)
 		return;
 	rasize = (size&0x3) + 1;
@@ -1279,12 +1278,10 @@ memspace(Slot *pp, int asize, int lsize, int host)
 }
 
 static void
-tentry(Slot *pp, int ttype)
+tentry(Slot *pp, int )
 {
 	uchar c, i, feature;
 	Conftab *ct;
-
-	USED(ttype);
 
 	if(pp->nctab >= Maxctab)
 		return;
@@ -1352,12 +1349,11 @@ tentry(Slot *pp, int ttype)
 }
 
 static void
-tvers1(Slot *pp, int ttype)
+tvers1(Slot *pp, int )
 {
 	uchar c, major, minor;
 	int  i;
 
-	USED(ttype);
 	if(readc(pp, &major) != 1)
 		return;
 	if(readc(pp, &minor) != 1)

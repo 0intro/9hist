@@ -231,8 +231,10 @@ sdclose(Chan *c)
 }
 
 static long
-sdread(Chan *c, void *a, long n, ulong offset)
+sdread(Chan *c, void *a, long n, vlong off)
 {
+	ulong offset = off;
+
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, sdgen);
 
@@ -240,9 +242,10 @@ sdread(Chan *c, void *a, long n, ulong offset)
 }
 
 static long
-sdwrite(Chan *c, char *a, long n, ulong offset)
+sdwrite(Chan *c, char *a, long n, vlong off)
 {
 	Disk *d;
+	ulong offset = off;
 
 	d = &disk[DRIVE(c->qid)];
 

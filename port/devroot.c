@@ -143,12 +143,13 @@ rdrdy(void*)
 }
 
 static long	 
-rootread(Chan *c, void *buf, long n, ulong offset)
+rootread(Chan *c, void *buf, long n, vlong off)
 {
 	ulong t;
 	Dirtab *d;
 	uchar *data;
 	Recover *r;
+	ulong offset = off;
 
 	t = c->qid.path & ~CHDIR;
 	switch(t){
@@ -193,7 +194,7 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 }
 
 static long	 
-rootwrite(Chan *c, void *buf, long n, ulong)
+rootwrite(Chan *c, void *buf, long n, vlong)
 {
 	char tmp[256];
 

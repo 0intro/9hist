@@ -166,10 +166,11 @@ rtctime(void)
 }
 
 static long	 
-rtcread(Chan* c, void* buf, long n, ulong offset)
+rtcread(Chan* c, void* buf, long n, vlong off)
 {
 	ulong t;
 	char *a;
+	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, buf, n, rtcdir, nelem(rtcdir), devgen);
@@ -205,7 +206,7 @@ rtcread(Chan* c, void* buf, long n, ulong offset)
 #define PUTBCD(n,o) bcdclock[o] = (n % 10) | (((n / 10) % 10)<<4)
 
 static long	 
-rtcwrite(Chan* c, void* buf, long n, ulong offset)
+rtcwrite(Chan* c, void* buf, long n, vlong off)
 {
 	int t;
 	char *a;
@@ -213,6 +214,7 @@ rtcwrite(Chan* c, void* buf, long n, ulong offset)
 	ulong secs;
 	uchar bcdclock[Nbcd];
 	char *cp, *ep;
+	ulong offset = off;
 
 	if(offset!=0)
 		error(Ebadarg);

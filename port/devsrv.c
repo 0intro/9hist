@@ -204,14 +204,14 @@ srvclose(Chan*)
 }
 
 static long
-srvread(Chan *c, void *va, long n, ulong)
+srvread(Chan *c, void *va, long n, vlong)
 {
 	isdir(c);
 	return devdirread(c, va, n, 0, 0, srvgen);
 }
 
 static long
-srvwrite(Chan *c, void *va, long n, ulong)
+srvwrite(Chan *c, void *va, long n, vlong)
 {
 	Srv *sp;
 	Chan *c1;
