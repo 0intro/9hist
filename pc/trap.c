@@ -136,9 +136,9 @@ trapinit(void)
 	sethvec(11, intr11, SEGIG, 0);
 	sethvec(12, intr12, SEGIG, 0);
 	sethvec(13, intr13, SEGIG, 0);
-	sethvec(14, intr14, SEGIG, 0);	/* page fault, interrupts off */
+	sethvec(14, intr14, SEGIG, 0);	/* page fault */
 	sethvec(15, intr15, SEGIG, 0);
-	sethvec(16, intr16, SEGIG, 0);	/* math coprocessor, interrupts off */
+	sethvec(16, intr16, SEGIG, 0);	/* math coprocessor */
 
 	/*
 	 *  device interrupts
@@ -223,7 +223,9 @@ Proc *lastup;
 
 
 /*
- *  All traps
+ *  All trapscome here.  It is slower to have all traps call trap() rather than
+ *  directly vectoring the handler.  However, this avoids a lot of code duplication
+ *  and possible bugs.
  */
 void
 trap(Ureg *ur)
@@ -238,13 +240,6 @@ trap(Ureg *ur)
 	user = (ur->cs&0xffff) == UESEL;
 	if(user)
 		up->dbgreg = ur;
-
-ur->cs &= 0xffff;
-ur->ds &= 0xffff;
-ur->es &= 0xffff;
-ur->fs &= 0xffff;
-ur->gs &= 0xffff;
-if(user) ur->ss &= 0xffff;
 
 	/*
 	 *  tell the 8259 that we're done with the
@@ -313,20 +308,25 @@ lastur = ur;
 void
 dumpregs2(Ureg *ur)
 {
+	ur->cs &= 0xffff;
+	ur->ds &= 0xffff;
+	ur->es &= 0xffff;
+	ur->fs &= 0xffff;
+	ur->gs &= 0xffff;
+
 	if(up)
 		print("registers for %s %d\n", up->text, up->pid);
 	else
 		print("registers for kernel\n");
-	print("FLAGS=%lux TRAP=%lux ECODE=%lux CS=%lux PC=%lux", ur->flags, ur->trap,
+	print("FLAGS=%lux TRAP=%lux ECODE=%lux CS=%4.4lux PC=%lux", ur->flags, ur->trap,
 		ur->ecode, ur->cs, ur->pc);
-	print(" SS=%lux USP=%lux\n", ur->ss, ur->usp);
+	print(" SS=%4.4lux USP=%lux\n", ur->ss&0xffff, ur->usp);
 	print("  AX %8.8lux  BX %8.8lux  CX %8.8lux  DX %8.8lux\n",
 		ur->ax, ur->bx, ur->cx, ur->dx);
 	print("  SI %8.8lux  DI %8.8lux  BP %8.8lux\n",
 		ur->si, ur->di, ur->bp);
 	print("  DS %4.4lux  ES %4.4lux  FS %4.4lux  GS %4.4lux\n",
 		ur->ds, ur->es, ur->fs, ur->gs);
-
 }
 
 void

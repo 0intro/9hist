@@ -106,6 +106,10 @@ taskswitch(ulong pagetbl, ulong stack)
 {
 	tss.ss0 = KDSEL;
 	tss.sp0 = stack;
+tss.ss1 = KDSEL;
+tss.sp1 = stack;
+tss.ss2 = KDSEL;
+tss.sp2 = stack;
 	tss.cr3 = pagetbl;
 	putcr3(pagetbl);
 }

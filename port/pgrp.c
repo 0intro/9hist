@@ -140,7 +140,6 @@ closefgrp(Fgrp *f)
 	}
 }
 
-
 Mount*
 newmount(Mhead *mh, Chan *to, int flag, char *spec)
 {

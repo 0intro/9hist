@@ -168,9 +168,9 @@ int
 mount(Chan *new, Chan *old, int flag, char *spec)
 {
 	Pgrp *pg;
-	int order;
-	Mount *nm, *f;
+	int order, flg;
 	Mhead *m, **l;
+	Mount *nm, *f, *um, **h;
 
 	if(CHDIR & (old->qid.path^new->qid.path))
 		error(Emount);
@@ -210,7 +210,17 @@ mount(Chan *new, Chan *old, int flag, char *spec)
 	}
 
 	nm = newmount(m, new, flag, spec);
-
+	if(new->mnt != 0) {
+		h = &nm->next;
+		for(um = new->mnt->next; um; um = um->next) {
+			flg = um->flag;
+			if(flg == 0)
+				flg = MAFTER;
+			f = newmount(m, um->to, flg, um->spec);
+			*h = f;
+			h = &f->next;
+		}
+	}
 
 	if(flag & MCREATE)
 		new->flag |= CCREATE;
@@ -221,7 +231,9 @@ mount(Chan *new, Chan *old, int flag, char *spec)
 		f->next = nm;
 	}
 	else {
-		nm->next = m->mount;
+		for(f = nm; f->next; f = f->next)
+			;
+		f->next = m->mount;
 		m->mount = nm;
 	}
 
