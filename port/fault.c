@@ -102,7 +102,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			goto done;
 
 		if(read && conf.copymode == 0) {
-			mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
+			mmuphys = PPN((*pg)->pa) | /*PTERONLY|*/PTEVALID;
 			(*pg)->modref |= PG_REF;
 			break;
 		}

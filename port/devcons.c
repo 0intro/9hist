@@ -181,6 +181,7 @@ echo(Rune r, char *buf, int n)
 			break;	/* pass it on */
 		case 'x':
 			xsummary();
+			ixsummary();
 			break;
 		case 'b':
 			bitdebug();

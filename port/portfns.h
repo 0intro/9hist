@@ -97,6 +97,7 @@ void		invalidateu(void);
 void		isdir(Chan*);
 int		iseve(void);
 int		ispages(void*);
+void		ixsummary(void);
 void		kbdclock(void);
 int		kbdcr2nl(Queue*, int);
 int		kbdputc(Queue*, int);

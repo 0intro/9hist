@@ -30,6 +30,7 @@ struct Chunkl
 	int	have;
 	int	goal;
 	int	hist;
+	int	wanted;
 };
 
 struct Arena
@@ -141,19 +142,24 @@ iallockproc(void *arg)
 			 *  start giving blocks back to the general pool
 			 */
 			if(cl->have >= cl->goal){
-				cl->hist = ((cl->hist<<1) | 1) & 0xff;
-				if(cl->hist == 0xff && cl->goal > 8)
+				cl->hist = ((cl->hist<<1) | 1) & 0xffff;
+				if(cl->hist == 0xffff && cl->goal > 32)
 					cl->goal--;
 				continue;
 			} else
 				cl->hist <<= 1;
 
 			/*
-			 *  increase goal if we've been drained, decrease
-			 *  goal if we've had lots of blocks twice in a row.
+			 *  increase goal if we've been drained.
 			 */
-			if(cl->have == 0)
-				cl->goal += cl->goal>>2;
+			if(cl->have == 0){
+				i = cl->goal>>2;
+				if(cl->wanted > i)
+					cl->goal += cl->wanted;
+				else
+					cl->goal += i;
+				cl->wanted = 0;
+			}
 
 			first = 0;
 			l = &first;
@@ -166,6 +172,7 @@ iallockproc(void *arg)
 				*l = p;
 				l = &p->next;
 			}
+			i -= x;
 			if(first){
 				x = splhi();
 				lock(cl);
@@ -194,6 +201,20 @@ iallocinit(void)
 	kproc("ialloc", iallockproc, 0);
 }
 
+void
+ixsummary(void)
+{
+	int pow;
+	Chunkl *cl;
+
+	print("size	have/goal\n");
+	for(pow = Minpow; pow <= Maxpow; pow++){
+		cl = &arena.alloc[pow];
+		print("%d	%d/%d\n", 1<<pow, cl->have, cl->goal);
+	}
+	print("\n");
+}
+
 Block*
 iallocb(int size)
 {
@@ -209,7 +230,9 @@ iallocb(int size)
 			lock(cl);
 			p = cl->first;
 			if(p == 0){
+				cl->wanted++;
 				unlock(cl);
+				wakeup(&arena.r);
 				return 0;
 			}
 			cl->have--;
