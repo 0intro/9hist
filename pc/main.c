@@ -276,8 +276,6 @@ confinit(void)
 	pcnt = (1<<conf.ldepth)-1;		/* Calculate % of memory for page pool */
 	pcnt = 70 - (pcnt*10);
 	conf.upages = (conf.npage*pcnt)/100;
-	if(conf.npage - conf.upages < ((3*MB)/4)/BY2PG)
-		conf.upages = conf.npage - ((3*MB)/4)/BY2PG;
 
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);

@@ -468,7 +468,6 @@ reset(Ctlr *ctlr, ulong port, ulong id)
 void
 resetscsi(void)
 {
-	uchar rs;
 	ulong port;
 
 	/*
@@ -484,10 +483,8 @@ resetscsi(void)
 	 */
 	outb(port+Rc, Srst|Scrst);
 	delay(500);
-	if((rs = inb(port+Rs)) != (Init|Idle)){
-		/*print("adaptec%d: reset status #%2.2ux\n", 0, rs);/**/
+	if(inb(port+Rs) != (Init|Idle))
 		return;
-	}
 
 	setvec(Int0vec+Irq, interrupt);
 	reset(&softctlr[0], port, CtlrID);

@@ -119,6 +119,7 @@ static Table table[] = {
 	{ 0 },
 };
 
+
 static int
 reset(Ctlr *ctlr)
 {

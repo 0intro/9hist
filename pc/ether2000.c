@@ -17,7 +17,7 @@
  * Semiconductor Local Area Network Databook (1992) as one of the
  * AT evaluation cards.
  *
- * The NE2000 is really just a DP83901 plus a data port
+ * The NE2000 is really just a DP8390[12] plus a data port
  * and a reset port.
  */
 enum {
