@@ -216,14 +216,14 @@ mouseread(Chan *c, void *va, long n, ulong offset)
 		while(mousechanged(0) == 0)
 			sleep(&mouse.r, mousechanged, 0);
 		lock(&cursor);
-		sprint(buf, "%11d %11d %11d %11d",
+		sprint(buf, "m%11d %11d %11d %11d",
 			mouse.xy.x, mouse.xy.y,
 			mouseswap ? map[mouse.buttons&7] : mouse.buttons,
 			TK2MS(MACHP(0)->ticks));
 		mouse.lastcounter = mouse.counter;
 		unlock(&cursor);
-		if(n > 4*12)
-			n = 4*12;
+		if(n > 1+4*12)
+			n = 1+4*12;
 		memmove(va, buf, n);
 		return n;
 	}
@@ -277,7 +277,7 @@ mousewrite(Chan *c, void *va, long n, ulong offset)
 		memmove(buf, va, n);
 		buf[n] = 0;
 		p = 0;
-		pt.x = strtoul(buf, &p, 0);
+		pt.x = strtoul(buf+1, &p, 0);
 		if(p == 0)
 			error(Eshort);
 		pt.y = strtoul(p, 0, 0);
