@@ -212,7 +212,11 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 		return 1;
 	default:
 		ds = dstate[CONV(c->qid)];
-		devdir(c, c->qid, sslnames[TYPE(c->qid)], 0, ds->user, 0660, dp);
+		if(ds != nil)
+			nm = ds->user;
+		else
+			nm = eve;
+		devdir(c, c->qid, sslnames[TYPE(c->qid)], 0, nm, 0660, dp);
 		return 1;
 	}
 	return -1;
@@ -638,10 +642,8 @@ sslread(Chan *c, void *a, long n, vlong off)
 		break;
 	case Qencalgs:
 		return readstr(offset, a, n, encalgs);
-		break;
 	case Qhashalgs:
 		return readstr(offset, a, n, hashalgs);
-		break;
 	}
 
 	if(waserror()){
