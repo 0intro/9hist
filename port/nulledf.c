@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"../port/edf.h"
+#include	"../port/realtime.h"
 
 static int
 isedf(Proc*)
