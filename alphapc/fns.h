@@ -69,12 +69,14 @@ void	pcicfgw32(Pcidev*, int, int);
 void	pcihinv(Pcidev*);
 Pcidev* pcimatch(Pcidev*, int, int);
 void	pcireset(void);
+void	pcisetbme(Pcidev*);
 void		prflush(void);
 void		printinit(void);
 #define	procrestore(p)
 #define	procsave(p)
 #define	procsetup(p)	((p)->fpstate = FPinit)
 void		restfpregs(FPsave*);
+uvlong		rpcc(uvlong*);
 void		screeninit(void);
 void		(*screenputs)(char*, int);
 void 		setpcb(PCB *);

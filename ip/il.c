@@ -265,6 +265,7 @@ ilclose(Conv *c)
 	case Ilsyncee:
 	case Ilestablished:
 		ic->state = Ilclosing;
+		ilsettimeout(ic);
 		ilsendctl(c, nil, Ilclose, ic->next, ic->recvd, 0);
 		break;
 	case Illistening:
@@ -349,7 +350,7 @@ ilkick(Conv *c, int l)
 		ic->rttlen = dlen + IL_IPSIZE + IL_HDRSIZE;
 	}
 
-	if(ic->timeout <= msec)
+	if(later(msec, ic->timeout, "ilkick"))
 		ilsettimeout(ic);
 	ipoput(f, bp, 0, c->ttl);
 }
@@ -727,6 +728,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 				break;
 			ilsendctl(s, nil, Ilclose, ic->next, ic->recvd, 0);
 			ic->state = Ilclosing;
+			ilsettimeout(ic);
 			ilfreeq(ic);
 			break;
 		}
@@ -1066,7 +1068,7 @@ loop:
 		case Illistening:
 			break;
 		case Ilclosing:
-			if(later(msec, ic->timeout, "timeout")) {
+			if(later(msec, ic->timeout, "timeout0")) {
 				if(ic->rexmit > MaxRexmit){
 					ilhangup(p, nil);
 					break;
@@ -1078,7 +1080,7 @@ loop:
 
 		case Ilsyncee:
 		case Ilsyncer:
-			if(later(msec, ic->timeout, "timeout")) {
+			if(later(msec, ic->timeout, "timeout1")) {
 				if(ic->rexmit > MaxRexmit){
 					ilhangup(p, etime);
 					break;
@@ -1104,7 +1106,7 @@ loop:
 			}
 
 			if(ic->unacked != nil)
-			if(later(msec, ic->timeout, "timeout")) {
+			if(later(msec, ic->timeout, "timeout2")) {
 				if(ic->rexmit > MaxRexmit){
 					netlog(il->f, Logil, "il: hangup: too many rexmits\n");
 					ilhangup(p, etime);

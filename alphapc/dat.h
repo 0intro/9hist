@@ -135,24 +135,25 @@ struct Mach
 	Proc	*proc;			/* current process on this processor */
 
 	/* ordering from here on irrelevant */
-	int	tlbfault;			/* only used by devproc; no access to tlb */
-	int	tlbpurge;			/* ... */
+	int	tlbfault;		/* only used by devproc; no access to tlb */
+	int	tlbpurge;		/* ... */
 	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	Page	*ufreeme;		/* address of upage of exited process */
-	int	speed;			/* cpu speed */
-	ulong	delayloop;		/* for the delay() routine */
 	int	nrdy;
 	ulong	fairness;		/* for runproc */
+
+	ulong	cpuhz;			/* hwrpb->cfreq */
+	ulong	pcclast;
+	uvlong	fastclock;
 
 	int	pfault;
 	int	cs;
 	int	syscall;
 	int	load;
 	int	intr;
-	int	nettime;
 	int	flushmmu;		/* make current proc flush it's mmu state */
 
 	PCB;

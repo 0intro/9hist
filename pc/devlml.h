@@ -40,6 +40,8 @@
 // which bit of ZR36057_I2C_BUS is which
 #define ZR36057_I2C_SCL                 1
 #define ZR36057_I2C_SDA                 2
+#define ZR36057_INTR_JPEGREP            0x08000000
+#define ZR36057_INTR_STAT               0x03c
 
 // A Device records the properties of the various card types supported.
 typedef struct {

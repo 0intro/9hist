@@ -38,6 +38,7 @@ int			singleFrame;
 int			bufferPrepared;
 int			hdrPos;
 int			nopens;
+uchar		q856[3];
 
 static FrameHeader frameHeader = {
 	MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
@@ -46,13 +47,13 @@ static FrameHeader frameHeader = {
 };
 
 static void
-lml33_i2c_pause(void) {
+i2c_pause(void) {
 
 	microdelay(I2C_DELAY);
 }
 
 static void
-lml33_i2c_waitscl(void) {
+i2c_waitscl(void) {
 	int i;
 	ulong a;
 
@@ -64,68 +65,68 @@ lml33_i2c_waitscl(void) {
 }
 
 static void
-lml33_i2c_start(void) {
+i2c_start(void) {
 
 	writel(ZR36057_I2C_SCL|ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
-	lml33_i2c_waitscl();
-	lml33_i2c_pause();
+	i2c_waitscl();
+	i2c_pause();
 
 	writel(ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
-	lml33_i2c_pause();
+	i2c_pause();
 
 	writel(0, pciBaseAddr + ZR36057_I2C_BUS);
-	lml33_i2c_pause();
+	i2c_pause();
 }
 
 static void
-lml33_i2c_stop(void) {
+i2c_stop(void) {
 	// the clock should already be low, make sure data is
 	writel(0, pciBaseAddr + ZR36057_I2C_BUS);
-	lml33_i2c_pause();
+	i2c_pause();
 
 	// set clock high and wait for device to catch up
 	writel(ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
-	lml33_i2c_waitscl();
-	lml33_i2c_pause();
+	i2c_waitscl();
+	i2c_pause();
 
 	// set the data high to indicate the stop bit
 	writel(ZR36057_I2C_SCL|ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
-	lml33_i2c_pause();
+	i2c_pause();
 }
 
-static void lml33_i2c_wrbit(int bit) {
+static void i2c_wrbit(int bit) {
 	if (bit){
 		writel(ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS); // set data
-		lml33_i2c_pause();
+		i2c_pause();
 		writel(ZR36057_I2C_SDA|ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
-		lml33_i2c_waitscl();
-		lml33_i2c_pause();
+		i2c_waitscl();
+		i2c_pause();
 		writel(ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
-		lml33_i2c_pause();
+		i2c_pause();
 	} else {
 		writel(0, pciBaseAddr + ZR36057_I2C_BUS); // clr data
-		lml33_i2c_pause();
+		i2c_pause();
 		writel(ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
-		lml33_i2c_waitscl();
-		lml33_i2c_pause();
+		i2c_waitscl();
+		i2c_pause();
 		writel(0, pciBaseAddr + ZR36057_I2C_BUS);
-		lml33_i2c_pause();
+		i2c_pause();
 	}
 }
 
 static int
-lml33_i2c_rdbit(void) {
+i2c_rdbit(void) {
 	int bit;
 	// the clk line should be low
 
 	// ensure we are not asserting the data line
 	writel(ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
-	lml33_i2c_pause();
+	i2c_pause();
 
 	// set the clock high and wait for device to catch up
 	writel(ZR36057_I2C_SDA|ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
-	lml33_i2c_waitscl();
-	lml33_i2c_pause();
+	i2c_waitscl();
+	i2c_pause();
 
 	// the data line should be a valid bit
 	bit = readl(pciBaseAddr+ZR36057_I2C_BUS);
@@ -137,23 +138,23 @@ lml33_i2c_rdbit(void) {
 
 	// set the clock low to indicate end of cycle
 	writel(ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
-	lml33_i2c_pause();
+	i2c_pause();
 
 	return bit;
 }
 
 static int
-lml33_i2c_rdbyte(uchar *v) {
+i2c_rdbyte(uchar *v) {
 	int i, ack;
 	uchar res;
 
 	res = 0;
 	for (i=0;i<8;i++){
 		res  = res << 1;
-		res += lml33_i2c_rdbit();
+		res += i2c_rdbit();
 	}
 
-	ack = lml33_i2c_rdbit();
+	ack = i2c_rdbit();
 
 	*v = res;
 
@@ -161,77 +162,93 @@ lml33_i2c_rdbyte(uchar *v) {
 }
 
 static int
-lml33_i2c_wrbyte(uchar v) {
+i2c_wrbyte(uchar v) {
 	int i, ack;
 
 	for (i=0;i<8;i++){
-		lml33_i2c_wrbit(v & 0x80);
+		i2c_wrbit(v & 0x80);
 		v = v << 1;
 	}
 
-	ack = lml33_i2c_rdbit();
+	ack = i2c_rdbit();
 
 	return ack;
 }
 
 static void
-lml33_i2c_write_bytes(uchar addr, uchar sub, uchar *bytes, long num) {
+i2c_write_bytes(uchar addr, uchar sub, uchar *bytes, long num) {
 	int ack;
 	long i;
 
-	lml33_i2c_start();
+	i2c_start();
 
-	ack = lml33_i2c_wrbyte(addr);
+	ack = i2c_wrbyte(addr);
 	if (ack == 1) error(Eio);
 
-	ack = lml33_i2c_wrbyte(sub);
+	ack = i2c_wrbyte(sub);
 	if (ack == 1) error(Eio);
 
 	for(i=0;i<num;i+=1){
-		ack = lml33_i2c_wrbyte(bytes[i]);
+		ack = i2c_wrbyte(bytes[i]);
 		if (ack == 1) error(Eio);
 	}
 
-	lml33_i2c_stop();
+	i2c_stop();
 }
 
 static int
-lml33_i2c_rd8(int addr, int sub)
+i2c_bt856rd8(void) {
+	uchar ret;
+
+	i2c_start ();
+
+	if (i2c_wrbyte(BT856Addr + 1) == 1
+	 || i2c_rdbyte(&ret) == 0) {
+		i2c_stop ();
+		return -1;
+	}
+
+	i2c_stop ();
+	return ret;
+}
+
+static int
+i2c_rd8(int addr, int sub)
 {
 	uchar msb;
 
-	lml33_i2c_start();
+	i2c_start();
 
-	if (lml33_i2c_wrbyte(addr) == 1
-	 || lml33_i2c_wrbyte(sub) == 1) {
-		lml33_i2c_stop();
+	if (i2c_wrbyte(addr) == 1
+	 || i2c_wrbyte(sub) == 1) {
+		i2c_stop();
 		return -1;
 	}
 
-	lml33_i2c_start();
+	i2c_start();
 
-	if (lml33_i2c_wrbyte(addr+1) == 1
-	 || lml33_i2c_rdbyte(&msb) == 0){
-		lml33_i2c_stop();
+	if (i2c_wrbyte(addr+1) == 1
+	 || i2c_rdbyte(&msb) == 0){
+		i2c_stop();
 		return -1;
 	}
 
-	lml33_i2c_stop();
+	i2c_stop();
 
 	return msb;
 }
 
 static int
-lml33_i2c_wr8(uchar addr, uchar sub, uchar msb) {
+i2c_wr8(uchar addr, uchar sub, uchar msb) {
 	
-	lml33_i2c_start();
+	i2c_start();
 
-	if (lml33_i2c_wrbyte(addr) == 1
-	 || lml33_i2c_wrbyte(sub) == 1
-	 || lml33_i2c_wrbyte(msb) == 1)
+	if (i2c_wrbyte(addr) == 1
+	 || i2c_wrbyte(sub) == 1
+	 || i2c_wrbyte(msb) == 1)
 		return 0;
 	
-	lml33_i2c_stop();
+	i2c_stop();
 	
 	return 1;
 }
@@ -565,18 +582,32 @@ vidread(Chan *c, void *va, long n, vlong off) {
 		if (off < 0 || off + n > 0x20)
 			return 0;
 		for (i = 0; i < n; i++) {
-			if ((d = lml33_i2c_rd8(BT819Addr, off++)) < 0) break;
+			if ((d = i2c_rd8(BT819Addr, off++)) < 0) break;
 			*buf++ = d;
 		}
 		return n - i;
 	case Q856:
-		if (off < 0xda || off + n > 0xe0)
+		if (n != 1)
 			return 0;
-		for (i = 0; i < n; i++) {
-			if ((d = lml33_i2c_rd8(BT856Addr, off++)) < 0) break;
-			*buf++ = d;
+		switch ((int)off) {
+		case 0:
+			if ((d = i2c_bt856rd8()) < 0)
+				return 0;
+			*buf = d;
+			break;
+		case 0xDA:
+			*buf = q856[0];
+			break;
+		case 0xDC:
+			*buf = q856[1];
+			break;
+		case 0xDE:
+			*buf = q856[2];
+			break;
+		default:
+			return 0;
 		}
-		return n - i;
+		return 1;
 	case Qreg:
 		if (off < 0 || off + n > 0x200 || (off & 0x3))
 			return 0;
@@ -610,16 +641,26 @@ vidwrite(Chan *c, void *va, long n, vlong off) {
 		if (off < 0 || off + n > 0x20)
 			return 0;
 		for (i = n; i > 0; i--)
-			if (lml33_i2c_wr8(BT819Addr, off++, *buf++) == 0)
+			if (i2c_wr8(BT819Addr, off++, *buf++) == 0)
 				break;
 		return n - i;
 	case Q856:
-		if (off < 0xda || off + n > 0xe0)
+		if (n != 1 || off < 0xda || off + n > 0xe0)
 			return 0;
-		for (i = n; i > 0; i--)
-			if (lml33_i2c_wr8(BT856Addr, off++, *buf++) == 0)
-				break;
-		return n - i;
+		if (i2c_wr8(BT856Addr, off, *buf) == 0)
+				return 0;
+		switch ((int)off) {
+		case 0xDA:
+			q856[0] = *buf;
+			break;
+		case 0xDC:
+			q856[1] = *buf;
+			break;
+		case 0xDE:
+			q856[2] = *buf;
+			break;
+		}
+		return 1;
 	case Qreg:
 		if (off < 0 || off + n > 0x200 || (off & 0x3))
 			return 0;

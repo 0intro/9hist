@@ -12,7 +12,7 @@ struct Hwrpb
 	uvlong	by2pg;
 	uvlong	pabits;
 	uvlong	maxasn;
-	char		ssn[16];
+	char	ssn[16];
 	uvlong	systype;
 	uvlong	sysvar;
 	uvlong	sysrev;

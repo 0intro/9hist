@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
+#include	"axp.h"
 
 #include	"ureg.h"
 
@@ -34,57 +35,69 @@ addclock0link(void (*clock)(void))
 	iunlock(&clock0lock);
 }
 
-
-/*
- *  delay for l milliseconds more or less.  delayloop is set by
- *  clockinit() to match the actual CPU speed.
- */
-void
-delay(int l)
-{
-	ulong i, j;
-
-	j = m->delayloop;
-	while(l-- > 0)
-		for(i=0; i < j; i++)
-			;
-}
-
-void
-microdelay(int l)
-{
-	ulong i, j;
-
-//	j = m->delayloop/1000;
-j = 10000;
-	while(l-- > 0)
-		for(i=0; i < j; i++)
-			;
-}
-
 void
 clockinit(void)
 {
-m->delayloop = 250*1000;	/* BUG */
-#ifdef	NOTYET
-	long x;
+}
 
-	m->delayloop = m->speed*100;
-	do {
-		x = rdcount();
-		delay(10);
-		x = rdcount() - x;
-	} while(x < 0);
+uvlong
+cycletimer(void)
+{
+	ulong pcc;
 
-	/*
-	 *  fix count
-	 */
-	m->delayloop = (m->delayloop*m->speed*1000*10)/x;
-	if(m->delayloop == 0)
-		m->delayloop = 1;
+	pcc = rpcc(nil) & 0xFFFFFFFF;
+	if(m->cpuhz == 0){
+		/*
+		 * pcclast is needed to detect wraparound of
+		 * the cycle timer which is only 32-bits.
+		 * m->cpuhz is set from the info passed from
+		 * the firmware.
+		 * This could be in clockinit if can
+		 * guarantee no wraparound between then and now.
+		 *
+		 * All the clock stuff needs work.
+		 */
+		m->cpuhz = hwrpb->cfreq;
+		m->pcclast = pcc;
+	}
+	if(pcc < m->pcclast)
+		m->fastclock += 0x100000000LL;
+	m->fastclock += pcc;
+	m->pcclast = pcc;
 
-/*	wrcompare(rdcount()+(m->speed*1000000)/HZ); */
-#endif
+	return MACHP(0)->fastclock;
+}
+
+vlong
+fastticks(uvlong* hz)
+{
+	uvlong ticks;
+	int x;
+
+	x = splhi();
+	ticks = cycletimer();
+	splx(x);
+
+	if(hz)
+		*hz = m->cpuhz;
+
+	return (vlong)ticks;
+}
+
+void
+microdelay(int us)
+{
+	uvlong eot;
+
+	eot = cycletimer() + (m->cpuhz/1000000)*us;
+	while(cycletimer() < eot)
+		;
+}
+
+void
+/*milli*/delay(int ms)
+{
+	microdelay(ms*1000);
 }
 
 void
@@ -135,12 +148,4 @@ clock(Ureg *ur)
 		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
 		segclock(ur->pc);
 	}
-}
-
-vlong
-fastticks(uvlong *hz)
-{
-	if (hz)
-		*hz = 100;
-	return m->ticks;
 }
