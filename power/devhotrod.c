@@ -18,6 +18,10 @@ void	mem(Hot*, ulong*, ulong);
 #define	NTESTBUF	256
 ulong	testbuf[NTESTBUF];
 #endif
+/*
+ * If defined, ENABBUSTEST causes bus error diagnostic to be run at device open
+ */
+#define	ENABBUSTEST
 
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
@@ -193,6 +197,14 @@ hotrodopen(Chan *c, int omode)
 			print("-");
 			mem(hp->addr, &hp->addr->ram[(mp->param[0]-0x40000)/sizeof(ulong)], mp->param[1]);
 		}
+#endif
+#ifdef ENABBUSTEST
+		/*
+		 * Issue test
+		 */
+		mp = &u->khot;
+		mp->cmd = Ubus;
+		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 #endif
 	}
 	c->mode = openmode(omode);

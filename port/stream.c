@@ -227,6 +227,9 @@ allocb(ulong size)
 	bp->next = 0;
 	bp->type = M_DATA;
 	bp->flags &= S_CLASS;
+	if(bp->lim-bp->rptr<size && size<4096)
+		panic("allocb %lux %lux %d %ux %d", bp->lim, bp->rptr,
+			size, bp->flags, bcp-bclass);
 	return bp;
 }
 
@@ -237,31 +240,27 @@ allocb(ulong size)
 void
 freeb(Block *bp)
 {
+	Block *nbp;
 	Bclass *bcp;
-	int tries;
 	int x;
 
 	if((bp->flags&S_CLASS) >= Nclass)
 		panic("freeb class");
-	bcp = &bclass[bp->flags & S_CLASS];
-	lock(bcp);
-	bp->rptr = bp->wptr = 0;
-	if(bcp->first)
-		bcp->last->next = bp;
-	else
-		bcp->first = bp;
-	tries = 0;
-	while(bp->next){
-		if(++tries > 10){
-			dumpstack();
-			panic("freeb");
-		}
-		bp = bp->next;
+	for(; bp; bp = nbp){
+		bcp = &bclass[bp->flags & S_CLASS];
+		lock(bcp);
+		bp->rptr = bp->wptr = 0;
+		if(bcp->first)
+			bcp->last->next = bp;
+		else
+			bcp->first = bp;
+		bcp->last = bp;
+		nbp = bp->next;
+		bp->next = 0;
+		unlock(bcp);
+		if(bcp->r.p)
+			wakeup(&bcp->r);
 	}
-	bcp->last = bp;
-	unlock(bcp);
-	if(bcp->r.p)
-		wakeup(&bcp->r);
 }
 
 /*

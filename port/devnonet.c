@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"errno.h"
+#include	"../port/nonet.h"
 
 #define DPRINT if(pnonet)print
 #define NOW (MACHP(0)->ticks*MS2HZ)
@@ -510,6 +511,10 @@ noclose(Queue *q)
 		norack(cp, cp->out[i].mid);
 	cp->rcvcircuit = -1;
 	cp->state = Cclosed;
+	if(cp->media){
+		freeb(cp->media);
+		cp->media = 0;
+	}
 	qunlock(cp);
 
 	poperror();
@@ -885,11 +890,12 @@ nohangup(Noconv *cp)
 }
 
 /*
- *  send a hangup signal up the stream to get all line disciplines
- *  to cease and desist.  The Creset state makes any subsequent close not
- *  send hangup messages.
+ *  Send a hangup signal up the stream to get all line disciplines
+ *  to cease and desist.  Disassociate this conversation from a circuit
+ *  number.  Any subsequent close of the conversation will
+ *  not send hangup messages.
  *
- *	State Transition:	{Cconnected, Cconnecting} -> Creset
+ *	State Transition:	{Cconnected, Cconnecting, Chungup} -> Creset
  */
 static void
 noreset(Noconv *cp)
@@ -900,8 +906,11 @@ noreset(Noconv *cp)
 	switch(cp->state){
 	case Cconnected:
 	case Cconnecting:
+	case Chungup:
+		print("resetting connection\n");
 		cp->state = Creset;
-		bp = allocb(0);
+		cp->rcvcircuit = -1;
+ 		bp = allocb(0);
 		bp->type = M_HANGUP;
 		q = cp->rq;
 		PUTNEXT(q, bp);
@@ -1145,13 +1154,46 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	f = h->flag;
 
 	/*
-	 *  if a new call request comes in on a connected channel, hang up the call
+	 *  Obey reset even if the message id is bogus
 	 */
-	if((f&NO_NEWCALL) && cp->state==Cconnected){
-		print("new call on connected channel\n"); 
-		freeb(bp);
+	if(f & NO_RESET){
+		print("reset received\n");
 		noreset(cp);
+		freeb(bp);
 		return;
+	}
+
+	/*
+	 *  A new call request (maybe), treat it as a reset if seen on a
+	 *  connected, hungup, or reset channel.
+	 *
+ 	 *  On a connecting channel, treat as a reset if this is an
+	 *  invalid message ID.
+	 */
+	if(f & NO_NEWCALL){
+		switch(cp->state){
+		case Cclosed:
+		case Copen:
+		case Cannounced:
+		case Creset:
+			panic("nonetrcvmsg %d %d\n", cp->rcvcircuit, cp - cp->ifc->conv);
+		case Chungup:
+		case Cconnected:
+			print("Nonet call on connected/hanging-up circ %d conv %d\n",
+				cp->rcvcircuit, cp - cp->ifc->conv); 
+			freeb(bp);
+			noreset(cp);
+			return;
+		case Cconnecting:
+			if(h->mid != mp->mid){
+				print("Nonet call on connecting circ %d conv %d\n",
+					cp->rcvcircuit, cp - cp->ifc->conv); 
+				freeb(bp);
+				noreset(cp);
+				return;
+			}
+			break;
+		}
 	}
 
 	/*
@@ -1161,9 +1203,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 		DPRINT("old msg %d instead of %d r==%d\n", h->mid, mp->mid, r);
 		if(r == 0){
 			norack(cp, h->ack);
-			if(f & NO_RESET)
-				noreset(cp);
-			else if(f & NO_HANGUP)
+			if(f & NO_HANGUP)
 				nohangup(cp);
 		} else {
 			if(r>0){
@@ -1243,10 +1283,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 		/*
 		 *  hangup (after processing message)
 		 */
-		if(f & NO_RESET){
-			DPRINT("reset with message\n");
-			noreset(cp);
-		} else if(f & NO_HANGUP){
+		if(f & NO_HANGUP){
 			DPRINT("hangup with message\n");
 			nohangup(cp);
 		}

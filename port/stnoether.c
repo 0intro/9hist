@@ -11,6 +11,7 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"errno.h"
+#include	"../port/nonet.h"
 
 #define DPRINT if(pnonet)print
 extern int pnonet;
@@ -116,12 +117,12 @@ noetheroput(Queue *q, Block *bp)
  *  respond to a misaddressed message with a close
  */
 void
-noetherbad(Noifc *ifc, Block *bp)
+noetherbad(Noifc *ifc, Block *bp, int circuit)
 {
 	Etherhdr *eh, *neh;
-	int circuit;
 	Block *nbp;
 	int r;
+	Noconv *cp, *ep;
 
 	/*
 	 *  crack the packet header
@@ -129,9 +130,21 @@ noetherbad(Noifc *ifc, Block *bp)
 	eh = (Etherhdr *)bp->rptr;
 	print("bad %.2ux%.2ux%.2ux%.2ux%.2ux%.2ux c %d m %d f %d\n",
 		eh->s[0], eh->s[1], eh->s[2], eh->s[3], eh->s[4],
-		eh->s[5], eh->circuit[0], eh->mid, eh->flag);
+		eh->s[5], circuit, eh->mid, eh->flag);
 	if(eh->flag & NO_RESET)
 		goto out;
+
+ep = &ifc->conv[conf.nnoconv];
+for(cp = &ifc->conv[0]; cp < ep; cp++){
+	qlock(cp);
+	if(cp->media){
+		neh = (Etherhdr *)(cp->media->rptr);
+		print("%lux	%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux %s c %d\n", neh,
+			neh->s[0], neh->s[1], neh->s[2], neh->s[3], neh->s[4],
+			neh->s[5], cp->raddr, cp->rcvcircuit);
+	}
+	qunlock(cp);
+}
 
 	/*
 	 *  only one reset per message
@@ -221,7 +234,7 @@ noetheriput(Queue *q, Block *bp)
 	 *  if not a new call, then its misaddressed
 	 */
 	if((h->flag & NO_NEWCALL) == 0){
-		noetherbad(ifc, bp);
+		noetherbad(ifc, bp, circuit);
 		return;
 	}
 
