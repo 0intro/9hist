@@ -25,7 +25,7 @@ enum {
 
 	PF=		Spec|0x20,	/* num pad function key */
 	View=		Spec|0x00,	/* view (shift window up) */
-	KF=		Spec|0x40,	/* function key */
+	KF=		0xF000,	/* function key (begin Unicode private space) */
 	Shift=		Spec|0x60,
 	Break=		Spec|0x61,
 	Ctrl=		Spec|0x62,
@@ -39,16 +39,16 @@ enum {
 	Up=		KF|14,
 	Pgup=		KF|15,
 	Print=		KF|16,
-	Left=		View,
-	Right=		View,
+	Left=		KF|17,
+	Right=		KF|18,
 	End=		'\r',
 	Down=		View,
-	Pgdown=		View,
+	Pgdown=		KF|19,
 	Ins=		KF|20,
 	Del=		0x7F,
 };
 
-uchar kbtab[] = 
+Rune kbtab[] = 
 {
 [0x00]	No,	0x1b,	'1',	'2',	'3',	'4',	'5',	'6',
 [0x08]	'7',	'8',	'9',	'0',	'-',	'=',	'\b',	'\t',
@@ -68,7 +68,7 @@ uchar kbtab[] =
 [0x78]	No,	View,	No,	KF|14,	No,	No,	No,	No,
 };
 
-uchar kbtabshift[] =
+Rune kbtabshift[] =
 {
 [0x00]	No,	0x1b,	'!',	'@',	'#',	'$',	'%',	'^',
 [0x08]	'&',	'*',	'(',	')',	'_',	'+',	'\b',	'\t',
@@ -88,7 +88,7 @@ uchar kbtabshift[] =
 [0x78]	No,	KF|14,	No,	KF|14,	No,	No,	No,	No,
 };
 
-uchar kbtabesc1[] =
+Rune kbtabesc1[] =
 {
 [0x00]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x08]	No,	No,	No,	No,	No,	No,	No,	No,
@@ -231,7 +231,7 @@ i8042intr(Ureg*, void*)
 	static int esc1, esc2;
 	static int alt, caps, ctl, num, shift;
 	static int collecting, nk;
-	static uchar kc[5];
+	static Rune kc[5];
 	int keyup;
 
 	/*
@@ -314,7 +314,7 @@ i8042intr(Ureg*, void*)
 	/*
  	 *  normal character
 	 */
-	if(!(c & Spec)){
+	if(!(c & (Spec|KF))){
 		if(ctl){
 			if(alt && c == Del)
 				exit(0);

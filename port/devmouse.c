@@ -58,7 +58,7 @@ static uchar buttonmap[8] = {
 };
 static int mouseswap;
 
-extern	Memimage	gscreen;
+extern	Memimage*	gscreen;
 
 static void
 mousereset(void)
@@ -323,7 +323,7 @@ mousewrite(Chan *c, void *va, long n, vlong)
 			error(Eshort);
 		pt.y = strtoul(p, 0, 0);
 		qlock(&mouse);
-		if(ptinrect(pt, gscreen.r)){
+		if(ptinrect(pt, gscreen->r)){
 			mouse.xy = pt;
 			mouse.redraw = 1;
 			mouse.track = 1;
@@ -426,20 +426,23 @@ mousetrack(int b, int dx, int dy)
 {
 	int x, y;
 
+	if(gscreen==nil)
+		return;
+
 	if(mouse.acceleration){
 		dx = scale(dx);
 		dy = scale(dy);
 	}
 	x = mouse.xy.x + dx;
-	if(x < gscreen.r.min.x)
-		x = gscreen.r.min.x;
-	if(x >= gscreen.r.max.x)
-		x = gscreen.r.max.x;
+	if(x < gscreen->r.min.x)
+		x = gscreen->r.min.x;
+	if(x >= gscreen->r.max.x)
+		x = gscreen->r.max.x;
 	y = mouse.xy.y + dy;
-	if(y < gscreen.r.min.y)
-		y = gscreen.r.min.y;
-	if(y >= gscreen.r.max.y)
-		y = gscreen.r.max.y;
+	if(y < gscreen->r.min.y)
+		y = gscreen->r.min.y;
+	if(y >= gscreen->r.max.y)
+		y = gscreen->r.max.y;
 	mouse.counter++;
 	mouse.xy = Pt(x, y);
 	mouse.buttons = b;

@@ -5,12 +5,28 @@
 #include "fns.h"
 #include "../port/error.h"
 
-enum
-{
-	Width		= 160,
+enum {
+	Black,
+	Blue,
+	Green,
+	Cyan,
+	Red,
+	Magenta,
+	Brown,
+	Grey,
+
+	Bright = 0x08,
+	Blinking = 0x80,
+
+	Yellow = Bright|Brown,
+	White = Bright|Grey,
+};
+	
+enum {
+	Width		= 80*2,
 	Height		= 25,
 
-	Attr		= 7,		/* white on black */
+	Attr		= (Black<<4)|White,		/* high nibble background, low foreground */
 };
 
 #define CGASCREENBASE	((uchar*)KADDR(0xB8000))
@@ -45,6 +61,7 @@ static void
 cgascreenputc(int c)
 {
 	int i;
+	uchar *p;
 
 	if(c == '\n'){
 		cgapos = cgapos/Width;
@@ -67,7 +84,11 @@ cgascreenputc(int c)
 	}
 	if(cgapos >= Width*Height){
 		memmove(CGASCREENBASE, &CGASCREENBASE[Width], Width*(Height-1));
-		memset(&CGASCREENBASE[Width*(Height-1)], 0, Width);
+		p = &CGASCREENBASE[Width*(Height-1)];
+		for(i=0; i<Width/2; i++){
+			*p++ = ' ';
+			*p++ = Attr;
+		}
 		cgapos = Width*(Height-1);
 	}
 	movecursor();
@@ -85,7 +106,7 @@ screeninit(void)
 static void
 cgascreenputs(char* s, int n)
 {
-	if(!islo()) {
+	if(!islo()){
 		/*
 		 * Don't deadlock trying to
 		 * print in an interrupt.

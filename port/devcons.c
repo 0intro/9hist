@@ -5,7 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-void	(*consdebug)(void);
+void	(*consdebug)(void) = rdb;
 
 Queue*	kbdq;			/* unprocessed console input */
 Queue*	lineq;			/* processed console input */
@@ -141,12 +141,17 @@ sprint(char *s, char *fmt, ...)
 	return n;
 }
 
+int noprint;
+
 int
 print(char *fmt, ...)
 {
 	int n;
 	va_list arg;
 	char buf[PRINTSIZE];
+
+	if(noprint)
+		return -1;
 
 	va_start(arg, fmt);
 	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
@@ -168,6 +173,7 @@ iprint(char *fmt, ...)
 	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 	serialputs(buf, n);
+//	screenputs(buf, n);
 	splx(s);
 
 	return n;
@@ -180,11 +186,14 @@ panic(char *fmt, ...)
 	va_list arg;
 	char buf[PRINTSIZE];
 
+	splhi();
 	strcpy(buf, "panic: ");
 	va_start(arg, fmt);
 	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 	buf[n] = '\n';
+	serialputs(buf, n+1);
+	rdb();
 	putstrn(buf, n+1);
 	spllo();
 	prflush();
@@ -207,7 +216,7 @@ pprint(char *fmt, ...)
 	va_list arg;
 	char buf[2*PRINTSIZE];
 
-	if(up->fgrp == 0)
+	if(up == nil || up->fgrp == nil)
 		return 0;
 
 	c = up->fgrp->fd[2];
@@ -266,9 +275,6 @@ echo(Rune r, char *buf, int n)
 		case 'd':
 			if(consdebug != nil)
 				consdebug();
-			return;
-		case 'D':
-			consdebug = rdb;
 			return;
 		case 'p':
 			x = spllo();
@@ -378,6 +384,7 @@ enum{
 	Qkey,
 	Qhostdomain,
 	Qhostowner,
+	Qnewkernel,
 	Qnull,
 	Qpgrpid,
 	Qpid,
@@ -409,6 +416,7 @@ static Dirtab consdir[]={
 	"hostdomain",	{Qhostdomain},	DOMLEN,		0664,
 	"hostowner",	{Qhostowner},	NAMELEN,	0664,
 	"key",		{Qkey},		DESKEYLEN,	0622,
+	"newkernel",	{Qnewkernel},	0,	0000,	/* stupid hack -rsc */
 	"null",		{Qnull},	0,		0666,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,

@@ -38,10 +38,12 @@ int	int1mask = 0xff;	/* interrupts enabled for second 8259 */
 
 extern	uchar rdbgcode[];
 extern	ulong	rdbglen;
+extern	int	noprint;
 
 void
 main(void)
 {
+	noprint = 1;
 	tlbinit();
 	ioinit(1);		/* Very early to establish IO mappings */
 	rdbginit();
@@ -54,10 +56,10 @@ main(void)
 	iomapinit();
 	printinit();
 	serialinit();
+	iprint("Brazil\n");		/**/
 	vecinit();
 	screeninit();
-/*	iprint("\n\nBrazil\n");		/**/
-	print("Brazil config reg %#ux\n", configreg);
+//	print("Brazil config reg %#ux\n", configreg);
 	pageinit();
 	procinit0();
 	initseg();
@@ -65,6 +67,7 @@ main(void)
 	chandevreset();
 	swapinit();
 	userinit();
+	noprint = 0;
 	schedinit();
 }
 
@@ -430,7 +433,7 @@ exit(int type)
 
 	splhi();
 	if(type == 1)
-		for(;;);
+		rdb();
 
 	/* Turn off the NMI hander for the debugger */
 	vec = (uchar*)0xA0000420;

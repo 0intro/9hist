@@ -167,9 +167,9 @@ cyber938xcurenable(VGAscr* scr)
 	 * Cursor colours.
 	 */
 	for(i = 0x48; i < 0x4C; i++)
-		vgaxo(Crtx, i, Pwhite);
+		vgaxo(Crtx, i, 0x00);
 	for(i = 0x4C; i < 0x50; i++)
-		vgaxo(Crtx, i, Pblack);
+		vgaxo(Crtx, i, 0xFF);
 
 	/*
 	 * Find a place for the cursor data in display memory.

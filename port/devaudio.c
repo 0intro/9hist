@@ -18,6 +18,7 @@ enum
 	Qdir		= 0,
 	Qaudio,
 	Qvolume,
+	Qstatus,
 
 	Fmono		= 1,
 	Fin		= 2,
@@ -47,6 +48,7 @@ audiodir[] =
 {
 	"audio",	{Qaudio},		0,	0666,
 	"volume",	{Qvolume},		0,	0666,
+	"audiostat",{Qstatus},		0,	0444,
 };
 
 struct	Buf
@@ -76,6 +78,8 @@ static	struct
 	int	lovol[Nvol];
 	int	major;		/* SB16 major version number (sb 4) */
 	int	minor;		/* SB16 minor version number */
+	ulong	totcount;	/* how many bytes processed since open */
+	vlong	tottime;	/* time at which totcount bytes were processed */
 
 	Buf	buf[Nbuf];	/* buffers and queues */
 	AQueue	empty;
@@ -399,6 +403,7 @@ sb16startdma(void)
 	sbcmd(count>>8);
 
 	audio.active = 1;
+	audio.tottime = todget(nil);
 	contindma();
 	iunlock(&blaster);
 }
@@ -490,6 +495,7 @@ ess1688startdma(void)
 	ess1688w(0xB8, x|0x05);
 
 	audio.active = 1;
+	audio.tottime = todget(nil);
 	contindma();
 	iunlock(&blaster);
 }
@@ -516,6 +522,8 @@ sb16intr(void)
 		if(stat & 2) {
 			ilock(&blaster);
 			dummy = inb(blaster.clri16);
+			audio.totcount += Bufsize;
+			audio.tottime = todget(nil);
 			contindma();
 			iunlock(&blaster);
 			audio.intr = 1;
@@ -538,6 +546,8 @@ ess1688intr(void)
 
 	if(audio.active){
 		ilock(&blaster);
+		audio.totcount += Bufsize;
+		audio.tottime = todget(nil);
 		contindma();
 		dummy = inb(blaster.clri8);
 		iunlock(&blaster);
@@ -625,6 +635,8 @@ setempty(void)
 	audio.filling = 0;
 	for(i=0; i<Nbuf; i++)
 		putbuf(&audio.empty, &audio.buf[i]);
+	audio.totcount = 0;
+	audio.tottime = 0LL;
 	iunlock(&blaster);
 }
 
@@ -707,7 +719,8 @@ static void
 audioinit(void)
 {
 	ISAConf sbconf;
-	int i;
+	int i, x;
+	static int irq[] = {2,5,7,10};
 
 	sbconf.port = 0x220;
 	sbconf.dma = Dma;
@@ -752,9 +765,6 @@ audioinit(void)
 	blaster.startdma = sb16startdma;
 	blaster.intr = sb16intr;
 
-	seteisadma(blaster.dma, audiodmaintr);
-	setvec(Int0vec+sbconf.irq, pcaudiosbintr, 0);
-
 	audio.amode = Aclosed;
 	resetlevel();
 
@@ -789,7 +799,13 @@ audioinit(void)
 	mxvolume();
 
 	/*
-	 * set up irq/dma chans
+	 * Attempt to set IRQ/DMA channels.
+	 * On old ISA boards, these registers are writable.
+	 * On Plug-n-Play boards, these are read-only.
+	 *
+	 * To accomodate both, we write to the registers,
+	 * but then use the contents in case the write is
+	 * disallowed.
 	 */
 	mxcmd(0x80,			/* irq */
 		(sbconf.irq==2)? 1:
@@ -798,6 +814,23 @@ audioinit(void)
 		(sbconf.irq==10)? 8:
 		0);
 	mxcmd(0x81, 1<<blaster.dma);	/* dma */
+
+	x = mxread(0x81);
+	for(i=5; i<=7; i++)
+		if(x & (1<<i)){
+			blaster.dma = i;
+			break;
+		}
+
+	x = mxread(0x80);
+	for(i=0; i<=3; i++)
+		if(x & (1<<i)){
+			sbconf.irq = irq[i];
+			break;
+		}
+
+	seteisadma(blaster.dma, audiodmaintr);
+	setvec(Int0vec+sbconf.irq, pcaudiosbintr, 0);
 }
 
 static Chan*
@@ -831,6 +864,9 @@ audioopen(Chan *c, int omode)
 		error(Eperm);
 		break;
 
+	case Qstatus:
+		if((omode&7) != OREAD)
+			error(Eperm);
 	case Qvolume:
 	case Qdir:
 		break;
@@ -875,6 +911,7 @@ audioclose(Chan *c)
 
 	case Qdir:
 	case Qvolume:
+	case Qstatus:
 		break;
 
 	case Qaudio:
@@ -965,6 +1002,12 @@ audioread(Chan *c, void *v, long n, vlong off)
 		qunlock(&audio);
 		break;
 
+	case Qstatus:
+		buf[0] = 0;
+		snprint(buf, sizeof(buf), "bytes %lud\ntime %lld\n",
+			audio.totcount, audio.tottime);
+		return readstr(offset, a, n, buf);
+
 	case Qvolume:
 		j = 0;
 		buf[0] = 0;
@@ -1004,7 +1047,6 @@ audioread(Chan *c, void *v, long n, vlong off)
 			}
 			j += snprint(buf+j, sizeof(buf)-j, "\n");
 		}
-
 		return readstr(offset, a, n, buf);
 	}
 	return n0-n;

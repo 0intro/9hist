@@ -15,16 +15,10 @@
 
 enum {
 	Qdir,
-	Qvgaiob,
-	Qvgaiow,
-	Qvgaiol,
 	Qvgactl,
 };
 
 static Dirtab vgadir[] = {
-	"vgaiob",	{ Qvgaiob, 0 },		0,	0660,
-	"vgaiow",	{ Qvgaiow, 0 },		0,	0660,
-	"vgaiol",	{ Qvgaiol, 0 },		0,	0660,
 	"vgactl",	{ Qvgactl, 0 },		0,	0660,
 };
 
@@ -87,10 +81,8 @@ checkport(int start, int end)
 static long
 vgaread(Chan* c, void* a, long n, vlong off)
 {
-	int len, port;
+	int len;
 	char *p, *s;
-	ushort *sp;
-	ulong *lp;
 	VGAscr *scr;
 	ulong offset = off;
 
@@ -115,7 +107,7 @@ vgaread(Chan* c, void* a, long n, vlong off)
 		if(scr->gscreen)
 			len += snprint(p+len, READSTR-len, "size: %dx%dx%d\n",
 				scr->gscreen->r.max.x, scr->gscreen->r.max.y,
-				1<<scr->gscreen->ldepth);
+				scr->gscreen->depth);
 		if(scr->cur)
 			s = scr->cur->name;
 		else
@@ -129,33 +121,6 @@ vgaread(Chan* c, void* a, long n, vlong off)
 
 		return n;
 
-	case Qvgaiob:
-		port = offset;
-		checkport(offset, offset+n);
-		for(p = a; port < offset+n; port++)
-			*p++ = inb(port);
-		return n;
-
-	case Qvgaiow:
-		if((n & 0x01) || (offset & 0x01))
-			error(Ebadarg);
-		checkport(offset, offset+n+1);
-		n /= 2;
-		sp = a;
-		for(port = offset; port < offset+n; port += 2)
-			*sp++ = ins(port);
-		return n*2;
-
-	case Qvgaiol:
-		if((n & 0x03) || (offset & 0x03))
-			error(Ebadarg);
-		checkport(offset, offset+n+3);
-		n /= 4;
-		lp = a;
-		for(port = offset; port < offset+n; port += 4)
-			*lp++ = inl(port);
-		return n*4;
-
 	default:
 		error(Egreg);
 		break;
@@ -168,19 +133,26 @@ static void
 vgactl(char* a)
 {
 	int align, i, n, size, x, y, z;
-	char *field[4], *p;
+	char *chanstr, *field[6], *p;
+	ulong chan;
 	VGAscr *scr;
 	extern VGAdev *vgadev[];
 	extern VGAcur *vgacur[];
+	Rectangle r;
 
-	n = parsefields(a, field, 4, " ");
-	if(n < 2)
+	n = parsefields(a, field, nelem(field), " ");
+	if(n < 1)
 		error(Ebadarg);
 
 	scr = &vgascreen[0];
 	if(strcmp(field[0], "hwgc") == 0){
 		if(n < 2)
 			error(Ebadarg);
+
+		/* BUG: drawinit should become a different message rather than piggybacking */
+		if(scr && scr->dev && scr->dev->drawinit)
+			scr->dev->drawinit(scr);
+
 		if(strcmp(field[1], "off") == 0){
 			lock(&cursor);
 			if(scr->cur){
@@ -221,7 +193,7 @@ vgactl(char* a)
 		}
 	}
 	else if(strcmp(field[0], "size") == 0){
-		if(n < 2)
+		if(n < 3)
 			error(Ebadarg);
 		x = strtoul(field[1], &p, 0);
 		if(x == 0 || x > 2048)
@@ -235,21 +207,65 @@ vgactl(char* a)
 		if(*p)
 			p++;
 
-		switch(strtoul(p, &p, 0)){
-		case 8:
-			z = 3;
-			break;
+		z = strtoul(p, &p, 0);
 
-		default:
-			z = 0;
-			error(Ebadarg);
-		}
+		chanstr = field[2];
+		if((chan = strtochan(chanstr)) == 0)
+			error("bad channel");
+
+		if(chantodepth(chan) != z)
+			error("depth, channel do not match");
 
 		cursoroff(1);
-		if(screensize(x, y, z))
+		deletescreenimage();
+		if(screensize(x, y, z, chan))
 			error(Egreg);
 		vgascreenwin(scr);
 		cursoron(1);
+		return;
+	}
+	else if(strcmp(field[0], "actualsize") == 0){
+		if(scr->gscreen == nil)
+			error("set the screen size first");
+
+		if(n < 2)
+			error(Ebadarg);
+		x = strtoul(field[1], &p, 0);
+		if(x == 0 || x > 2048)
+			error(Ebadarg);
+		if(*p)
+			p++;
+
+		y = strtoul(p, nil, 0);
+		if(y == 0 || y > 2048)
+			error(Ebadarg);
+
+		if(x > scr->gscreen->r.max.x || y > scr->gscreen->r.max.y)
+			error("physical screen bigger than virtual");
+
+		r = Rect(0,0,x,y);
+		if(!eqrect(r, scr->gscreen->r)){
+			if(scr->cur == nil || scr->cur->doespanning == 0)
+				error("virtual screen not supported");
+		}
+
+		physgscreenr = r;
+		return;
+	}
+	else if(strcmp(field[0], "palettedepth") == 0){
+		if(n < 2)
+			error(Ebadarg);
+
+		x = strtoul(field[1], &p, 0);
+		if(x != 8 && x != 6)
+			error(Ebadarg);
+
+		scr->palettedepth = x;
+		return;
+	}
+	else if(strcmp(field[0], "drawinit") == 0){
+		if(scr && scr->dev && scr->dev->drawinit)
+			scr->dev->drawinit(scr);
 		return;
 	}
 	else if(strcmp(field[0], "linear") == 0){
@@ -265,6 +281,24 @@ vgactl(char* a)
 			error("not enough free address space");
 		return;
 	}
+/*	else if(strcmp(field[0], "memset") == 0){
+		if(n < 4)
+			error(Ebadarg);
+		memset((void*)strtoul(field[1], 0, 0), atoi(field[2]), atoi(field[3]));
+		return;
+	}
+*/
+	else if(strcmp(field[0], "blank") == 0){
+		if(n < 2)
+			error(Ebadarg);
+		drawblankscreen(atoi(field[1]));
+		return;
+	}
+	else if(strcmp(field[0], "hwacceloff") == 0){
+		scr->fill = nil;
+		scr->scroll = nil;
+		return;
+	}
 
 	error(Ebadarg);
 }
@@ -272,10 +306,7 @@ vgactl(char* a)
 static long
 vgawrite(Chan* c, void* a, long n, vlong off)
 {
-	int port;
 	char *p;
-	ushort *sp;
-	ulong *lp;
 	ulong offset = off;
 
 	switch(c->qid.path & ~CHDIR){
@@ -297,33 +328,6 @@ vgawrite(Chan* c, void* a, long n, vlong off)
 		poperror();
 		free(p);
 		return n;
-
-	case Qvgaiob:
-		p = a;
-		checkport(offset, offset+n);
-		for(port = offset; port < offset+n; port++)
-			outb(port, *p++);
-		return n;
-
-	case Qvgaiow:
-		if((n & 01) || (offset & 01))
-			error(Ebadarg);
-		checkport(offset, offset+n+1);
-		n /= 2;
-		sp = a;
-		for(port = offset; port < offset+n; port += 2)
-			outs(port, *sp++);
-		return n*2;
-
-	case Qvgaiol:
-		if((n & 0x03) || (offset & 0x03))
-			error(Ebadarg);
-		checkport(offset, offset+n+3);
-		n /= 4;
-		lp = a;
-		for(port = offset; port < offset+n; port += 4)
-			outl(port, *lp++);
-		return n*4;
 
 	default:
 		error(Egreg);

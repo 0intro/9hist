@@ -55,12 +55,12 @@ ark2000pvenable(VGAscr* scr)
 	vgaxo(Seqx, 0x20, seq20);
 	seq20 |= 0x18;
 
-	vgaxo(Seqx, 0x26, Pwhite);
-	vgaxo(Seqx, 0x27, Pwhite);
-	vgaxo(Seqx, 0x28, Pwhite);
-	vgaxo(Seqx, 0x29, Pblack);
-	vgaxo(Seqx, 0x2A, Pblack);
-	vgaxo(Seqx, 0x2B, Pblack);
+	vgaxo(Seqx, 0x26, 0x00);
+	vgaxo(Seqx, 0x27, 0x00);
+	vgaxo(Seqx, 0x28, 0x00);
+	vgaxo(Seqx, 0x29, 0xFF);
+	vgaxo(Seqx, 0x2A, 0xFF);
+	vgaxo(Seqx, 0x2B, 0xFF);
 
 	/*
 	 * Cursor storage is a 256 byte or 1Kb block located in the last

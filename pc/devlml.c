@@ -7,14 +7,6 @@
 #include	"io.h"
 
 #include	"devlml.h"
-#include	"index.h"
-#include	"avctl.h"
-#include	"misc.h"
-
-Medium		*m;
-
-AVctl	*ctl = &ctlinit;
-
 
 static void *		pciPhysBaseAddr;
 static ulong		pciBaseAddr;

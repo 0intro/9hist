@@ -11,42 +11,37 @@
 #include <cursor.h>
 #include "screen.h"
 
-static ulong backbits = (Backgnd<<24)|(Backgnd<<16)|(Backgnd<<8)|Backgnd;
-static Memdata backdata = {
-	nil,
-	&backbits
-};
-static Memimage xback = {
-	{ 0, 0, 1, 1 },
-	{ -100000, -100000, 100000, 100000 },
-	3,
-	1,
-	&backdata,
-	0,
-	1
-};
-static Memimage* back = &xback;
-
-static ulong consbits = 0;
-static Memdata consdata = {
-	nil,
-	&consbits
-};
-static Memimage conscol = {
-	{ 0, 0, 1, 1 },
-	{ -100000, -100000, 100000, 100000 },
-	3,
-	1,
-	&consdata,
-	0,
-	1
-};
+static Memimage* back;
+static Memimage *conscol;
 
 static Point curpos;
 static Rectangle window;
 static int *xp;
 static int xbuf[256];
 static Lock vgascreenlock;
+int drawdebug;
+
+void
+vgaimageinit(ulong chan)
+{
+	if(back == nil){
+		back = allocmemimage(Rect(0,0,1,1), chan);	/* RSC BUG */
+		if(back == nil)
+			panic("back alloc");		/* RSC BUG */
+		back->flags |= Frepl;
+		back->clipr = Rect(-0x3FFFFFF, -0x3FFFFFF, 0x3FFFFFF, 0x3FFFFFF);
+		memfillcolor(back, DBlack);
+	}
+
+	if(conscol == nil){
+		conscol = allocmemimage(Rect(0,0,1,1), chan);	/* RSC BUG */
+		if(conscol == nil)
+			panic("conscol alloc");	/* RSC BUG */
+		conscol->flags |= Frepl;
+		conscol->clipr = Rect(-0x3FFFFFF, -0x3FFFFFF, 0x3FFFFFF, 0x3FFFFFF);
+		memfillcolor(conscol, DWhite);
+	}
+}
 
 static void
 vgascroll(VGAscr* scr)
@@ -59,9 +54,9 @@ vgascroll(VGAscr* scr)
 	o = 8*h;
 	r = Rpt(window.min, Pt(window.max.x, window.max.y-o));
 	p = Pt(window.min.x, window.min.y+o);
-	memimagedraw(scr->gscreen, r, scr->gscreen, p, memones, p);
+	memimagedraw(scr->gscreen, r, scr->gscreen, p, nil, p);
 	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
-	memimagedraw(scr->gscreen, r, back, ZP, memones, ZP);
+	memimagedraw(scr->gscreen, r, back, ZP, nil, ZP);
 
 	curpos.y -= o;
 }
@@ -73,6 +68,7 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 	int h, w, pos;
 	Rectangle r;
 
+//	drawdebug = 1;
 	if(xp < xbuf || xp >= &xbuf[sizeof(xbuf)])
 		xp = xbuf;
 
@@ -100,7 +96,7 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 		pos = (curpos.x-window.min.x)/w;
 		pos = 4-(pos%4);
 		r = Rect(curpos.x, curpos.y, curpos.x+pos*w, curpos.y+h);
-		memimagedraw(scr->gscreen, r, back, back->r.min, memones, back->r.min);
+		memimagedraw(scr->gscreen, r, back, back->r.min, nil, ZP);
 		bbox(flushr, r);
 		curpos.x += pos*w;
 		break;
@@ -110,7 +106,7 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 			break;
 		xp--;
 		r = Rect(*xp, curpos.y, curpos.x, curpos.y+h);
-		memimagedraw(scr->gscreen, r, back, back->r.min, memones, back->r.min);
+		memimagedraw(scr->gscreen, r, back, back->r.min, nil, ZP);
 		bbox(flushr, r);
 		curpos.x = *xp;
 		break;
@@ -124,11 +120,12 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 
 		*xp++ = curpos.x;
 		r = Rect(curpos.x, curpos.y, curpos.x+w, curpos.y+h);
-		memimagedraw(scr->gscreen, r, back, back->r.min, memones, back->r.min);
-		memimagestring(scr->gscreen, curpos, &conscol, scr->memdefont, buf);
+		memimagedraw(scr->gscreen, r, back, back->r.min, nil, back->r.min);
+		memimagestring(scr->gscreen, curpos, conscol, scr->memdefont, buf);
 		bbox(flushr, r);
 		curpos.x += w;
 	}
+//	drawdebug = 0;
 }
 
 static void
@@ -192,3 +189,4 @@ vgascreenwin(VGAscr* scr)
 
 	screenputs = vgascreenputs;
 }
+

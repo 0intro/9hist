@@ -30,7 +30,7 @@ struct Dac
 };
 
 char s1[] = { 0x00, 0x00, 0xC0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-#define	Backgnd		0x00
+#define	Backgnd		0xFF	/* white */
 
 		Memsubfont	*memdefont;
 static	ulong		rep(ulong, int);
@@ -44,8 +44,6 @@ Lock	screenlock;
 
 Point	ZP = {0, 0};
 
-static Memdata	hwcursordata;
-
 static Memdata gscreendata =
 {
 	nil,
@@ -53,96 +51,25 @@ static Memdata gscreendata =
 	1,
 };
 
-Memimage gscreen =
+static Memimage xgscreen =
 {
 	{ 0, 0, 1597, 1234 },	/* r */
 	{ 0, 0, 1597, 1234 },	/* clipr */
-	3,	/* ldepth */
-	0,	/* repl */
+	8,	/* depth */
+	1,	/* nchan */
+	CMAP8,	/* chan */
+	nil,	/* cmap */
 	&gscreendata,	/* data */
 	0,	/* zero */
 	512,	/* width */
 	0,	/* layer */
+	Frepl,	/* flags */
 };
 
-static Memimage hwcursor=
-{
-	{0, 0, 64, 64},
-	{0, 0, 64, 64},
-	1,
-	0,
-	&hwcursordata,		/* base filled in by malloc when needed */
-	0,
-	4,
-	0,
-};
-
-ulong	consbits = ~0;
-Memdata	consdata = {
-	nil,
-	&consbits
-};
-Memimage conscol =
-{
-	{ 0, 0, 1, 1 },
-	{ -100000, -100000, 100000, 100000 },
-	3,
-	1,
-	&consdata,
-	0,
-	1
-};
-
-ulong	onesbits = ~0;
-Memdata	onesdata = {
-	nil,
-	&onesbits,
-};
-Memimage	xones =
-{
-	{ 0, 0, 1, 1 },
-	{ -100000, -100000, 100000, 100000 },
-	3,
-	1,
-	&onesdata,
-	0,
-	1
-};
-Memimage *memones = &xones;
-
-ulong	zerosbits = 0;
-Memdata	zerosdata = {
-	nil,
-	&zerosbits,
-};
-Memimage	xzeros =
-{
-	{ 0, 0, 1, 1 },
-	{ -100000, -100000, 100000, 100000 },
-	3,
-	1,
-	&zerosdata,
-	0,
-	1
-};
-Memimage *memzeros = &xzeros;
-
-ulong	backbits = (Backgnd<<24)|(Backgnd<<16)|(Backgnd<<8)|Backgnd;
-Memdata	backdata = {
-	nil,
-	&backbits
-};
-Memimage	xback =
-{
-	{ 0, 0, 1, 1 },
-	{ -100000, -100000, 100000, 100000 },
-	3,
-	1,
-	&backdata,
-	0,
-	1
-};
-Memimage *back = &xback;
+Memimage *gscreen;
+Memimage *conscol;
+Memimage *back;
+Memimage *hwcursor;
 
 Cursor	arrow = {
 	{ -1, -1 },
@@ -161,19 +88,27 @@ Cursor	arrow = {
 static Rectangle window;
 static Point curpos;
 static int h, w;
+int drawdebug;
 
 void
 screenwin(void)
 {
 	Dac *d;
 	Point p, q;
-	int y;
 	Cursor zero;
 	char *greet;
+	Memimage *grey;
 
-	memset((void*)Screenvirt, 0xff, 3*1024*1024);
-	for(y=gscreen.r.min.y; y<gscreen.r.max.y; y++)
-		memset(byteaddr(&gscreen, Pt(gscreen.r.min.x, y)), 0xba, Dx(gscreen.r));
+	gscreen = &xgscreen;
+	memsetchan(gscreen, CMAP8);
+	hwcursor = allocmemimage(Rect(0,0,64,64), GREY2);
+	memsetchan(hwcursor, GREY2);
+	
+	back = memwhite;
+	conscol = memblack;
+
+	memset((void*)Screenvirt, 0, 3*1024*1024);
+	memfillcolor(gscreen, 0x444488FF);
 
 	w = memdefont->info[' '].width;
 	h = memdefont->height;
@@ -181,20 +116,24 @@ screenwin(void)
 	window.min = Pt(100, 100);
 	window.max = addpt(window.min, Pt(10+w*120, 10+h*60));
 
-	memimagedraw(&gscreen, window, memones, ZP, memones, ZP);
+	memimagedraw(gscreen, window, memblack, ZP, memopaque, ZP);
 	window = insetrect(window, 4);
-	memimagedraw(&gscreen, window, back, ZP, memones, ZP);
-	/* hack to get a grey color */
-	memzeros->data->data[0] = 0x33333333;
-	memimagedraw(&gscreen, Rect(window.min.x, window.min.y,
-			window.max.x, window.min.y+h+5+6), memzeros, ZP, memones, ZP);
-	memzeros->data->data[0] = 0;
+	memimagedraw(gscreen, window, memwhite, ZP, memopaque, ZP);
+
+	/* a lot of work to get a grey color */
+	grey = allocmemimage(Rect(0,0,1,1), CMAP8);
+	grey->flags |= Frepl;
+	grey->clipr = gscreen->r;
+	grey->data->bdata[0] = 0xAA;
+	memimagedraw(gscreen, Rect(window.min.x, window.min.y,
+			window.max.x, window.min.y+h+5+6), grey, ZP, nil, ZP);
+	freememimage(grey);
 	window = insetrect(window, 5);
 
-	greet = " Brazil Console: Draw version ";
+	greet = " Brazil Console: New Draw version ";
 	p = addpt(window.min, Pt(10, 0));
 	q = memsubfontwidth(memdefont, greet);
-	memimagestring(&gscreen, p, &conscol, memdefont, greet);
+	memimagestring(gscreen, p, conscol, memdefont, greet);
 	window.min.y += h+6;
 	curpos = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
@@ -254,7 +193,7 @@ dacinit(void)
 	for(i = 0; i < 0x400; i++)
 		d->cr2 = 0xff;
 
-	drawcmap(0);
+	drawcmap(1);
 
 	/* Overlay Palette Ram */
 	d->cr0 = 0x00;
@@ -280,6 +219,7 @@ screeninit(void)
 {
 	dacinit();
 
+	memimageinit();
 	memdefont = getmemdefont();
 
 	out.pos.x = MINX;
@@ -299,9 +239,9 @@ scroll(void)
 	o = 8*h;
 	r = Rpt(window.min, Pt(window.max.x, window.max.y-o));
 	p = Pt(window.min.x, window.min.y+o);
-	memimagedraw(&gscreen, r, &gscreen, p, memones, p);
+	memimagedraw(gscreen, r, gscreen, p, nil, p);
 	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
-	memimagedraw(&gscreen, r, back, ZP, memones, ZP);
+	memimagedraw(gscreen, r, back, ZP, nil, ZP);
 
 	curpos.y -= o;
 }
@@ -309,15 +249,16 @@ scroll(void)
 /* 
  * export screen to devdraw
  */
-ulong*
-attachscreen(Rectangle *r, int *ld, int *width, int *softscreen)
+uchar*
+attachscreen(Rectangle *r, ulong *chan, int* d, int *width, int *softscreen)
 {
-	*r = gscreen.r;
-	*ld = gscreen.ldepth;
-	*width = gscreen.width;
+	*r = gscreen->r;
+	*d = gscreen->depth;
+	*chan = gscreen->chan;
+	*width = gscreen->width;
 	*softscreen = 0;
 
-	return gscreendata.data;
+	return gscreendata.bdata;
 }
 
 /*
@@ -335,10 +276,10 @@ flushmemscreen(Rectangle r)
 	if(Dx(r)<=0 || Dy(r)<=0)
 		return;
 	x = allocmemimage(r, 3);
-	memimagedraw(x, r, &gscreen, r.min, memones, r.min);
-	memimagedraw(&gscreen, r, memones, r.min, memones, r.min);
+	memimagedraw(x, r, &gscreen, r.min, memopaque, r.min);
+	memimagedraw(&gscreen, r, memblack, r.min, memopaque, r.min);
 	for(i=1000000; --i>0; );
-	memimagedraw(&gscreen, r, x, r.min, memones, r.min);
+	memimagedraw(&gscreen, r, x, r.min, memopaque, r.min);
 	freememimage(x);
 */
 }
@@ -373,7 +314,7 @@ screenputc(char *buf)
 		pos = (curpos.x-window.min.x)/w;
 		pos = 8-(pos%8);
 		r = Rect(curpos.x, curpos.y, curpos.x+pos*w, curpos.y + h);
-		memimagedraw(&gscreen, r, back, back->r.min, memones, back->r.min);
+		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
 		curpos.x += pos*w;
 		break;
 	case '\b':
@@ -381,7 +322,7 @@ screenputc(char *buf)
 			break;
 		xp--;
 		r = Rect(*xp, curpos.y, curpos.x, curpos.y + h);
-		memimagedraw(&gscreen, r, back, back->r.min, memones, back->r.min);
+		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
 		curpos.x = *xp;
 		break;
 	default:
@@ -393,8 +334,8 @@ screenputc(char *buf)
 
 		*xp++ = curpos.x;
 		r = Rect(curpos.x, curpos.y, curpos.x+w, curpos.y + h);
-		memimagedraw(&gscreen, r, back, back->r.min, memones, back->r.min);
-		memimagestring(&gscreen, curpos, &conscol, memdefont, buf);
+		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
+		memimagestring(gscreen, curpos, conscol, memdefont, buf);
 		curpos.x += w;
 	}
 }
@@ -542,9 +483,7 @@ setcursor(Cursor *curs)
 		*p = curs->clr[2*i];
 		*(p+1) = curs->clr[2*i+1];
 	}
-	hwcursor.data->data = (ulong *)malloc(1024);
-	if(hwcursor.data->data == 0)
-		error(Enomem);
+	memset(hwcursor->data->bdata, 0, sizeof(long)*hwcursor->width*Dy(hwcursor->r));
 	/* hw cursor is 64x64 with hot point at (32,32) */
 	org = addpt(Pt(32,32), curs->offset); 
 	for(y = 0; y < 16; y++)
@@ -553,7 +492,7 @@ setcursor(Cursor *curs)
 			cpix = (c[y]>>(15-x))&1;
 			dpix = (spix<<1) | cpix;
 			/* point(&hwcursor, addpt(Pt(x,y), org), dpix, S), by hand */
-			*byteaddr(&hwcursor, Pt(x+org.x, y+org.y)) |= dpix<<(6-(2*((x+org.x)&3)));
+			*byteaddr(hwcursor, Pt(x+org.x, y+org.y)) |= (dpix<<(6-(2*((x+org.x)&3))));
 		}
 
 	d = DAC;
@@ -571,14 +510,12 @@ setcursor(Cursor *curs)
 	d->cr1 = 0x04;
 	d->cr0 = 0x00;
 	for(x = 0; x < 1024; x++)
-		d->cr2 = ((uchar *)hwcursor.data->data)[x];
+		d->cr2 = hwcursor->data->bdata[x];
 	/* set y back */
 	d->cr1 = 0x03;
 	d->cr0 = 0x03;
 	d->cr2 = ylow;
 	d->cr2 = yhigh;
-	
-	free(hwcursor.data->data);
 }
 
 int
@@ -611,7 +548,7 @@ cursoron(int dolock)
 int
 screenbits(void)
 {
-	return 1<<gscreen.ldepth;
+	return gscreen->depth;
 }
 
 extern	cursorlock(Rectangle);
@@ -632,14 +569,14 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	USED(dolock);
 
-	if(!rectclip(&r, gscreen.r) || tl<=0)
+	if(!rectclip(&r, gscreen->r) || tl<=0)
 		return;
 
 	lock(&screenlock);
-	q = byteaddr(&gscreen, r.min);
+	q = byteaddr(gscreen, r.min);
 	for(y=r.min.y; y<r.max.y; y++){
 		memmove(q, data, tl);
-		q += gscreen.width*sizeof(ulong);
+		q += gscreen->width*sizeof(ulong);
 		data += l;
 	}
 	unlock(&screenlock);
@@ -663,10 +600,10 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	USED(dolock);
 
 	lock(&screenlock);
-	q = byteaddr(&gscreen, r.min);
+	q = byteaddr(gscreen, r.min);
 	for(y=r.min.y; y<r.max.y; y++){
 		memmove(data, q, tl);
-		q += gscreen.width*sizeof(ulong);
+		q += gscreen->width*sizeof(ulong);
 		data += l;
 	}
 	unlock(&screenlock);

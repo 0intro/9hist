@@ -19,7 +19,7 @@ s3pageset(VGAscr* scr, int page)
 	int opage;
 
 	crt35 = vgaxi(Crtx, 0x35);
-	if(scr->gscreen->ldepth == 3){
+	if(scr->gscreen->depth >= 8){
 		/*
 		 * The S3 registers need to be unlocked for this.
 		 * Let's hope they are already:
@@ -64,14 +64,14 @@ s3page(VGAscr* scr, int page)
 static ulong
 s3linear(VGAscr* scr, int* size, int* align)
 {
-	ulong aperture, oaperture, osize;
-	int oapsize, wasupamem;
+	ulong aperture, oaperture;
+	int osize, oapsize, wasupamem;
 	Pcidev *p;
 	Physseg seg;
 
+	osize = *size;
 	oaperture = scr->aperture;
 	oapsize = scr->apsize;
-	osize = *size;
 	wasupamem = scr->isupamem;
 	if(wasupamem)
 		upafree(oaperture, oapsize);
@@ -92,6 +92,8 @@ s3linear(VGAscr* scr, int* size, int* align)
 	else
 		scr->isupamem = 1;
 
+	if(oaperture)
+		print("warning (BUG): redefinition of aperture does not change s3screen segment\n");
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
 	seg.name = smalloc(NAMELEN);
@@ -99,6 +101,7 @@ s3linear(VGAscr* scr, int* size, int* align)
 	seg.pa = aperture;
 	seg.size = osize;
 	addphysseg(&seg);
+
 	return aperture;
 }
 
@@ -130,7 +133,7 @@ s3disable(VGAscr*)
 static void
 s3enable(VGAscr* scr)
 {
-	int i, id;
+	int i;
 	ulong storage;
 
 	s3disable(scr);
@@ -138,30 +141,16 @@ s3enable(VGAscr* scr)
 	/*
 	 * Cursor colours. Set both the CR0[EF] and the colour
 	 * stack in case we are using a 16-bit RAMDAC.
-	 * This stuff is just a mystery for the ViRGE/GX2.
 	 */
 	vgaxo(Crtx, 0x0E, Pwhite);
 	vgaxo(Crtx, 0x0F, Pblack);
 	vgaxi(Crtx, 0x45);
-	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
-	switch(id){
 
-	case 0xE110:				/* ViRGE/GX2 */
-		for(i = 0; i < 3; i++)
-			vgaxo(Crtx, 0x4A, Pblack);
-		vgaxi(Crtx, 0x45);
-		for(i = 0; i < 3; i++)
-			vgaxo(Crtx, 0x4B, Pwhite);
-		break;
-
-	default:
-		for(i = 0; i < 3; i++)
-			vgaxo(Crtx, 0x4A, Pwhite);
-		vgaxi(Crtx, 0x45);
-		for(i = 0; i < 3; i++)
-			vgaxo(Crtx, 0x4B, Pblack);
-		break;
-	}
+	for(i = 0; i < 3; i++)
+		vgaxo(Crtx, 0x4A, Pblack);
+	vgaxi(Crtx, 0x45);
+	for(i = 0; i < 3; i++)
+		vgaxo(Crtx, 0x4B, Pwhite);
 
 	/*
 	 * Find a place for the cursor data in display memory.
@@ -198,8 +187,10 @@ s3load(VGAscr* scr, Cursor* curs)
 	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
 	switch(id){
 
-	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE131:				/* ViRGE */
+	case 0xE18A:				/* ViRGE/[DG]X */
+	case 0xE110:				/* ViRGE/GX2 */
+	case 0xE13D:				/* ViRGE/VX */
 		p += scr->storage;
 		break;
 
@@ -242,8 +233,10 @@ s3load(VGAscr* scr, Cursor* curs)
 
 	switch(id){
 
-	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE131:				/* ViRGE */
+	case 0xE18A:				/* ViRGE/[DG]X */
+	case 0xE110:				/* ViRGE/GX2 */
+	case 0xE13D:				/* ViRGE/VX */
 		break;
 
 	default:
@@ -297,6 +290,182 @@ s3move(VGAscr* scr, Point p)
 	return 0;
 }
 
+/*
+ * The manual gives byte offsets, but we want ulong offsets, hence /4.
+ */
+enum {
+	SrcBase = 0xA4D4/4,
+	DstBase = 0xA4D8/4,
+	Stride = 0xA4E4/4,
+	FgrdData = 0xA4F4/4,
+	WidthHeight = 0xA504/4,
+	SrcXY = 0xA508/4,
+	DestXY = 0xA50C/4,
+	Command = 0xA500/4,
+	SubStat = 0x8504/4,
+	FifoStat = 0x850C/4,
+};
+
+/*
+ * Wait for writes to VGA memory via linear aperture to flush.
+ */
+enum {Maxloop = 1<<24};
+struct {
+	ulong linear;
+	ulong fifo;
+	ulong idle;
+} waitcount;
+
+static void
+waitforlinearfifo(VGAscr *scr)
+{
+	ulong *mmio;
+	long x;
+	static ulong nwaitforlinearfifo;
+	ulong mask, val;
+
+	switch(scr->id){
+	default:
+		panic("unknown scr->id in s3 waitforlinearfifo");
+	case 0xE131:	/* ViRGE */
+	case 0xE13D:	/* ViRGE/VX */
+		mask = 0x0F<<6;
+		val = 0x08<<6;
+		break;
+	case 0xE110:	/* ViRGE/GX2 */
+		mask = 0x1F<<6;
+		val = 0x10<<6;
+		break;
+	}
+	mmio = scr->mmio;
+	x = 0;
+	while((mmio[FifoStat]&mask) != val && x++ < Maxloop)
+		waitcount.linear++;
+}
+
+static void
+waitforfifo(VGAscr *scr, int entries)
+{
+	ulong *mmio;
+	long x;
+	static ulong nwaitforfifo;
+
+	mmio = scr->mmio;
+	x = 0;
+	while((mmio[SubStat]&0x1F00) < ((entries+2)<<8) && x++ < Maxloop)
+		waitcount.fifo++;
+}
+
+static void
+waitforidle(VGAscr *scr)
+{
+	ulong *mmio;
+	long x;
+
+	mmio = scr->mmio;
+	x = 0;
+	while((mmio[SubStat]&0x3F00) != 0x3000 && x++ < Maxloop)
+		waitcount.idle++;
+}
+
+static int
+hwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
+{
+	enum { Bitbltop = 0xCC };	/* copy source */
+	ulong *mmio;
+	ulong cmd, stride;
+	Point dp, sp;
+	int did, d;
+
+	d = scr->gscreen->depth;
+	did = (d-8)/8;
+	cmd = 0x00000020|(Bitbltop<<17)|(did<<2);
+	stride = Dx(scr->gscreen->r)*d/8;
+
+	if(r.min.x <= sr.min.x){
+		cmd |= 1<<25;
+		dp.x = r.min.x;
+		sp.x = sr.min.x;
+	}else{
+		dp.x = r.max.x-1;
+		sp.x = sr.max.x-1;
+	}
+
+	if(r.min.y <= sr.min.y){
+		cmd |= 1<<26;
+		dp.y = r.min.y;
+		sp.y = sr.min.y;
+	}else{
+		dp.y = r.max.y-1;
+		sp.y = sr.max.y-1;
+	}
+
+	mmio = scr->mmio;
+	waitforlinearfifo(scr);
+	waitforfifo(scr, 7);
+	mmio[SrcBase] = scr->aperture;
+	mmio[DstBase] = scr->aperture;
+	mmio[Stride] = (stride<<16)|stride;
+	mmio[WidthHeight] = ((Dx(r)-1)<<16)|Dy(r);
+	mmio[SrcXY] = (sp.x<<16)|sp.y;
+	mmio[DestXY] = (dp.x<<16)|dp.y;
+	mmio[Command] = cmd;
+	waitforidle(scr);
+	return 1;
+}
+
+static int
+hwfill(VGAscr *scr, Rectangle r, ulong sval)
+{
+	enum { Bitbltop = 0xCC };	/* copy source */
+	ulong *mmio;
+	ulong cmd, stride;
+	int did, d;
+
+	d = scr->gscreen->depth;
+	did = (d-8)/8;
+	cmd = 0x16000120|(Bitbltop<<17)|(did<<2);
+	stride = Dx(scr->gscreen->r)*d/8;
+	mmio = scr->mmio;
+	waitforlinearfifo(scr);
+	waitforfifo(scr, 8);
+	mmio[SrcBase] = scr->aperture;
+	mmio[DstBase] = scr->aperture;
+	mmio[DstBase] = scr->aperture;
+	mmio[Stride] = (stride<<16)|stride;
+	mmio[FgrdData] = sval;
+	mmio[WidthHeight] = ((Dx(r)-1)<<16)|Dy(r);
+	mmio[DestXY] = (r.min.x<<16)|r.min.y;
+	mmio[Command] = cmd;
+	waitforidle(scr);
+	return 1;
+}
+
+static void
+s3drawinit(VGAscr *scr)
+{
+	ulong id;
+
+	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
+	scr->id = id;
+
+	/*
+	 * It's highly likely that other ViRGEs will work without
+	 * change to the driver, with the exception of the size of
+	 * the linear aperture memory write FIFO.  Since we don't
+	 * know that size, I'm not turning them on.  See waitforlinearfifo
+	 * above.
+	 */
+	switch(id){
+	case 0xE131:				/* ViRGE */
+	case 0xE13D:				/* ViRGE/VX */
+	case 0xE110:				/* ViRGE/GX2 */
+		scr->mmio = (ulong*)(scr->aperture+0x1000000);
+		scr->fill = hwfill;
+		scr->scroll = hwscroll;
+	}
+}
+
 VGAdev vgas3dev = {
 	"s3",
 
@@ -304,6 +473,7 @@ VGAdev vgas3dev = {
 	0,
 	s3page,
 	s3linear,
+	s3drawinit,
 };
 
 VGAcur vgas3cur = {

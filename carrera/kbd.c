@@ -47,7 +47,7 @@ enum
 
 	PF=		Spec|0x20,	/* num pad function key */
 	View=		Spec|0x00,	/* view (shift window up) */
-	KF=		Spec|0x40,	/* function key */
+	KF=		0xF000,	/* function key (begin Unicode private space) */
 	Shift=		Spec|0x60,
 	Break=		Spec|0x61,
 	Ctrl=		Spec|0x62,
@@ -76,7 +76,7 @@ enum
 #define INWAIT	while(!(KBDCTL & Sobf)); kdbdly(1)
 #define ACKWAIT INWAIT ; if(KBDDAT != Rack) print("bad response\n"); kdbdly(1)
 
-uchar kbtab[] = 
+Rune kbtab[] = 
 {
 [0x00]	No,	0x1b,	'1',	'2',	'3',	'4',	'5',	'6',
 [0x08]	'7',	'8',	'9',	'0',	'-',	'=',	'\b',	'\t',
@@ -92,7 +92,7 @@ uchar kbtab[] =
 [0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
 };
 
-uchar kbtabshift[] =
+Rune kbtabshift[] =
 {
 [0x00]	No,	0x1b,	'!',	'@',	'#',	'$',	'%',	'^',
 [0x08]	'&',	'*',	'(',	')',	'_',	'+',	'\b',	'\t',
@@ -108,7 +108,7 @@ uchar kbtabshift[] =
 [0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
 };
 
-uchar kbtabesc1[] =
+Rune kbtabesc1[] =
 {
 [0x00]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x08]	No,	No,	No,	No,	No,	No,	No,	No,
@@ -199,7 +199,7 @@ kbdintr(void)
 	static int ctl;
 	static int num;
 	static int collecting, nk;
-	static uchar kc[5];
+	static Rune kc[5];
 	static int shift;
 	int keyup;
 
