@@ -265,9 +265,12 @@ asyncoput(Queue *q, Block *bp)
 	Block *msg;
 
 	if(bp->type != M_DATA){
-		if(streamparse("debug", bp))
+		if(streamparse("debug", bp)){
 			asyncdebug = 3;
-		freeb(bp);
+			freeb(bp);
+		} else {
+			PUTNEXT(q, bp);
+		}
 		return;
 	}
 

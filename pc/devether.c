@@ -13,7 +13,7 @@ typedef struct Type Type;
 typedef struct Ctlr Ctlr;
 
 struct Hw {
-	void	(*reset)(Ctlr*);
+	int	(*reset)(Ctlr*);
 	void	(*init)(Ctlr*);
 	void	(*mode)(Ctlr*, int);
 	void	(*online)(Ctlr*, int);
@@ -77,6 +77,7 @@ struct Ctlr {
 	QLock;
 
 	Hw	*hw;
+	int	present;
 
 	ushort	nrb;		/* number of software receive buffers */
 	ushort	ntb;		/* number of software transmit buffers */
@@ -116,6 +117,8 @@ static Ctlr ctlr[Nctlr];
 Chan*
 etherattach(char *spec)
 {
+	if(ctlr[0].present == 0)
+		error(Enodev);
 	return devattach('l', spec);
 }
 
@@ -498,7 +501,11 @@ etherreset(void)
 
 	cp = &ctlr[0];
 	cp->hw = &wd8013;
-	(*cp->hw->reset)(cp);
+	if((*cp->hw->reset)(cp) < 0){
+		cp->present = 0;
+		return;
+	}
+	cp->present = 1;
 
 	memset(cp->ba, 0xFF, sizeof(cp->ba));
 
@@ -523,6 +530,9 @@ etherinit(void)
 	int ctlrno = 0;
 	Ctlr *cp = &ctlr[ctlrno];
 	int i;
+
+	if(cp->present == 0)
+		return;
 
 	cp->rh = 0;
 	cp->ri = 0;
@@ -601,14 +611,49 @@ typedef struct {
 			uchar	curr;
 			uchar	mar[8];
 		};
+		struct {			/* Page2, read */
+			uchar	cr;
+			uchar	pstart;
+			uchar	pstop;
+			uchar	dummy1[1];
+			uchar	tstart;
+			uchar	next;
+			uchar	block;
+			uchar	enh;
+			uchar	dummy2[4];
+			uchar	rcon;
+			uchar	tcon;
+			uchar	dcon;
+			uchar	intmask;
+		} r2;
+		struct {			/* Page2, write */
+			uchar	cr;
+			uchar	trincrl;
+			uchar	trincrh;
+			uchar	dummy1[2];
+			uchar	next;
+			uchar	block;
+			uchar	enh;
+		} w2;
 	};
 } Wd8013;
 
 enum {
 	MENB		= 0x40,			/* memory enable */
 
-	L16EN		= 0x40,			/* enable 16-bit LAN operation */
-	M16EN		= 0x80,			/* enable 16-bit memory access */
+	/* bit definitions for laar */
+	ZeroWS16	= (1<<5),		/* zero wait states for 16-bit ops */
+	L16EN		= (1<<6),		/* enable 16-bit LAN operation */
+	M16EN		= (1<<7),		/* enable 16-bit memory access */
+
+	/* bit defintitions for DP8390/83C690 cr */
+	Page0		= (0<<6),
+	Page1		= (1<<6),
+	Page2		= (2<<6),
+	RD2		= (4<<3),
+	TXP		= (1<<2),
+	STA		= (1<<1),
+	STP		= (1<<0),
 };
 
 #define IN(hw, m)	inb((hw)->addr+OFFSETOF(Wd8013, m))
@@ -648,10 +693,11 @@ int intrmap[] =
 	9, 3, 5, 7, 10, 11, 15, 4,
 };
 
+
 /*
  *  get configuration parameters, enable memory
  */
-static void
+static int
 wd8013reset(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
@@ -662,17 +708,20 @@ wd8013reset(Ctlr *cp)
 	uchar irr;
 	ulong ram;
 
+	msr = IN(hw, msr);
+	icr = IN(hw, icr);
+	irr = IN(hw, irr);
+	laar = IN(hw, laar);
+
+	if(msr == 0xff || icr == 0xff || irr == 0xff || laar == 0xff)
+		return -1;
+
 	if(cp->rb == 0){
 		cp->rb = xspanalloc(sizeof(Buffer)*Nrb, BY2PG, 0);
 		cp->nrb = Nrb;
 		cp->tb = xspanalloc(sizeof(Buffer)*Ntb, BY2PG, 0);
 		cp->ntb = Ntb;
 	}
-
-	msr = IN(hw, msr);
-	icr = IN(hw, icr);
-	irr = IN(hw, irr);
-	laar = IN(hw, laar);
 
 	/* ethernet address */
 	for(i = 0; i < sizeof(cp->ea); i++)
@@ -708,10 +757,11 @@ wd8013reset(Ctlr *cp)
 	/* enable interface RAM, set interface width */
 	OUT(hw, msr, MENB|msr);
 	if(hw->bt16)
-		OUT(hw, laar, laar|L16EN|M16EN);
+		OUT(hw, laar, laar|L16EN|M16EN|ZeroWS16);
 
 	(*hw->init)(cp);
 	setvec(Int0vec + hw->lvl, hw->intr);
+	return 0;
 }
 
 static void
@@ -719,11 +769,11 @@ dp8390rinit(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
 
-	OUT(hw, w.cr, 0x21);			/* Page0|RD2|STP */
+	OUT(hw, w.cr, Page0|RD2|STP);
 	OUT(hw, w.bnry, hw->pstart);
-	OUT(hw, w.cr, 0x61);			/* Page1|RD2|STP */
+	OUT(hw, w.cr, Page1|RD2|STP);
 	OUT(hw, curr, hw->pstart+1);
-	OUT(hw, w.cr, 0x22);			/* Page0|RD2|STA */
+	OUT(hw, w.cr, Page0|RD2|STA);
 }
 
 /*
@@ -736,9 +786,9 @@ dp8390init(Ctlr *cp)
 	Hw *hw = cp->hw;
 	int i;
 
-	OUT(hw, w.cr, 0x21);			/* Page0|RD2|STP */
+	OUT(hw, w.cr, Page0|RD2|STP);
 	if(hw->bt16)
-		OUT(hw, w.dcr, 0x01);		/* 16 bit interface */
+		OUT(hw, w.dcr, (1<<0)|(3<<5));	/* 16 bit interface, 12 byte DMA burst */
 	else
 		OUT(hw, w.dcr, 0x48);		/* FT1|LS */
 	OUT(hw, w.rbcr0, 0);
@@ -755,12 +805,12 @@ dp8390init(Ctlr *cp)
 	OUT(hw, w.isr, 0xFF);
 	OUT(hw, w.imr, 0x1F);			/* OVWE|TXEE|RXEE|PTXE|PRXE */
 
-	OUT(hw, w.cr, 0x61);			/* Page1|RD2|STP */
+	OUT(hw, w.cr, Page1|RD2|STP);
 	for(i = 0; i < sizeof(cp->ea); i++)
 		OUT(hw, par[i], cp->ea[i]);
 	OUT(hw, curr, hw->pstart+1);
 
-	OUT(hw, w.cr, 0x22);			/* Page0|RD2|STA */
+	OUT(hw, w.cr, Page0|RD2|STA);
 	OUT(hw, w.tpsr, 0);
 }
 
@@ -810,6 +860,29 @@ wd8013tweek(Ctlr *cp)
 	splx(s);
 }
 
+/*
+ *  hack to keep away from the card's memory while it is receiving
+ *  a packet.  This is only a problem on the NCR 3170 safari.
+ *
+ *  we peek at the DMA registers and, if they are changing, wait.
+ */
+void
+waitfordma(Hw *hw)
+{
+	uchar a,b,c;
+
+	for(;;delay(10)){
+		a = IN(hw, r.clda0);
+		b = IN(hw, r.clda0);
+		if(a != b)
+			continue;
+		c = IN(hw, r.clda0);
+		if(c != b)
+			continue;
+		break;
+	}
+}
+
 static void
 wd8013receive(Ctlr *cp)
 {
@@ -817,29 +890,28 @@ wd8013receive(Ctlr *cp)
 	Buffer *rb;
 	uchar bnry, curr, next;
 	Ring *p;
-	int len;
+	int i, len;
 
 	bnry = IN(hw, r.bnry);
 	next = bnry+1;
 	if(next >= hw->pstop)
 		next = hw->pstart;
-	for(;;){
-		OUT(hw, w.cr, 0x62);		/* Page1|RD2|STA */
+	for(i = 0; ; i++){
+		OUT(hw, w.cr, Page1|RD2|STA);
 		curr = IN(hw, curr);
-		OUT(hw, w.cr, 0x22);		/* Page0|RD2|STA */
+		OUT(hw, w.cr, Page0|RD2|STA);
 		if(next == curr)
 			break;
+		waitfordma(hw);
 		cp->inpackets++;
 		p = &((Ring*)hw->ram)[next];
 		len = ((p->len1<<8)|p->len0)-4;
 		if(p->next < hw->pstart || p->next >= hw->pstop || len < 60){
-/*			print("%d/%d : #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next, len,
+			/*print("%d/%d : #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next, len,
 				p->status, p->next, p->len0, p->len1);/**/
-			delay(100);
 			dp8390rinit(cp);
 			break;
 		}
-
 		rb = &cp->rb[cp->ri];
 		if(rb->owner == Interface){
 			rb->len = len;
@@ -853,14 +925,12 @@ wd8013receive(Ctlr *cp)
 			rb->owner = Host;
 			cp->ri = NEXT(cp->ri, cp->nrb);
 		}
-
 		p->status = 0;
 		next = p->next;
 		bnry = next-1;
 		if(bnry < hw->pstart)
 			bnry = hw->pstop-1;
 		OUT(hw, w.bnry, bnry);
-		break;
 	}
 }
 
@@ -878,7 +948,7 @@ wd8013transmit(Ctlr *cp)
 		memmove(hw->ram, tb->pkt, tb->len);
 		OUT(hw, w.tbcr0, tb->len & 0xFF);
 		OUT(hw, w.tbcr1, (tb->len>>8) & 0xFF);
-		OUT(hw, w.cr, 0x26);		/* Page0|RD2|TXP|STA */
+		OUT(hw, w.cr, Page0|RD2|TXP|STA);
 		tb->busy = 1;
 	}
 	splx(s);
@@ -895,6 +965,15 @@ wd8013intr(Ureg *ur)
 	USED(ur);
 	while(isr = IN(hw, r.isr)){
 		OUT(hw, w.isr, isr);
+		/*
+		 * we have received packets.
+		 */
+		if(isr & (0x04|0x01)){		/* Rxe|Prx - packet received */
+			(*cp->hw->receive)(cp);
+			wakeup(&cp->rr);
+		}
+		if(isr & 0x10)			/* Ovw - overwrite warning */
+			cp->overflows++;
 		if(isr & 0x08)			/* Txe - transmit error */
 			cp->oerrs++;
 		if(isr & 0x04){			/* Rxe - receive error */
@@ -916,15 +995,6 @@ wd8013intr(Ureg *ur)
 			cp->ti = NEXT(cp->ti, cp->ntb);
 			(*cp->hw->transmit)(cp);
 			wakeup(&cp->tr);
-		}
-		if(isr & 0x10)			/* Ovw - overwrite warning */
-			cp->overflows++;
-		/*
-		 * we have received packets.
-		 */
-		if(isr & (0x04|0x01)){		/* Rxe|Prx - packet received */
-			(*cp->hw->receive)(cp);
-			wakeup(&cp->rr);
 		}
 	}
 }

@@ -220,27 +220,21 @@ TEXT	outb(SB),$0
 	RET
 
 /*
- * input a short
+ * input a short from a port
  */
-TEXT ins(SB), $0
+TEXT	ins(SB), $0
+
 	MOVL	p+0(FP), DX
 	XORL	AX, AX
-	OP16; INSL
+	INL
 	RET
 
-/*
- * output a short
- */
-TEXT outs(SB), $0
-	MOVL	p+0(FP), DX
-	MOVL	s+4(FP), AX
-	OP16; OUTSL
-	RET
 
 /*
  *  input a string of shorts from a port
  */
 TEXT	inss(SB),$0
+
 	MOVL	p+0(FP),DX
 	MOVL	a+4(FP),DI
 	MOVL	c+8(FP),CX
@@ -248,13 +242,45 @@ TEXT	inss(SB),$0
 	RET
 
 /*
+ *  input a string of longs from a port
+ */
+TEXT	insl(SB),$0
+
+	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),DI
+	MOVL	c+8(FP),CX
+	CLD; REP; INSL
+	RET
+
+/*
+ * output a short to a port
+ */
+TEXT	outs(SB), $0
+	MOVL	p+0(FP), DX
+	MOVL	s+4(FP), AX
+	OUTL
+	RET
+
+/*
  *  output a string of shorts to a port
  */
 TEXT	outss(SB),$0
+
 	MOVL	p+0(FP),DX
 	MOVL	a+4(FP),SI
 	MOVL	c+8(FP),CX
 	CLD; REP; OP16; OUTSL
+	RET
+
+/*
+ *  output a string of longs to a port
+ */
+TEXT	outsl(SB),$0
+
+	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),SI
+	MOVL	c+8(FP),CX
+	CLD; REP; OUTSL
 	RET
 
 /*
