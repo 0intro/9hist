@@ -427,14 +427,11 @@ edfreleaseintr(Ureg*, Timer*)
 
 	DPRINT("%d edfreleaseintr\n", m->machno);
 
-	timerdel(&releasetimer[m->machno]);
-	releasetimer[m->machno].when = 0;
-
 	if(panicking || active.exiting)
 		return;
 
-	ilock(&edflock);
 	now = fastticks(nil);
+	ilock(&edflock);
 	while((t = qwaitrelease.head) && t->r <= now){
 		/* There's something waiting to be released and its time has come */
 		edfdequeue(&qwaitrelease);
@@ -447,7 +444,7 @@ edfreleaseintr(Ureg*, Timer*)
 }
 
 static void
-edfdeadlineintr(Ureg*, Timer *timer)
+edfdeadlineintr(Ureg*, Timer *)
 {
 	/* Task reached deadline */
 
@@ -460,19 +457,15 @@ edfdeadlineintr(Ureg*, Timer *timer)
 
 	DPRINT("%d edfdeadlineintr\n", m->machno);
 
-	if (timer)
-		timer->when = 0;
-
 	if(panicking || active.exiting)
 		return;
 
+	now = fastticks(nil);
 	ilock(&edflock);
 	// If up is not set, we're running inside the scheduler
 	// for non-real-time processes.
 	noted = 0;
 	if (up && isedf(up)) {
-		now = fastticks(nil);
-
 		t = up->task;
 
 		assert(t->state == EdfRunning);
@@ -1075,7 +1068,7 @@ resacquire(Task *t, CSN *c)
 	if (t->curcsn)
 		t->curcsn->S -= used;
 	when = now + c->S;
-	if (when < deadlinetimer[m->machno].when){
+	if (deadlinetimer[m->machno].when == 0 || when < deadlinetimer[m->machno].when){
 		deadlinetimer[m->machno].when = when;
 		timeradd(&deadlinetimer[m->machno]);
 	}

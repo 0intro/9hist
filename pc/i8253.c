@@ -77,13 +77,14 @@ i8253init(void)
 	ioalloc(T0cntr, 4, 0, "i8253");
 	ioalloc(T2ctl, 1, 0, "i8253.cntr2ctl");
 
+	i8253.period = Freq/HZ;
+
 	/*
 	 *  enable a 1/HZ interrupt for providing scheduling interrupts
 	 */
 	outb(Tmode, Load0|Square);
 	outb(T0cntr, (Freq/HZ));	/* low byte */
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
-	i8253.period = Freq/HZ;
 
 	/*
 	 *  enable a longer period counter to use as a clock
@@ -91,7 +92,6 @@ i8253init(void)
 	outb(Tmode, Load2|Square);
 	outb(T2cntr, 0);		/* low byte */
 	outb(T2cntr, 0);		/* high byte */
-	i8253.period = Freq/HZ;
 	x = inb(T2ctl);
 	x |= T2gate;
 	outb(T2ctl, x);
@@ -193,7 +193,7 @@ ulong phist[128];
 void
 i8253timerset(uvlong next)
 {
-	ulong period;
+	long period;
 	ulong want;
 	ulong now;
 
@@ -220,7 +220,7 @@ phist[nelem(phist)-1] = period;
 		/* load new value */
 		outb(Tmode, Load0|Square);
 		outb(T0cntr, period);		/* low byte */
-		outb(T0cntr, period>>8);		/* high byte */
+		outb(T0cntr, period >> 8);		/* high byte */
 
 		/* remember period */
 		i8253.period = period;

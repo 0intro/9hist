@@ -266,7 +266,6 @@ intrtime(Mach*, int vno)
 
 	diff /= m->cpumhz;
 	if(diff >= Ntimevec){
-		if (vno == 32) print("timer took %d µs\n", diff);
 		diff = Ntimevec-1;
 	}
 	intrtimes[vno][diff]++;
