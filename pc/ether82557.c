@@ -210,6 +210,7 @@ typedef struct Ctlr {
 
 	Lock	cblock;			/* transmit side */
 	int	action;
+	int	nop;
 	uchar	configdata[24];
 	int	threshold;
 	int	ncb;
@@ -261,40 +262,12 @@ static uchar configdata[24] = {
 #define csr16w(c, r, w)	(outs((c)->port+(r), (ushort)(w)))
 #define csr32w(c, r, l)	(outl((c)->port+(r), (ulong)(l)))
 
-int
-waitfordone(Ctlr *ctlr)
-{
-	int loops;
-
-	/* fast wait, we usually get lucky */
-	for(loops = 0; loops < 100; loops++){
-		if(csr8r(ctlr, CommandR) == 0)
-			return 0;
-	}
-
-	/* slow wait */
-	for(loops = 0; loops < 1000; loops++){
-		if(csr8r(ctlr, CommandR) == 0)
-			return 0;
-		microdelay(1);
-	}
-	return -1;
-}
-
 static void
 command(Ctlr* ctlr, int c, int v)
 {
-	ilock(&ctlr->rlock);
+	int timeo;
 
-	/*
-	 *  on a 10 Mbs half-duplex connection, we seem to
-	 *  hang unless we do a nop before each command.
-	 *  This comes from a fix for a chip errata that jmk
-	 *  saw in a Linux driver.
-	 */
-	if(waitfordone(ctlr) < 0)
-		print("82557: lastcmd %x, cmd nop \n", ctlr->command);
-	csr8w(ctlr, CommandR, CUnop);
+	ilock(&ctlr->rlock);
 
 	/*
 	 * Only back-to-back CUresume can be done
@@ -309,8 +282,17 @@ command(Ctlr* ctlr, int c, int v)
 	}
 	 */
 
-	if(waitfordone(ctlr) < 0)
-		print("82557: lastcmd %x, cmd %x(%x) \n", ctlr->command, c, v);
+	for(timeo = 0; timeo < 100; timeo++){
+		if(!csr8r(ctlr, CommandR))
+			break;
+		microdelay(1);
+	}
+	if(timeo >= 100){
+		ctlr->command = -1;
+		iunlock(&ctlr->rlock);
+		iprint("i82557: command 0x%uX %uX timeout\n", c, v);
+		return;
+	}
 
 	switch(c){
 
@@ -470,6 +452,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	len += snprint(p+len, READSTR-len, "receive overrun errors: %lud\n", dump[13]);
 	len += snprint(p+len, READSTR-len, "receive collision detect errors: %lud\n", dump[14]);
 	len += snprint(p+len, READSTR-len, "receive short frame errors: %lud\n", dump[15]);
+	len += snprint(p+len, READSTR-len, "nop: %d\n", ctlr->nop);
 	if(ctlr->cbqmax > ctlr->cbqmaxhw)
 		ctlr->cbqmaxhw = ctlr->cbqmax;
 	len += snprint(p+len, READSTR-len, "cbqmax: %d\n", ctlr->cbqmax);
@@ -551,6 +534,15 @@ txstart(Ether* ether)
 		ctlr->cbhead->command &= ~CbS;
 		ctlr->cbhead = cb;
 		ctlr->cbq++;
+	}
+
+	/*
+	 * Workaround for some broken HUB chips
+	 * when connected at 10Mb/s half-duplex.
+	 */
+	if(ctlr->nop){
+		command(ctlr, CUnop, 0);
+		microdelay(1);
 	}
 	command(ctlr, CUresume, 0);
 
@@ -923,19 +915,22 @@ reread:
 static void
 i82557pci(void)
 {
-	int port;
 	Pcidev *p;
 	Ctlr *ctlr;
+	int nop, port;
 
 	p = nil;
+	nop = 0;
 	while(p = pcimatch(p, 0x8086, 0)){
 		switch(p->did){
 		default:
 			continue;
-		case 0x1209:		/* Intel 82559ER */
-		case 0x1229:		/* Intel 8255[789] */
 		case 0x1031:		/* Intel 82562EM */
 		case 0x2449:		/* Intel 82562ET */
+			nop = 1;
+			/*FALLTHROUGH*/
+		case 0x1209:		/* Intel 82559ER */
+		case 0x1229:		/* Intel 8255[789] */
 			break;
 		}
 
@@ -953,6 +948,7 @@ i82557pci(void)
 		ctlr = malloc(sizeof(Ctlr));
 		ctlr->port = port;
 		ctlr->pcidev = p;
+		ctlr->nop = nop;
 
 		if(ctlrhead != nil)
 			ctlrtail->next = ctlr;
@@ -1254,6 +1250,16 @@ reset(Ether* ether)
 		ctlr->configdata[8] = 0;
 		ctlr->configdata[15] |= 0x80;
 	}
+
+	/*
+	 * Workaround for some broken HUB chips when connected at 10Mb/s
+	 * half-duplex.
+	 * This is a band-aid, but as there's no dynamic auto-negotiation
+	 * code at the moment, only deactivate the workaround code in txstart
+	 * if the link is 100Mb/s.
+	 */
+	if(ether->mbps != 10)
+		ctlr->nop = 0;
 
 	/*
 	 * Load the chip configuration and start it off.
