@@ -139,11 +139,6 @@ TEXT getfar(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpFAR), C(0x0)
 	RET
 
-/* return fault address */
-TEXT putfar(SB), $-4
-	MRC	CpMMU, 0, R0, C(CpFAR), C(0x0)
-	RET
-
 /* set the translation table base */
 TEXT putttb(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpTTB), C(0x0)

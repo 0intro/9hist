@@ -25,6 +25,7 @@ void
 clockinit(void)
 {
 	ulong x;
+	ulong id;
 
 	/* map the clock registers */
 	timerregs = mapspecial(OSTIMERREGS, 32);
@@ -39,7 +40,11 @@ clockinit(void)
 	conf.hz = ClockFreq*(x*4+16);
 	conf.mhz = (conf.hz+499999)/1000000;
 
-	print("%lud MHZ WeakARM\n", conf.mhz);
+	/* get processor type */
+	id = getcpuid();
+
+	print("%lud MHZ ARM, version %ux part %ux stepping %uxd\n", conf.mhz,
+		(id>>16)&0xff, (id>>4)&0xfff, id&0xf);
 
 	/* post interrupt 1/HZ secs from now */
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
