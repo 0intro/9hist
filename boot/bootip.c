@@ -61,7 +61,6 @@ configip(void)
 	case -1:
 		fatal("configuring ip: %r");
 	case 0:
-		print("exec-ing ipconfig\n");
 		exec("/boot/ipconfig", arg);
 		fatal("execing /ipconfig");
 	default:
