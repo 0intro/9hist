@@ -399,9 +399,9 @@ atactlrprobe(int ctlrno, int irq)
 	 */
 	if(ctlr->resetok){
 		outb(port+Pctrl, Srst|nIEN);
-		microdelay(1);
+		delay(10);
 		outb(port+Pctrl, 0);
-		if(atactlrwait(ctlr, DHmagic, 0, 100)){
+		if(atactlrwait(ctlr, DHmagic, 0, MS2TK(20)){
 			DPRINT("ata%d: Srst status %ux/%ux/%ux\n", ctlrno,
 				inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
 			xfree(ctlr);
@@ -1116,7 +1116,7 @@ retryatapi:
 	if(cmd == Cident)
 		atasleep(cp, 3000);
 	else
-		atasleep(cp, 30000);
+		atasleep(cp, 10000);
 
 	if(cp->status & Serr){
 		DPRINT("%s: bad disk ident status\n", dp->vol);

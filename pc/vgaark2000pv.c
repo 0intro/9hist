@@ -179,7 +179,7 @@ move(Point p)
 	return 0;
 }
 
-Hwgc ark2000pvhwgc = {
+static Hwgc ark2000pvhwgc = {
 	"ark2000pvhwgc",
 	enable,
 	load,
