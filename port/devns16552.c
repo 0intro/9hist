@@ -359,7 +359,7 @@ ns16552disable(Uart *p)
 	Uart **l;
 
 	/*
- 	 *  turn off interrpts
+ 	 *  turn off interrupts
 	 */
 	p->sticky[Iena] = 0;
 	uartwrreg(p, Iena, 0);
@@ -462,7 +462,7 @@ ns16552setup0(Uart *p)
 	 *  set rate to 9600 baud.
 	 *  8 bits/character.
 	 *  1 stop bit.
-	 *  interrpts enabled.
+	 *  interrupts enabled.
 	 */
 	p->sticky[Format] = Bits8;
 	uartwrreg(p, Format, 0);

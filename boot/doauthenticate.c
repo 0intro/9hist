@@ -22,22 +22,21 @@ readn(int fd, char *buf, int len)
 static char*
 fromauth(Method *mp, char *trbuf, char *tbuf)
 {
+	int afd;
 	char t;
 	char *msg;
 	static char error[2*ERRLEN];
 
-	if(afd < 0){
-		if(mp->auth == 0)
-			fatal("no method for accessing auth server");
-		afd = (*mp->auth)();
-		if(afd < 0) {
-			sprint(error, "%s: %r", ccmsg);
-			return error;
-		}
+	if(mp->auth == 0)
+		fatal("no method for accessing auth server");
+	afd = (*mp->auth)();
+	if(afd < 0) {
+		sprint(error, "%s: %r", ccmsg);
+		return error;
 	}
+
 	if(write(afd, trbuf, TICKREQLEN) < 0 || read(afd, &t, 1) != 1){
 		close(afd);
-		afd = -1;
 		sprint(error, "%s: %r", pbmsg);
 		return error;
 	}
@@ -63,6 +62,8 @@ fromauth(Method *mp, char *trbuf, char *tbuf)
 		msg = pbmsg;
 		break;
 	}
+
+	close(afd);
 	return msg;
 }
 

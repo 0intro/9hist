@@ -19,7 +19,6 @@ int	mflag;
 int	fflag;
 int	kflag;
 int	aflag;
-int	afd = -1;
 
 char	*bargv[Nbarg];
 int	bargc;
@@ -153,7 +152,6 @@ boot(int argc, char *argv[])
 	}
 
 	settime(islocal);
-	close(afd);
 	swapproc();
 
 	sprint(cmd, "/%s/init", cputype);

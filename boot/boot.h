@@ -28,7 +28,6 @@ enum
 };
 extern int	bargc;
 extern char	*bargv[Nbarg];
-extern int	afd;
 
 /* libc equivalent */
 extern int	cache(int);
