@@ -26,9 +26,6 @@ sets3page(int page)
 {
 	uchar crt51;
 
-	/*
-	 * I don't understand why these are different.
-	 */
 	if(gscreen.ldepth == 3){
 		/*
 		 * The S3 registers need to be unlocked for this.
@@ -84,14 +81,14 @@ enable(void)
 	 * stack in case we are using a 16-bit RAMDAC.
 	 * Why are these colours reversed?
 	 */
-	vgaxo(Crtx, 0x0E, 0xFF);
-	vgaxo(Crtx, 0x0F, 0x00);
+	vgaxo(Crtx, 0x0E, Pwhite);
+	vgaxo(Crtx, 0x0F, Pblack);
 	vgaxi(Crtx, 0x45);
 	for(i = 0; i < 4; i++)
-		vgaxo(Crtx, 0x4A, 0xFF);
+		vgaxo(Crtx, 0x4A, Pwhite);
 	vgaxi(Crtx, 0x45);
 	for(i = 0; i < 4; i++)
-		vgaxo(Crtx, 0x4B, 0x00);
+		vgaxo(Crtx, 0x4B, Pblack);
 
 	/*
 	 * Find a place for the cursor data in display memory.
@@ -230,6 +227,8 @@ Hwgc s3hwgc = {
 	load,
 	move,
 	disable,
+
+	0,
 };
 
 void
@@ -242,4 +241,18 @@ s3page(int page)
 	}
 	else
 		sets3page(page);
+}
+
+static Vgac s3 = {
+	"s3",
+	s3page,
+
+	0,
+};
+
+void
+vgas3link(void)
+{
+	addvgaclink(&s3);
+	addhwgclink(&s3hwgc);
 }

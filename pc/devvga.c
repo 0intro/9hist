@@ -18,6 +18,7 @@ enum
 
 /* imported */
 extern	Subfont defont0;
+extern Cursor curs;			/* barf */
 
 /* exported */
 Bitmap	gscreen;
@@ -26,7 +27,7 @@ Cursor curcursor;			/* current cursor */
 
 /* vga screen */
 static	Lock	screenlock;
-static	ulong	colormap[256][3];
+static	ulong	colormap[Pcolours][3];
 
 /* cga screen */
 static	int	cga = 1;		/* true if in cga mode */
@@ -48,47 +49,20 @@ static	Point	curpos;
 #define SCREENMEM	(0xA0000 | KZERO)
 #define CGASCREEN	((uchar*)(0xB8000 | KZERO))
 
-/*
- *  definitions of known cards
- */
-typedef struct Vgacard	Vgacard;
-struct Vgacard
-{
-	char	*name;
-	void	(*setpage)(int);	/* routine to page though display memory */
-};
+static void nopage(int);
 
-static void	nopage(int);
-static void	cirruspage(int);
-extern void	et4000page(int);
-extern void	s3page(int);
+static Vgac vga = {
+	"vga",
+	nopage,
 
-Vgacard vgachips[] =
-{
-	{ "vga", nopage, },
-	{ "clgd542x", cirruspage, },
-	{ "et4000", et4000page, },
-	{ "s3", s3page, },
-	{ 0, 0, },
-};
-
-Vgacard	*vgacard = &vgachips[0];	/* current vga card */
-
-extern Hwgc bt485hwgc;
-extern Hwgc et4000hwgc;
-extern Hwgc s3hwgc;
-extern Hwgc tvp3020hwgc;
-
-static Hwgc *hwcursor[] = {
-	&bt485hwgc,
-	&et4000hwgc,
-	&s3hwgc,
-	&tvp3020hwgc,
 	0,
 };
 
-Hwgc *hwgc;
-extern Cursor curs;		/* barf */
+static Vgac *vgactlr = &vga;			/* available VGA ctlrs */
+static Vgac *vgac;				/* current VGA ctlr */
+static Hwgc *hwgctlr;				/* available HWGC's */
+Hwgc *hwgc;					/* current HWGC */
+
 static char interlaced[2];
 
 /*
@@ -203,12 +177,17 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	char cbuf[64];
 	ushort *sp;
 	ulong *lp;
+	Vgac *vgacp;
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, vgadir, Nvga, devgen);
 	case Qvgactl:
-		port = sprint(cbuf, "type: %s\n", vgacard->name);
+		if(vgac == 0)
+			vgacp = &vga;
+		else
+			vgacp = vgac;
+		port = sprint(cbuf, "type: %s\n", vgacp->name);
 		port += sprint(cbuf+port, "size: %dx%dx%d%s\n",
 			gscreen.r.max.x, gscreen.r.max.y,
 			1<<gscreen.ldepth, interlaced);
@@ -253,8 +232,10 @@ vgabread(Chan *c, long n, ulong offset)
 static void
 vgactl(char *arg)
 {
-	int i, x, y, z;
+	int x, y, z;
 	char *cp, *field[3];
+	Hwgc *hwgcp;
+	Vgac *vgacp;
 
 	if(getfields(arg, field, 3, " ") != 2)
 		error(Ebadarg);
@@ -269,13 +250,13 @@ vgactl(char *arg)
 			return;
 		}
 
-		for(i = 0; hwcursor[i]; i++){
-			if(strcmp(field[1], hwcursor[i]->name) == 0){
+		for(hwgcp = hwgctlr; hwgcp; hwgcp = hwgcp->link){
+			if(strcmp(field[1], hwgcp->name) == 0){
 				if(hwgc)
 					(*hwgc->disable)();
 				else
 					cursoroff(1);
-				hwgc = hwcursor[i];
+				hwgc = hwgcp;
 				(*hwgc->enable)();
 				setcursor(&curs);
 				cursoron(1);
@@ -284,9 +265,9 @@ vgactl(char *arg)
 		}
 	}
 	else if(strcmp(field[0], "type") == 0){
-		for(i = 0; vgachips[i].name; i++){
-			if(strcmp(field[1], vgachips[i].name) == 0){
-				vgacard = &vgachips[i];
+		for(vgacp = vgactlr; vgacp; vgacp = vgacp->link){
+			if(strcmp(field[1], vgacp->name) == 0){
+				vgac = vgacp;
 				return;
 			}
 		}
@@ -577,21 +558,18 @@ setmode(VGAmode *vga)
 
 	vgao(MiscW, vga->misc);
 
-	for(i = 1; i < NSeqx; i++){
-		if(i == 1)
-			continue;
+	for(i = 2; i < sizeof(vga->sequencer); i++)
 		vgaxo(Seqx, i, vga->sequencer[i]);
-	}
 	vgaxo(Seqx, 0x00, seq00);
 
 	vgaxo(Crtx, 0x11, vga->crt[0x11] & ~0x80);
-	for(i = 0; i < NCrtx; i++)
+	for(i = 0; i < sizeof(vga->crt); i++)
 		vgaxo(Crtx, i, vga->crt[i]);
 
-	for(i = 0; i < NGrax; i++)
+	for(i = 0; i < sizeof(vga->graphics); i++)
 		vgaxo(Grx, i, vga->graphics[i]);
 
-	for(i = 0; i < NAttrx; i++)
+	for(i = 0; i < sizeof(vga->attribute); i++)
 		vgaxo(Attrx, i, vga->attribute[i]);
 
 	vgaxo(Seqx, 0x01, seq01);
@@ -648,7 +626,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr = gscreen.r;
 	for(i = 0; i < gscreen.width*BY2WD*maxy; i += Footprint){
-		vgacard->setpage(i>>Footshift);
+		vgac->page(i>>Footshift);
 		memset(gscreen.base, 0xff, Footprint);
 	}
 
@@ -685,7 +663,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	/* default color map (has to be outside the lock) */
 	switch(ldepth){
 	case 3:
-		for(i = 0; i < 256; i++)
+		for(i = 0; i < Pcolours; i++)
 			setcolor(i, xnto32(i>>5, 3), xnto32(i>>2, 3), xnto32(i, 2));
 		setcolor(0x55, xnto32(0x15, 6), xnto32(0x15, 6), xnto32(0x15, 6));
 		setcolor(0xaa, xnto32(0x2a, 6), xnto32(0x2a, 6), xnto32(0x2a, 6));
@@ -734,7 +712,7 @@ byteload(uchar *q, uchar *data, int m, int *page, uchar *e)
 	diff = 0;
 	if(q >= e){
 		pg = ++*page;
-		vgacard->setpage(pg);
+		vgac->page(pg);
 		q -= Footprint;
 		diff -= Footprint;
 	}
@@ -755,7 +733,7 @@ lineload(uchar *q, uchar *data, int len, int *page, uchar *e)
 	diff = 0;
 	if(q >= e){
 		pg = ++*page;
-		vgacard->setpage(pg);
+		vgac->page(pg);
 		q -= Footprint;
 		diff -= Footprint;
 	}
@@ -765,7 +743,7 @@ lineload(uchar *q, uchar *data, int len, int *page, uchar *e)
 	if(rem < len){
 		memmove(q, data, rem);
 		pg = ++*page;
-		vgacard->setpage(pg);
+		vgac->page(pg);
 		q -= Footprint;
 		diff -= Footprint;
 		memmove(q+rem, data+rem, len-rem);
@@ -803,7 +781,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	off = q - (uchar*)gscreen.base;
 	page = off>>Footshift;
-	vgacard->setpage(page);
+	vgac->page(page);
 	q = ((uchar*)gscreen.base) + (off&(Footprint-1));
 
 	sw = gscreen.width*sizeof(ulong);
@@ -890,7 +868,7 @@ byteunload(uchar *q, uchar *data, int m, int *page, uchar *e)
 	diff = 0;
 	if(q >= e){
 		pg = ++*page;
-		vgacard->setpage(pg);
+		vgac->page(pg);
 		q -= Footprint;
 		diff -= Footprint;
 	}
@@ -911,7 +889,7 @@ lineunload(uchar *q, uchar *data, int len, int *page, uchar *e)
 	diff = 0;
 	if(q >= e){
 		pg = ++*page;
-		vgacard->setpage(pg);
+		vgac->page(pg);
 		q -= Footprint;
 		diff -= Footprint;
 	}
@@ -921,7 +899,7 @@ lineunload(uchar *q, uchar *data, int len, int *page, uchar *e)
 	if(rem < len){
 		memmove(data, q, rem);
 		pg = ++*page;
-		vgacard->setpage(pg);
+		vgac->page(pg);
 		q -= Footprint;
 		diff -= Footprint;
 		memmove(data+rem, q+rem, len-rem);
@@ -960,7 +938,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	off = q - (uchar*)gscreen.base;
 	page = off>>Footshift;
-	vgacard->setpage(page);
+	vgac->page(page);
 	q = ((uchar*)gscreen.base) + (off&(Footprint-1));
 
 	sw = gscreen.width*sizeof(ulong);
@@ -1073,9 +1051,6 @@ screenputs(char *s, int n)
 	unlock(&screenlock);
 }
 
-/*
- *  expand n bits of color to 32
- */
 /*
  *  paging routines for different cards
  */
@@ -1227,18 +1202,18 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 
 	switch(gscreen.ldepth){
 	default:
-		x = 0xf;
+		x = 0xF;
 		break;
 	case 3:
-		x = 0xff;
+		x = 0xFF;
 		break;
 	}
 	p &= x;
 	p ^= x;
 	lock(&palettelock);
-	*pr = colormap[p][0];
-	*pg = colormap[p][1];
-	*pb = colormap[p][2];
+	*pr = colormap[p][Pred];
+	*pg = colormap[p][Pgreen];
+	*pb = colormap[p][Pblue];
 	unlock(&palettelock);
 }
 
@@ -1249,22 +1224,22 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 
 	switch(gscreen.ldepth){
 	default:
-		x = 0xf;
+		x = 0xF;
 		break;
 	case 3:
-		x = 0xff;
+		x = 0xFF;
 		break;
 	}
 	p &= x;
 	p ^= x;
 	lock(&palettelock);
-	colormap[p][0] = r;
-	colormap[p][1] = g;
-	colormap[p][2] = b;
-	vgao(DACWx, p);
-	vgao(DACData, r>>(32-6));
-	vgao(DACData, g>>(32-6));
-	vgao(DACData, b>>(32-6));
+	colormap[p][Pred] = r;
+	colormap[p][Pgreen] = g;
+	colormap[p][Pblue] = b;
+	vgao(PaddrW, p);
+	vgao(Pdata, r>>(32-6));
+	vgao(Pdata, g>>(32-6));
+	vgao(Pdata, b>>(32-6));
 	unlock(&palettelock);
 	return ~0;
 }
@@ -1460,4 +1435,18 @@ cursorunlock(void)
 		cursoron(0);
 	cursor.frozen = 0;
 	unlock(&cursor);
+}
+
+void
+addhwgclink(Hwgc *hwgcp)
+{
+	hwgcp->link = hwgctlr;
+	hwgctlr = hwgcp;
+}
+
+void
+addvgaclink(Vgac *vgacp)
+{
+	vgacp->link = vgactlr;
+	vgactlr = vgacp;
 }

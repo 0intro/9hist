@@ -406,9 +406,6 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 {
 	int s;
 
-	if((getstatus()&IE) == 0)
-		print("sleep hi %lux\n", getcallerpc(r));
-
 	sleep1(r, f, arg);
 	if(up->notepending == 0)
 		sched();	/* notepending may go true while asleep */
@@ -436,9 +433,6 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 {
 	ulong when;
 	Proc *f, **l;
-
-	if((getstatus()&IE) == 0)
-		print("tsleep hi %lux\n", getcallerpc(r));
 
 	when = MS2TK(ms)+MACHP(0)->ticks;
 
@@ -923,8 +917,6 @@ procctl(Proc *p)
 void
 error(char *err)
 {
-	if((getstatus()&IE) == 0)
-		print("error hi %lux\n", getcallerpc(err));
 	spllo();
 	strncpy(up->error, err, ERRLEN);
 	nexterror();

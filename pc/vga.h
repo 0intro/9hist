@@ -10,23 +10,23 @@ enum {
 	FeatureW	= 0x03DA,	/* Feature Control (W) */
 
 	Seqx		= 0x03C4,	/* Sequencer Index, Data at Seqx+1 */
-	NSeqx		= 0x05,
-
 	Crtx		= 0x03D4,	/* CRT Controller Index, Data at Crtx+1 */
-	NCrtx		= 0x19,
-
 	Grx		= 0x03CE,	/* Graphics Controller Index, Data at Grx+1 */
-	NGrax		= 0x09,
-
 	Attrx		= 0x03C0,	/* Attribute Controller Index and Data */
-	NAttrx		= 0x15,
 
-	DACMask		= 0x03C6,	/* DAC Mask */
-	DACRx		= 0x03C7,	/* DAC Read Index (W) */
-	DACSts		= 0x03C7,	/* DAC Status (R) */
-	DACWx		= 0x03C8,	/* DAC Write Index */
-	DACData		= 0x03C9,	/* DAC Data */
-	NDACx		= 0x100,
+	PaddrW		= 0x03C8,	/* Palette Address Register, write */
+	Pdata		= 0x03C9,	/* Palette Data Register */
+	Pixmask		= 0x03C6,	/* Pixel Mask Register */
+	PaddrR		= 0x03C7,	/* Palette Address Register, read */
+	Pstatus		= 0x03C7,	/* DAC Status (RO) */
+
+	Pcolours	= 256,		/* Palette */
+	Pred		= 0,
+	Pgreen		= 1,
+	Pblue		= 2,
+
+	Pblack		= 0x00,
+	Pwhite		= 0xFF,
 };
 
 #define vgai(port)		inb(port)
@@ -36,15 +36,32 @@ extern int vgaxi(long, uchar);
 extern int vgaxo(long, uchar, uchar);
 
 /*
- * Definitions of known hardware graphics cursors.
+ * Definitions of known VGA controllers.
  */
-typedef struct Hwgc {
+typedef struct Vgac Vgac;
+struct Vgac {
 	char	*name;
+	void	(*page)(int);
+
+	Vgac*	link;
+};
+
+/*
+ * Definition of known hardware graphics cursors.
+ */
+typedef struct Hwgc Hwgc;
+struct Hwgc {
+	char*	name;
 	void	(*enable)(void);
 	void	(*load)(Cursor*);
 	int	(*move)(Point);
 	void	(*disable)(void);
-} Hwgc;
+
+	Hwgc*	link;
+};
+
+extern void addvgaclink(Vgac*);
+extern void addhwgclink(Hwgc*);
 
 extern Hwgc *hwgc;
 

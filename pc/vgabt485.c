@@ -45,7 +45,7 @@ enum {
  * addressing.
  */
 static ushort dacxreg[4] = {
-	DACWx, DACData, DACMask, DACSts
+	PaddrW, Pdata, Pixmask, PaddrR
 };
 
 static uchar
@@ -183,12 +183,12 @@ enable(void)
 	 * cursor colour 2, 3 (black).
 	 */
 	bt485o(ColorW, 0x00);
-	bt485o(Color, 0xFF); bt485o(Color, 0xFF); bt485o(Color, 0xFF);
+	bt485o(Color, Pwhite); bt485o(Color, Pwhite); bt485o(Color, Pwhite);
 
-	bt485o(Color, 0xFF); bt485o(Color, 0xFF); bt485o(Color, 0xFF);
+	bt485o(Color, Pwhite); bt485o(Color, Pwhite); bt485o(Color, Pwhite);
 
-	bt485o(Color, 0x00); bt485o(Color, 0x00); bt485o(Color, 0x00);
-	bt485o(Color, 0x00); bt485o(Color, 0x00); bt485o(Color, 0x00);
+	bt485o(Color, Pblack); bt485o(Color, Pblack); bt485o(Color, Pblack);
+	bt485o(Color, Pblack); bt485o(Color, Pblack); bt485o(Color, Pblack);
 
 	unlock(&palettelock);
 
@@ -256,4 +256,12 @@ Hwgc bt485hwgc = {
 	load,
 	move,
 	disable,
+
+	0,
 };
+
+void
+vgabt485link(void)
+{
+	addhwgclink(&bt485hwgc);
+}

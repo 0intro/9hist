@@ -191,7 +191,7 @@ reset(Ether *ether)
 	dp8390setea(ether);
 
 	if(getisa(ether->mem, ether->size, 0) == 0)
-		panic("ether8003: %lux reused", ether->mem);
+		panic("ether8003: 0x%lux reused", ether->mem);
 
 	return 0;
 }

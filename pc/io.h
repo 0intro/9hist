@@ -31,4 +31,5 @@ enum
 
 enum {
 	MaxEISA		= 16,
+	EISAconfig	= 0xC80,
 };

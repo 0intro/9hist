@@ -254,6 +254,8 @@ Hwgc et4000hwgc = {
 	load,
 	move,
 	disable,
+
+	0,
 };
 
 void
@@ -266,4 +268,18 @@ et4000page(int page)
 	}
 	else
 		setet4000page(page);
+}
+
+static Vgac et4000 = {
+	"et4000",
+	et4000page,
+
+	0,
+};
+
+void
+vgaet4000link(void)
+{
+	addvgaclink(&et4000);
+	addhwgclink(&et4000hwgc);
 }
