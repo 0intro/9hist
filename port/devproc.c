@@ -30,20 +30,20 @@ enum
 
 enum
 {
-	PCclose,
-	PCclosefiles,
-	PCfixedpri,
-	PChang,
-	PCkill,
-	PCnohang,
-	PCpri,
-	PCprivate,
-	PCprofile,
-	PCstart,
-	PCstartstop,
-	PCstop,
-	PCwaitstop,
-	PCwired,
+	CMclose,
+	CMclosefiles,
+	CMfixedpri,
+	CMhang,
+	CMkill,
+	CMnohang,
+	CMpri,
+	CMprivate,
+	CMprofile,
+	CMstart,
+	CMstartstop,
+	CMstop,
+	CMwaitstop,
+	CMwired,
 };
 
 #define	STATSIZE	(2*KNAMELEN+12+9*12)
@@ -74,20 +74,20 @@ Dirtab procdir[] =
 };
 
 Cmdtab proccmd[] = {
-	PCclose,		"close",		2,
-	PCclosefiles,	"closefiles",	1,
-	PCfixedpri,	"fixedpri",		2,
-	PChang,		"hang",		1,
-	PCnohang,	"nohang",		1,
-	PCkill,		"kill",		1,
-	PCpri,		"pri",			2,
-	PCprivate,		"private",		1,
-	PCprofile,		"profile",		1,
-	PCstart,		"start",		1,
-	PCstartstop,	"startstop",	1,
-	PCstop,		"stop",		1,
-	PCwaitstop,	"waitstop",	1,
-	PCwired,		"wired",		2,
+	CMclose,		"close",		2,
+	CMclosefiles,	"closefiles",	1,
+	CMfixedpri,	"fixedpri",		2,
+	CMhang,		"hang",		1,
+	CMnohang,	"nohang",		1,
+	CMkill,		"kill",		1,
+	CMpri,		"pri",			2,
+	CMprivate,	"private",		1,
+	CMprofile,	"profile",		1,
+	CMstart,		"start",		1,
+	CMstartstop,	"startstop",	1,
+	CMstop,		"stop",		1,
+	CMwaitstop,	"waitstop",	1,
+	CMwired,		"wired",		2,
 };
 
 /* Segment type from portdat.h */
@@ -1066,13 +1066,13 @@ procctlreq(Proc *p, char *va, int n)
 	ct = lookupcmd(cb, proccmd, nelem(proccmd));
 
 	switch(ct->index){
-	case PCclose:
+	case CMclose:
 		procctlclosefiles(p, 0, atoi(cb->f[1]));
 		break;
-	case PCclosefiles:
+	case CMclosefiles:
 		procctlclosefiles(p, 1, 0);
 		break;
-	case PCfixedpri:
+	case CMfixedpri:
 		i = atoi(cb->f[1]);
 		if(i < 0)
 			i = 0;
@@ -1083,10 +1083,10 @@ procctlreq(Proc *p, char *va, int n)
 		p->basepri = i;
 		p->fixedpri = 1;
 		break;
-	case PChang:
+	case CMhang:
 		p->hang = 1;
 		break;
-	case PCkill:
+	case CMkill:
 		switch(p->state) {
 		case Broken:
 			unbreak(p);
@@ -1101,10 +1101,10 @@ procctlreq(Proc *p, char *va, int n)
 			p->procctl = Proc_exitme;
 		}
 		break;
-	case PCnohang:
+	case CMnohang:
 		p->hang = 0;
 		break;
-	case PCpri:
+	case CMpri:
 		i = atoi(cb->f[1]);
 		if(i < 0)
 			i = 0;
@@ -1115,10 +1115,10 @@ procctlreq(Proc *p, char *va, int n)
 		p->basepri = i;
 		p->fixedpri = 0;
 		break;
-	case PCprivate:
+	case CMprivate:
 		p->privatemem = 1;
 		break;
-	case PCprofile:
+	case CMprofile:
 		s = p->seg[TSEG];
 		if(s == 0 || (s->type&SG_TYPE) != SG_TEXT)
 			error(Ebadctl);
@@ -1129,25 +1129,25 @@ procctlreq(Proc *p, char *va, int n)
 		if(s->profile == 0)
 			error(Enomem);
 		break;
-	case PCstart:
+	case CMstart:
 		if(p->state != Stopped)
 			error(Ebadctl);
 		ready(p);
 		break;
-	case PCstartstop:
+	case CMstartstop:
 		if(p->state != Stopped)
 			error(Ebadctl);
 		p->procctl = Proc_traceme;
 		ready(p);
 		procstopwait(p, Proc_traceme);
 		break;
-	case PCstop:
+	case CMstop:
 		procstopwait(p, Proc_stopme);
 		break;
-	case PCwaitstop:
+	case CMwaitstop:
 		procstopwait(p, 0);
 		break;
-	case PCwired:
+	case CMwired:
 		procwired(p, atoi(cb->f[1]));
 		break;
 	}
