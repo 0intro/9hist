@@ -26,7 +26,9 @@ char *edf_statename[] = {
 	[EdfDeadline] =		"Deadline",
 };
 
-static Cycintr	schedpoint;		/* First scheduling point */
+static Cycintr	cycdeadline;		/* Time of next deadline */
+static Cycintr	cycrelease;		/* Time of next release */
+
 static Ticks	utilization;		/* Current utilization */
 static int		initialized;
 static uvlong	fasthz;	
@@ -66,12 +68,12 @@ Taskq		edfstack[MAXMACH];
 
 void (*devrt)(Task*, Ticks, int);
 
-static void		edf_intr(Ureg*, Cycintr*);
+static void		edfdeadlineintr(Ureg*, Cycintr*);
 static void		edf_resched(Task *t);
 static void		setdelta(void);
 static void		testdelta(Task *thetask);
 static char *	edf_testschedulability(Task *thetask);
-static void		edf_setclock(void);
+static void		edfreleaseintr(void);
 
 void
 edf_init(void)
@@ -84,9 +86,12 @@ edf_init(void)
 		return;
 	}
 	fastticks(&fasthz);
-	schedpoint.f = edf_intr;
-	schedpoint.a = &schedpoint;
-	schedpoint.when = 0;
+	cycdeadline.f = edfdeadlineintr;
+	cycdeadline.a = &cycdeadline;
+	cycdeadline.when = 0;
+	cycrelease.f = edfreleaseintr;
+	cycrelease.a = &cycrelease;
+	cycrelease.when = 0;
 	initialized = 1;
 	iunlock(&edflock);
 }
@@ -190,7 +195,7 @@ edfdequeue(Taskq *q)
 	return t;
 }
 
-static void
+static Task*
 edfqremove(Taskq *q, Task *t)
 {
 	Task **tp;
@@ -200,11 +205,49 @@ edfqremove(Taskq *q, Task *t)
 	for (tp = &q->head; *tp; tp = &(*tp)->rnext){
 		if (*tp == t){
 			*tp = t->rnext;
+			t = (tp == &q->head) ? q->head : nil;
 			iunlock(q);
-			return;
+			return t;
 		}
 	}
 	iunlock(q);
+}
+
+			
+void
+edfreleasetimer(void)
+{
+	Task *t;
+
+	t = qwaitrelease.head;
+	DPRINT("edf_schedrelease clock\n");
+	if (cycrelease.when == t->r)
+		return;
+	if (cycrelease.when){
+		DPRINT("%d cycintrdel %T\n", m->machno, ticks2time(cycrelease.when));
+		cycintrdel(&cycrelease);
+	}
+	cycrelease.when = t->r;
+	if (cycrelease.when <= now){
+		DPRINT("%d edf_timer: %T too late\n", m->machno, ticks2time(now-ticks));
+		cycrelease.when = now;
+	}
+	DPRINT("%d program timer in %T\n", m->machno, ticks2time(ticks-now));
+	cycintradd(&cycrelease);
+	DPRINT("%d cycintradd %T\n", m->machno, ticks2time(cycrelease.when-now));
+	clockintrsched();
+}
+
+void
+edf_schedrelease(Task *t)
+{
+	Ticks ticks;
+
+	DPRINT("%d edf_schedrelease\n", m->machno);
+	/* Schedule a task for release */
+	t->state = EdfAwaitrelease;
+	if (edfenqueue(&qwaitrelease, t))
+		edfreleasetimer();
 }
 
 void
@@ -255,7 +298,11 @@ edfdeadline(Proc *p, SEvent why)
 		iunlock(&edflock);
 		assert(0 && p == nil || nt == t);
 	}
-
+	if (cycdeadline.when){
+		cycintrdel(&cycdeadline);
+		cycdeadline.when = 0;
+		clockintrsched();
+	}
 	t->d = now;
 	t->state = EdfDeadline;
 	if(devrt) devrt(t, now, why);
@@ -318,7 +365,6 @@ edf_admit(Task *t)
 		setdelta();
 		assert(t->runq.n > 0 || (up && up->task == t));
 		edfpush(t);
-		edf_setclock();
 	}else{
 		if (t->runq.n){
 			if (edfstack[m->machno].head == nil){
@@ -358,7 +404,8 @@ edf_expel(Task *t)
 		/* Just reset state */
 		break;
 	case EdfAwaitrelease:
-		edfqremove(&qwaitrelease, t);
+		if (edfqremove(&qwaitrelease, t))
+			edfreleasetimer();
 		break;
 	case EdfReleased:
 		edfqremove(&qreleased, t);
@@ -387,11 +434,41 @@ edf_expel(Task *t)
 }
 
 static void
-edf_timer(void)
+edfreleaseintr(void)
+{
+	Task *t;
+
+	now = fastticks(nil);
+
+	if(active.exiting)
+		return;
+
+	ilock(&edflock);
+	while((t = qwaitrelease.head) && t->r <= now){
+		/* There's something waiting to be released and its time has come */
+		edfdequeue(&qwaitrelease);
+		edf_release(t);
+	}
+	iunlock(&edflock);
+	sched();
+	splhi();
+}
+
+static void
+edfdeadlineintr(Ureg *, Cycintr *cy)
 {
 	Ticks used;
 	Task *t;
 
+	DPRINT("%d edfdeadlineintr\n", m->machno);
+	/* Task reached deadline
+	 */
+	now = fastticks(nil);
+
+	if(active.exiting)
+		return;
+
+	ilock(&edflock);
 	// If up is not set, we're running inside the scheduler
 	// for non-real-time processes. 
 	if (up && isedf(up)) {
@@ -418,71 +495,6 @@ edf_timer(void)
 			}
 		}
 	}
-
-	while((t = qwaitrelease.head) && t->r <= now){
-		/* There's something waiting to be released and its time has come */
-		edfdequeue(&qwaitrelease);
-		edf_release(t);
-	}
-}
-
-static void
-edf_setclock(void)
-{
-	Ticks ticks;
-	Task *t;
-
-	DPRINT("%d edf_setclock\n", m->machno);
-	ticks = ~0ULL;
-	if ((t = qwaitrelease.head) && t->r < ticks)
-		ticks = t->r;
-	if (t = edfstack[m->machno].head){
-		if (t->d < ticks)
-			ticks = t->d;
-		if (now + t->S < ticks)
-			ticks = now + t->S;
-	}
-	if (schedpoint.when > now && schedpoint.when <= ticks){
-		return;
-	}
-	if (schedpoint.when){
-		DPRINT("%d cycintrdel %T\n", m->machno, ticks2time(schedpoint.when));
-		cycintrdel(&schedpoint);
-		schedpoint.when = 0;
-	}
-	if (ticks <= now){
-		DPRINT("%d edf_timer: %T too late\n", m->machno, ticks2time(now-ticks));
-		ticks = now;
-	}
-	if (ticks != ~0ULL) {
-		DPRINT("%d program timer in %T\n", m->machno, ticks2time(ticks-now));
-		schedpoint.when = ticks;
-		cycintradd(&schedpoint);
-		DPRINT("%d cycintradd %T\n", m->machno, ticks2time(schedpoint.when-now));
-	}
-	clockintrsched();
-}
-	
-static void
-edf_intr(Ureg *, Cycintr *cy)
-{
-
-	DPRINT("%d edf_intr\n", m->machno);
-	/* Timer interrupt
-	 * Timed events are:
-	 * 1. release a task (look in qwaitrelease)
-	 * 2. task reaches deadline
-	 */
-	now = fastticks(nil);
-
-	assert(cy == &schedpoint && schedpoint.when <= now);
-
-	if(active.exiting)
-		return;
-
-	ilock(&edflock);
-	edf_timer();
-	edf_setclock();
 	iunlock(&edflock);
 	sched();
 	splhi();
@@ -630,12 +642,9 @@ edf_resched(Task *t)
 			/* Released, but deadline is past, release at t->t */
 			t->r = t->t;
 		}
-		DPRINT("%d edf_resched, schedule release\n", m->machno);
 		xt = edfpop();
 		assert(xt == t);
-		edfenqueue(&qwaitrelease, t);
-		t->state = EdfAwaitrelease;
-		edf_setclock();
+		schedrelease(t);
 		break;
 	case EdfBlocked:
 	case EdfDeadline:
@@ -661,10 +670,7 @@ edf_resched(Task *t)
 			/* Released, but deadline is past, release at t->t */
 			t->r = t->t;
 		}
-		DPRINT("%d edf_resched, schedule release\n", m->machno);
-		edfenqueue(&qwaitrelease, t);
-		t->state = EdfAwaitrelease;
-		edf_setclock();
+		schedrelease(t);
 		break;
 	}
 }
@@ -681,7 +687,6 @@ edf_release(Task *t)
 	t->state = EdfReleased;
 	edfenqueue(&qreleased, t);
 	if(devrt) devrt(t, now, SRelease);
-	edf_setclock();
 }
 
 Proc *
@@ -691,7 +696,7 @@ edf_runproc(void)
 	
 	Task *t, *nt;
 	Proc *p;
-//	Ticks when;
+	Ticks when;
 	static ulong nilcount;
 
 	/* Figure out if the current proc should be preempted*/
@@ -737,7 +742,28 @@ edf_runproc(void)
 	if(p->mp != MACHP(m->machno))
 		p->movetime = MACHP(0)->ticks + HZ/10;
 	p->mp = MACHP(m->machno);
-	edf_setclock();
+
+	when = now + t->S;
+	if (t->d < when)
+		when = t->d;
+
+	if (cycdeadline.when){
+		if(cycdeadline.when == when){
+			iunlock(&edflock);
+			return p;
+		}
+		DPRINT("%d cycintrdel %T\n", m->machno, ticks2time(cycdeadline.when));
+		cycintrdel(&cycdeadline);
+	}
+	if (when <= now){
+		DPRINT("%d edf_timer: %T too late\n", m->machno, ticks2time(now-when));
+		when = now;
+	}
+	DPRINT("%d program timer in %T\n", m->machno, ticks2time(when-now));
+	cycdeadline.when = when;
+	cycintradd(&cycdeadline);
+	DPRINT("%d cycintradd %T\n", m->machno, ticks2time(cycdeadline.when-now));
+	clockintrsched();
 	iunlock(&edflock);
 	return p;
 }
