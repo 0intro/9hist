@@ -543,5 +543,4 @@ hardintr(Ureg *ur)
 		print("wierd disk interrupt\n");
 		break;
 	}
-	wakeup(&cp->r);
 }

@@ -9,6 +9,8 @@
 
 #include	"fcall.h"
 
+#define		NTAG	16384	/* 1 <= tag <= NTAG */
+
 typedef struct Mnt	Mnt;
 typedef struct Mnthdr	Mnthdr;
 typedef struct MntQ	MntQ;
@@ -28,6 +30,7 @@ struct MntQ
 	MntQ	*next;		/* for allocation */
 	Chan	*msg;		/* for reading and writing messages */
 	Proc	*reader;	/* process reading response */
+	int	tag;		/* increments per message; lock Ref while changing */
 	Mnthdr	*writer;	/* queue of headers of written messages */
 };
 
@@ -37,7 +40,6 @@ typedef struct Mntbuf Mntbuf;
 struct Mntbuf
 {
 	Mntbuf	*next;
-int pid;
 	char	buf[BUFSIZE+BITROUND]; 	/* BUG */
 };
 
@@ -51,7 +53,6 @@ struct Mnthdr
 {
 	Mnthdr	*next;		/* in free list or writers list */
 	Mnthdr	*prev;		/* in writers list only */
-int pid;
 	short	active;
 	short	flushing;	/* a Tflush has been sent */
 	Fcall	thdr;
@@ -85,6 +86,7 @@ struct
 
 Mnt	*mnt;
 void	mntxmit(Mnt*, Mnthdr*);
+Ref	mnttag;
 
 Mntbuf*
 mballoc(void)
@@ -95,7 +97,6 @@ loop:
 	lock(&mntbufalloc);
 	if(mb = mntbufalloc.free){		/* assign = */
 		mntbufalloc.free = mb->next;
-mb->pid = u->p->pid;
 		unlock(&mntbufalloc);
 		return mb;
 	}
@@ -112,7 +113,6 @@ mb->pid = u->p->pid;
 void
 mbfree(Mntbuf *mb)
 {
-if(mb->pid != u->p->pid)print("mbfree pid\n");
 	lock(&mntbufalloc);
 	mb->next = mntbufalloc.free;
 	mntbufalloc.free = mb;
@@ -128,12 +128,8 @@ loop:
 	lock(&mnthdralloc);
 	if(mh = mnthdralloc.free){		/* assign = */
 		mnthdralloc.free = mh->next;
-if(mh->active) print("mh->active\n");
-if(mh->flushing) print("mh->flushing\n");
-if(mh->mbr) print("mh->mbr\n");
-if(mh->readreply) print("mh->readreply\n");
 		mh->mbr = 0;
-mh->pid = u->p->pid;
+		mh->thdr.tag = 1 + (incref(&mnttag) & (NTAG-1));
 		unlock(&mnthdralloc);
 		return mh;
 	}
@@ -150,11 +146,11 @@ mh->pid = u->p->pid;
 void
 mhfree(Mnthdr *mh)
 {
-if(mh->pid != u->p->pid)print("mhfree pid %d\n", mh->flushing);
 	if(mh->flushing)
 		return;
-	mh->active = 0;
 	lock(&mnthdralloc);
+	mh->active = 0;
+	mh->thdr.tag = 0;
 	mh->next = mnthdralloc.free;
 	mnthdralloc.free = mh;
 	unlock(&mnthdralloc);
@@ -170,6 +166,7 @@ mqalloc(Chan *msg)	/* mntqalloc is qlocked */
 		lock(q);
 		q->ref = 1;
 		q->msg = msg;
+		q->tag = 0;
 		unlock(q);
 		incref(msg);
 		q->writer = 0;
@@ -231,12 +228,9 @@ mntreset(void)
 	mntbufalloc.free = mb;
 
 	mh = ialloc(conf.nmnthdr*sizeof(Mnthdr), 0);
-	for(i=0; i<conf.nmnthdr-1; i++){
+	for(i=0; i<conf.nmnthdr-1; i++)
 		mh[i].next = &mh[i+1];
-		mh[i].thdr.tag = i;
-	}
 	mh[i].next = 0;
-	mh[i].thdr.tag = i;
 	mnthdralloc.arena = mh;
 	mnthdralloc.free = mh;
 
@@ -630,7 +624,6 @@ mntflush(Mnt *m, Mnthdr *omh)	/* queue is unlocked */
 	Mnthdr *mh;
 
 	if(omh->thdr.type == Tflush){
-print("flush flush\n");
 		omh->flushing = 0;
 		return;
 	}
@@ -661,7 +654,6 @@ mnterrdequeue(Mnt *m, Mnthdr *mh)	/* queue is unlocked */
 	mh->readreply = 0;
 	/* take self from queue if necessary */
 	if(q->reader == u->p){	/* advance a writer to reader */
-{ Mnthdr *h; for(h=q->writer; h; h=h->next) if(h->p==u->p)print("reader and writer error\n"); }
 		w = q->writer;
 		if(w){
 			mntwunlink(q, w);
@@ -688,7 +680,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 {
 	ulong n;
 	Mntbuf *mbw;
-	Mnthdr *w, *ow;
+	Mnthdr *w, *ow, *h;
 	MntQ *q;
 	int qlocked, tag, written;
 
@@ -696,11 +688,9 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	mbw = mballoc();
 	if(waserror()){			/* 1 */
 		if(mh->mbr){
-if(mh->mbr->pid != u->p->pid) print("top waserror\n");
 			mbfree(mh->mbr);
 			mh->mbr = 0;
 		}
-if(mbw->pid != u->p->pid) print("top waserror mbw\n");
 		mbfree(mbw);
 		nexterror();
 	}
@@ -809,15 +799,11 @@ if(mbw->pid != u->p->pid) print("top waserror mbw\n");
 		}while(n == 0);
 		poperror();		/* 3 */
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
-			if(1){	/* BUG? IS THIS RIGHT? IGNORE AND RETRY */
-				print(" MR ");
-				qlock(q);
-				qlocked = 1;
-				goto FreeRead;
-			}else{
-				mnterrdequeue(m, mh);
-				error(Ebadmsg);
-			}
+			/* BUG? IS THIS RIGHT? IGNORE AND RETRY */
+			print(" MR ");
+			qlock(q);
+			qlocked = 1;
+			goto FreeRead;
 		}
 		/*
 		 * Response might not be mine
@@ -829,7 +815,8 @@ if(mbw->pid != u->p->pid) print("top waserror mbw\n");
 		if(tag == mh->thdr.tag){	/* it's mine */
 			if(mh->rhdr.type != Rerror)
 			if(mh->rhdr.type != mh->thdr.type+1){
-				print(" T%c ", devchar[m->q->msg->type]);
+				print(" T(%d)%c %d %d ", tag, devchar[m->q->msg->type],
+					mh->rhdr.type, mh->thdr.type+1);
 				goto FreeRead;
 			}
 			q->reader = 0;
@@ -848,20 +835,26 @@ if(mbw->pid != u->p->pid) print("top waserror mbw\n");
 		/*
 		 * Hand response to correct recipient
 		 */
-		if(tag<0 || tag>=conf.nmnthdr){
+		if(tag<=0 || tag>NTAG){
 			print("unknown tag %d\n", tag);
 	FreeRead:
-if(mh->mbr->pid != u->p->pid) print("FreeRead\n");
 			mbfree(mh->mbr);
 			mh->mbr = 0;
 			goto Read;
 		}
-		w = &mnthdralloc.arena[tag];
+		/*
+		 * Find writer in queue
+		 */
+		for(w=q->writer; w; w=w->next)
+			if(w->thdr.tag == tag)
+				goto Inqueue;
+		goto FreeRead;
+	Inqueue:
 		if(w->flushing || !w->active)	/* nothing to do; mntflush will clean up */
 			goto FreeRead;
 		if(mh->rhdr.type != Rerror)
 		if(mh->rhdr.type != w->thdr.type+1){
-			print(" t%c %d %d ", devchar[m->q->msg->type],
+			print(" t(%d)%c %d %d ", tag, devchar[m->q->msg->type],
 				mh->rhdr.type, w->thdr.type+1);
 			goto FreeRead;
 		}
@@ -870,9 +863,6 @@ if(mh->mbr->pid != u->p->pid) print("FreeRead\n");
 		memmove(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);
 		mntwunlink(q, w);
 		w->readreply = 1;
-lock(&w->r);
-if(w->r.p) w->mbr->pid = w->p->pid;
-unlock(&w->r);
 		wakeup(&w->r);
 		goto Read;
 	}else{
@@ -895,11 +885,8 @@ unlock(&w->r);
 		qlock(q);
 		qlocked = 1;
 		mh->readreply = 0;
-		if(q->reader == u->p){	/* i got promoted */
-{ Mnthdr *h; for(h=q->writer; h; h=h->next) if(h->p==u->p)print("reader and writer promotion\n"); }
+		if(q->reader == u->p)	/* i got promoted */
 			goto Read;
-}
-if(mh->mbr->pid != u->p->pid) print("after promotion %d\n", mh->thdr.type);
 		mh->active = 0;
 		USED(qlocked);
 		qunlock(q);
@@ -914,12 +901,6 @@ if(mh->mbr->pid != u->p->pid) print("after promotion %d\n", mh->thdr.type);
 		if(m->mntpt)
 			errors(mh->rhdr.ename);
 		error(Eshutdown);
-	}else if(mh->rhdr.type != mh->thdr.type+1){
-		print("bad type %d not %d in mntxmit\n", mh->rhdr.type, mh->thdr.type+1);
-/*XXX*/		print("chan %c %d %lux %lux\n", devchar[m->q->msg->type],
-				m->q->msg->dev, m->q->msg->qid.path,
-				m->q->msg->stream);	
-		error(Ebadmsg);
 	}
 	/*
 	 * Copy out on read
@@ -929,7 +910,6 @@ if(mh->mbr->pid != u->p->pid) print("after promotion %d\n", mh->thdr.type);
 			error(Ebadcnt);
 		memmove(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
 	}
-if(mh->mbr->pid != u->p->pid) print("tail\n");
 	mbfree(mh->mbr);
 	mh->mbr = 0;
 	mbfree(mbw);
