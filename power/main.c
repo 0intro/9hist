@@ -61,6 +61,7 @@ main(void)
 	streaminit();
 	swapinit();
 	pageinit();
+print("userinit\n");
 	userinit();
 	launchinit();
 	schedinit();

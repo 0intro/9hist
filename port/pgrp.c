@@ -177,12 +177,14 @@ dupfgrp(Fgrp *f)
 
 	new = newfgrp();
 
+	lock(f);
 	new->maxfd = f->maxfd;
 	for(i = 0; i <= f->maxfd; i++)
 		if(c = f->fd[i]){
 			incref(c);
 			new->fd[i] = c;
 		}
+	unlock(f);
 
 	return new;
 }

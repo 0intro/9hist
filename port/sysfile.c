@@ -178,6 +178,8 @@ fdclose(int fd, int flag)
 			f->maxfd = i;
 
 	unlock(f);
+	if(c == 0)
+		panic("fdclose");
 	close(c);
 }
 
@@ -390,7 +392,7 @@ bindmount(ulong *arg, int ismount)
 	ulong flag;
 	long ret;
 	char *p;
-	int t;
+	int t, fd;
 	struct{
 		Chan	*chan;
 		char	*spec;
@@ -398,10 +400,11 @@ bindmount(ulong *arg, int ismount)
 	}bogus;
 
 	flag = arg[2];
+	fd = arg[0];
 	if(flag>MMASK || (flag&MORDER)==(MBEFORE|MAFTER))
 		error(Ebadarg);
 	if(ismount){
-		bogus.chan = fdtochan(arg[0], 2, 0);
+		bogus.chan = fdtochan(fd, 2, 0);
 		validaddr(arg[3], 1, 0);
 		if(vmemchr((char*)arg[3], '\0', NAMELEN) == 0)
 			error(Ebadarg);
@@ -436,8 +439,7 @@ bindmount(ulong *arg, int ismount)
 	poperror();
 	close(c0);
 	if(ismount)
-		fdclose(arg[0], 0);
-
+		fdclose(fd, 0);
 	return ret;
 }
 

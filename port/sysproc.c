@@ -85,8 +85,12 @@ rfork(ulong flag)
 				envcpy(p->egrp, oeg);
 			closeegrp(oeg);
 		}
-		if(flag & RFFDG)
-			error(Ebadarg);
+		if(flag & RFFDG) {
+			ofg = p->fgrp;
+			p->fgrp = dupfgrp(ofg);
+			closefgrp(ofg);
+		}
+		else
 		if(flag & RFCFDG) {
 			ofg = p->fgrp;
 			p->fgrp = newfgrp();
@@ -136,7 +140,6 @@ rfork(ulong flag)
 		if(flag & RFFDG)
 			p->fgrp = dupfgrp(parent->fgrp);
 		else
-		if(flag & RFCFDG)
 			p->fgrp = newfgrp();
 	}
 	else {
@@ -150,8 +153,7 @@ rfork(ulong flag)
 			p->pgrp = newpgrp();
 			pgrpcpy(p->pgrp, parent->pgrp);
 		}
-		else
-		if(flag & RFCNAMEG) {
+		else {
 			p->pgrp = newpgrp();
 			*p->pgrp->crypt = *parent->pgrp->crypt;
 		}
@@ -168,7 +170,6 @@ rfork(ulong flag)
 			envcpy(p->egrp, parent->egrp);
 		}
 		else
-		if(flag & RFCENVG)
 			p->egrp = newegrp();
 	}
 	else {

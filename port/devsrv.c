@@ -218,7 +218,6 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	i = c->qid.path;
 	if(srv[i].chan != c)	/* already been written to */
 		error(Egreg);
-	close(c);
 	srv[i].chan = c1;
 	unlock(&srvlk);
 	poperror();
