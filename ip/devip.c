@@ -648,6 +648,37 @@ setladdr(Conv* c)
 }
 
 /*
+ *  set a local port making sure the quad of raddr,rport,laddr,lport is unique
+ */
+static void
+setluniqueport(Conv* c, int lport)
+{
+	Proto *p;
+	Conv *xp;
+	int x;
+
+	p = c->p;
+
+	qlock(p);
+	for(x = 0; x < p->nc; x++){
+		xp = p->conv[x];
+		if(xp == nil)
+			break;
+		if((xp->state == Connected || xp->state == Announced)
+		&& xp->lport == lport
+		&& xp->rport == c->rport
+		&& ipcmp(xp->raddr, c->raddr) == 0
+		&& ipcmp(xp->laddr, c->laddr) == 0){
+			qunlock(p);
+			error("address in use");
+		}
+	}
+	c->lport = lport;
+	qunlock(p);
+}
+
+
+/*
  *  pick a local port and set it
  */
 static void
@@ -707,6 +738,7 @@ static void
 setladdrport(Conv* c, char* str, int announcing)
 {
 	char *p;
+	ushort lport;
 
 	/*
 	 *  ignore restricted part if it exists.  it's
@@ -725,8 +757,10 @@ setladdrport(Conv* c, char* str, int announcing)
 
 	c->lport = 0;
 	if(*p != '*'){
-		c->lport = atoi(p);
-		if(c->lport == 0)
+		lport = atoi(p);
+		if(lport != 0)
+			setluniqueport(c, lport);
+		else
 			setlport(c);
 	}
 }
@@ -819,6 +853,8 @@ connectctlmsg(Proto *x, Conv *c, Cmdbuf *cb)
 char*
 Fsstdannounce(Conv* c, char* argv[], int argc)
 {
+	memset(c->raddr, 0, sizeof(c->raddr));
+	c->rport = 0;
 	switch(argc){
 	default:
 		return "bad args to announce";
@@ -866,7 +902,7 @@ announcectlmsg(Proto *x, Conv *c, Cmdbuf *cb)
 }
 
 /*
- *  called by protocol bide routine to set addresses
+ *  called by protocol bind routine to set addresses
  */
 char*
 Fsstdbind(Conv* c, char* argv[], int argc)

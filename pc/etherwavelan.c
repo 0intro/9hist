@@ -1,10 +1,16 @@
 /*
- * Port for WaveLAN I PCMCIA cards running on 2.4 GHz
- * important: only works for WaveLAN I and PCMCIA 2.4 GHz cards
- * Based on Linux driver by Anthony D. Joseph MIT a.o.
- * We have not added the frequency, encryption and NWID selection stuff, this
- * can be done with the WaveLAN provided DOS programs: instconf.exe, setconf.exe, wfreqsel.exe, etc.
- * Gerard Smit 07/22/98
+	Lucent Wavelan IEEE 802.11 pcmcia.
+	There is almost no documentation for the card.
+	the driver is done using both the freebsd and the linux
+	driver as `documentation'.
+
+	Has been used with the card plugged in during all up time.
+	no cards removals/insertions yet.
+
+	For known BUGS see the comments below. Besides,
+	the driver keeps interrupts disabled for just too
+	long. When it gets robust, locks should be revisited.
+
  */
 
 #include "u.h"
@@ -16,880 +22,1205 @@
 #include "../port/error.h"
 #include "../port/netif.h"
 #include "etherif.h"
-#include "etherwavelan.h"
 
 
-static void wavelan_receive(Ether *ether);
-static int txstart(Ether *ether);
+#define DEBUG	if(1)print
+
+typedef struct Ctlr 	Ctlr;
+typedef struct Wltv 	Wltv;
+typedef struct WFrame	WFrame;
+typedef struct Stats	Stats;
+typedef struct WStats	WStats;
+
+struct WStats 
+{
+	ulong	ntxuframes;			// unicast frames
+	ulong	ntxmframes;			// multicast frames
+	ulong	ntxfrags;			// fragments
+	ulong	ntxubytes;			// unicast bytes
+	ulong	ntxmbytes;			// multicast bytes
+	ulong	ntxdeferred;		// deferred transmits
+	ulong	ntxsretries;		// single retries
+	ulong	ntxmultiretries;	// multiple retries
+	ulong	ntxretrylimit;
+	ulong	ntxdiscards;
+	ulong	nrxuframes;			// unicast frames
+	ulong	nrxmframes;			// multicast frames
+	ulong	nrxfrags;			// fragments
+	ulong	nrxubytes;			// unicast bytes
+	ulong	nrxmbytes;			// multicast bytes
+	ulong	nrxfcserr;
+	ulong	nrxdropnobuf;
+	ulong	nrxdropnosa;
+	ulong	nrxcantdecrypt;
+	ulong	nrxmsgfrag;
+	ulong	nrxmsgbadfrag;
+	ulong	end;
+};
+
+struct WFrame
+{
+	ushort		sts;
+	ushort		rsvd0;
+	ushort		rsvd1;
+	ushort		qinfo;
+	ushort		rsvd2;
+	ushort		rsvd3;
+	ushort		txctl;
+	ushort		framectl;
+	ushort		id;
+	uchar		addr1[Eaddrlen];
+	uchar		addr2[Eaddrlen];
+	uchar		addr3[Eaddrlen];
+	ushort		seqctl;
+	uchar		addr4[Eaddrlen];
+	ushort		dlen;
+	uchar		dstaddr[Eaddrlen];
+	uchar		srcaddr[Eaddrlen];
+	ushort		len;
+	ushort		dat[3];
+	ushort		type;
+};
+
+// Lucent's Length-Type-Value records  to talk to the wavelan.
+// most operational parameters are read/set using this. 
+enum 
+{
+	WTyp_Stats	=	0xf100,
+	WTyp_Ptype	= 	0xfc00,
+	WTyp_Mac	= 	0xfc01,
+	WTyp_WantName= 	0xfc02,
+	WTyp_Chan	= 	0xfc03,
+	WTyp_NetName = 	0xfc04,
+	WTyp_ApDens	= 	0xfc06,
+	WTyp_MaxLen	= 	0xfc07,
+	WTyp_PM		=	0xfc09,
+	WTyp_PMWait	=	0xfc0c,
+	WTyp_NodeName= 	0xfc0e,
+	WTyp_Tick 	= 	0xfce0,
+	WTyp_RtsThres= 	0xfc83,
+	WTyp_TxRate	= 	0xfc84,
+		WTx1Mbps	= 	0x0,
+		WTx2Mbps	= 	0x1,
+		WTxAuto		= 	0x3,
+	WTyp_Prom	=	0xfc85,
+};
+
+
+
+// Controller
+enum
+{
+	WDfltIRQ = 3,		// default irq
+	WDfltIOB = 0x100,	// default IO base
+
+	WIOLen = 0x40,	// Hermes IO length
+
+	WTmOut = 65536,	// Cmd time out
+
+	WPTypeManaged	= 1,
+	WPTypeWDS	= 2,
+	WPTypeAdHoc	= 3,
+	WDfltPType	= WPTypeManaged,
+
+	WDfltApDens	= 1,
+	WDfltRtsThres	= 2347,		// == disabled
+	WDfltTxRate	= WTxAuto,		// 2Mbps
+
+	WMaxLen		= 2304,
+	WNameLen	= 32,
+
+	// Wavelan hermes registers
+	WR_Cmd		= 0x00,
+		WCmdIni		= 0x0000,
+		WCmdEna		= 0x0001,
+		WCmdDis		= 0x0002,
+		WCmdMalloc	= 0x000a,
+		WCmdAskStats= 0x0011,
+		WCmdMsk		= 0x003f,
+		WCmdAccRd	= 0x0021,
+		WCmdAccWr	= 0x0121,
+		WCmdTxFree	= 0x000b|0x0100,
+	WR_Parm0	= 0x02,
+	WR_Parm1	= 0x04,
+	WR_Parm2	= 0x06,
+	WR_Sts		= 0x08,
+	WR_InfoId	= 0x10,
+	WR_Sel0		= 0x18,
+	WR_Sel1		= 0x1a,
+	WR_Off0		= 0x1c,
+	WR_Off1		= 0x1e,
+		WBusyOff	= 0x8000,
+		WErrOff		= 0x4000,
+		WResSts		= 0x7f00,
+	WR_RXId		= 0x20,
+	WR_Alloc	= 0x22,
+	WR_EvSts	= 0x30,
+	WR_IntEna	= 0x32,
+		WCmdEv		= 0x0010,
+		WRXEv		= 0x0001,
+		WTXEv		= 0x0002,
+		WTxErrEv	= 0x0004,
+		WAllocEv	= 0x0008,
+		WInfoEv		= 0x0080,
+		WIDropEv	= 0x2000,
+		WTickEv		= 0x8000,
+		WEvs		= WRXEv|WTXEv|WAllocEv|WInfoEv|WIDropEv,
+
+	WR_EvAck	= 0x34,
+	WR_Data0	= 0x36,
+	WR_Data1	= 0x38,
+
+	// Frame stuff
+
+	WF_Err		= 0x0003,
+	WF_1042		= 0x2000,
+	WF_Tunnel	= 0x4000,
+	WF_WMP		= 0x6000,
+
+	WF_Data		= 0x0008,
+
+	WSnapK1		= 0xaa,
+	WSnapK2		= 0x00,
+	WSnapCtlr	= 0x03,
+	WSnap0		= (WSnapK1|(WSnapK1<<8)),
+	WSnap1		= (WSnapK2|(WSnapCtlr<<8)),
+	WSnapHdrLen	= 6,
+
+	WF_802_11_Off	= 0x44,
+	WF_802_3_Off 	= 0x2e,
+};
+
+#define csr_outs(ctlr,r,arg) 	outs((ctlr)->iob+(r),(arg))
+#define csr_ins(ctlr,r)			ins((ctlr)->iob+(r))
+#define csr_ack(ctlr,ev)		outs((ctlr)->iob+WR_EvAck,(ev))
+
+struct Wltv
+{
+	ushort	len;
+	ushort	type;
+	union 
+	{
+		struct {
+			ushort	val;
+			ushort	pad;
+		};
+		struct {
+			uchar	addr[8];
+		};
+		struct {
+			char	s[17*2];
+		};
+		struct {
+			char	name[WNameLen];
+		};
+	};
+};
+
+// What the driver thinks. Not what the card thinks.
+struct Stats
+{
+	ulong	nints;
+	ulong	nrx;
+	ulong	ntx;
+	ulong	ntxrq;
+	ulong	nrxerr;
+	ulong	ntxerr;
+	ulong	nalloc;		// allocation (reclaim) events
+	ulong	ninfo;
+	ulong	nidrop;
+	ulong	nwatchdogs;	// transmits time outs, actually
+};
+
+struct Ctlr 
+{
+	Lock;
+	Rendez	timer;
+
+	int		attached;
+	int		slot;
+	int		iob;
+	int		ptype;
+	int		apdensity;
+	int		rtsthres;
+	int		txbusy;
+	int		txrate;
+	int		txdid;
+	int		txmid;
+	int		txtmout;
+	int		maxlen;
+	int		chan;
+	int		pmena;
+	int		pmwait;
+
+	char	netname[WNameLen];
+	char	wantname[WNameLen];
+	char	nodename[WNameLen];
+	WFrame	txf;
+	uchar	txbuf[1536];
+	int		txlen;
+	Stats;
+	WStats;
+};
+
+
+// w_... routines do not ilock the Ctlr and should 
+// be called locked.
 
 static void 
-hacr_write_slow(int base, uchar hacr)
+w_intdis(Ctlr* ctlr)
 {
-	outb(HACR(base), hacr);
-	/* delay might only be needed sometimes */
-	delay(1);
-} /* hacr_write_slow */
+	csr_outs(ctlr, WR_IntEna, 0); 
+	csr_ack(ctlr, 0xffff);
+}
 
-static long
-ifstat(Ether* ether, void* a, long n, ulong offset)
-{	
-	Ctlr *ctlr;
+static void
+w_intena(Ctlr* ctlr)
+{
+	csr_outs(ctlr, WR_IntEna, WEvs); 
+}
+
+static int
+w_cmd(Ctlr *ctlr, ushort cmd, ushort arg)
+{
+	int i;
+	int rc;
+	csr_outs(ctlr, WR_Parm0, arg);
+	csr_outs(ctlr, WR_Cmd, cmd);
+	for (i = 0; i<WTmOut; i++){
+		rc = csr_ins(ctlr, WR_EvSts);
+		if ( rc&WCmdEv ){
+			rc = csr_ins(ctlr, WR_Sts);
+			csr_ack(ctlr, WCmdEv);
+			if ((rc&WCmdMsk) != (cmd&WCmdMsk))
+				break;
+			if (rc&WResSts)
+				break;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
+static int
+w_seek(Ctlr* ctlr, ushort id, ushort offset, int chan)
+{
+	int i, rc;
+	static ushort sel[] = { WR_Sel0, WR_Sel1 };
+	static ushort off[] = { WR_Off0, WR_Off1 };
+
+	if (chan != 0 && chan != 1)
+		panic("wavelan: bad chan\n");
+	csr_outs(ctlr, sel[chan], id);
+	csr_outs(ctlr, off[chan], offset);
+	for (i=0; i<WTmOut; i++){
+		rc = csr_ins(ctlr, off[chan]);
+		if ((rc & (WBusyOff|WErrOff)) == 0)
+			return 0;
+	}
+	return -1;
+}
+
+static int
+w_inltv(Ctlr* ctlr, Wltv* l)
+{
+	int i, len;
+	ushort *p,code;
+
+	if (w_cmd(ctlr, WCmdAccRd, l->type)){
+		DEBUG("wavelan: access read failed\n");
+		return -1;
+	}
+	if (w_seek(ctlr,l->type,0,1)){
+		DEBUG("wavelan: seek failed\n");
+		return -1;
+	}
+	len = csr_ins(ctlr, WR_Data1);
+	if (len > l->len)
+		return -1;
+	l->len = len;
+	if ((code=csr_ins(ctlr, WR_Data1)) != l->type){
+		DEBUG("wavelan: type %x != code %x\n",l->type,code);
+		return -1;
+	}
+	p = &l->val;
+	len--;
+	for (i=0; i<len; i++)
+		p[i] = csr_ins(ctlr, WR_Data1);
+	return 0;
+}
+
+static void
+w_outltv(Ctlr* ctlr, Wltv* l)
+{
+	int i,len;
+	ushort *p;
+
+	if (w_seek(ctlr,l->type,0,1))
+		return;
+	csr_outs(ctlr, WR_Data1, l->len);
+	csr_outs(ctlr, WR_Data1, l->type);
+	p = &l->val;
+	len = l->len-1;
+	for (i=0; i<len; i++)
+		csr_outs(ctlr, WR_Data1, p[i]);
+	w_cmd(ctlr,WCmdAccWr,l->type);
+}
+
+static void
+ltv_outs(Ctlr* ctlr, int type, ushort val)
+{
+	Wltv l;
+
+	l.type = type;
+	l.val = val;
+	l.len = 2;
+	w_outltv(ctlr, &l);
+}
+
+static ushort
+ltv_ins(Ctlr* ctlr, int type)
+{
+	Wltv l;
+
+	l.type = type;
+	l.len = 2;
+	l.val = 0;
+	w_inltv(ctlr, &l);
+	return l.val;
+}
+
+static void
+ltv_outstr(Ctlr* ctlr, int type, char *val)
+{
+	Wltv l;
 	int len;
-	char *p;
 
-	ctlr = ether->ctlr;
-	p = malloc(READSTR);
-	len = snprint(p, READSTR, "interrupts: %lud\n", ctlr->interrupts);
-	len += snprint(p+len, READSTR-len, "upinterrupts: %lud\n", ctlr->upinterrupts);
-	len += snprint(p+len, READSTR-len, "dninterrupts: %lud\n", ctlr->dninterrupts);
-	len += snprint(p+len, READSTR-len, "int_errors: %lud\n", ctlr->int_errors);
-	len += snprint(p+len, READSTR-len, "read_errors: %lud\n", ctlr->read_errors);
-	len += snprint(p+len, READSTR-len, "out_packets: %lud\n", ctlr->out_packets);
-	len += snprint(p+len, READSTR-len, "tx_too_long: %lud\n", ctlr->tx_too_long);
-	len += snprint(p+len, READSTR-len, "tx_DMA_underrun: %lud\n", ctlr->tx_DMA_underrun);
-	len += snprint(p+len, READSTR-len, "tx_carrier_error: %lud\n", ctlr->tx_carrier_error);
-	len += snprint(p+len, READSTR-len, "tx_congestion: %lud\n", ctlr->tx_congestion);
-	len += snprint(p+len, READSTR-len, "tx_heart_beat: %lud\n", ctlr->tx_heart_beat);
-	len += snprint(p+len, READSTR-len, "rx_overflow: %lud\n", ctlr->rx_overflow);
-	len += snprint(p+len, READSTR-len, "rx_overrun: %lud\n", ctlr->rx_overrun);
-	len += snprint(p+len, READSTR-len, "rx_crc_error: %lud\n", ctlr->rx_crc);
-	len += snprint(p+len, READSTR-len, "rx_no_sfd: %lud\n", ctlr->rx_no_sfd);
-	len += snprint(p+len, READSTR-len, "rx_dropped: %lud\n", ctlr->rx_dropped);
-	len += snprint(p+len, READSTR-len, "tx_packets: %lud\n", ctlr->tx_packets);
-	len += snprint(p+len, READSTR-len, "rx_packets: %lud\n", ctlr->rx_packets);
-	snprint(p+len, READSTR-len, "in_packets: %lud\n", ctlr->in_packets);
+	len = (strlen(val)+1)&~1;
+	memset(&l,0,sizeof(l));
+	l.type = type;
+	l.len = (len/2)+2;
+	l.val = len;					// l.s[0] and l.s[1]
+	strncpy(l.s+2,val,strlen(val));
+	w_outltv(ctlr, &l);
+}
 
-	n = readstr(offset, a, n, p);
-	free(p);
+static char*
+ltv_inname(Ctlr* ctlr, int type)
+{
+	static char	unk[] = "unknown";
+	static Wltv l;
+	
+	memset(&l,0,sizeof(l));
+	l.type = type;
+	l.len  = WNameLen/2+2;
+	if (w_inltv(ctlr, &l))
+		return unk;
+	if (l.name[2] == 0)
+		return unk;
+	return l.name+2;
+}
+
+
+static int
+w_read(Ctlr* ctlr, int type, int off, void* buf, ulong len)
+{
+	ushort *p = (ushort*)buf;
+	int		i, n;
+
+	n=0;
+	if (w_seek(ctlr, type, off, 1) == 0){
+		len /= 2;
+		for (i = 0; i < len; i++){
+			p[i] = csr_ins(ctlr, WR_Data1);
+			n += 2;
+		}
+	} else
+		DEBUG("wavelan: w_read: seek failed");
+
 	return n;
+}
+
+
+static int
+w_write(Ctlr* ctlr, int type, int off, void* buf, ulong len)
+{
+	ushort *p = (ushort*)buf;
+	ulong	l = len / 2;
+	int		i,tries;
+
+	for (tries=0; tries < WTmOut; tries++){	
+		if (w_seek(ctlr, type, off, 0)){
+			DEBUG("wavelan: w_write: seek failed\n");
+			return 0;
+		}
+
+		for (i = 0; i < l; i++)
+			csr_outs(ctlr, WR_Data0, p[i]);
+		csr_outs(ctlr, WR_Data0, 0xdead);
+		csr_outs(ctlr, WR_Data0, 0xbeef);
+		if (w_seek(ctlr, type, off + len, 0)){
+			DEBUG("wavelan: write seek failed\n");
+			return 0;
+		}
+		if (csr_ins(ctlr, WR_Data0) == 0xdead)
+		if (csr_ins(ctlr, WR_Data0) == 0xbeef)
+			return len;
+		DEBUG("wavelan: Hermes bug byte.\n");
+		return 0;
+	}
+	DEBUG("wavelan: tx timeout\n");
+	return 0;
+}
+
+static int
+w_alloc(Ctlr* ctlr, int len)
+{
+	int rc;
+	int i,j;
+
+	if (w_cmd(ctlr, WCmdMalloc, len)==0)
+		for (i = 0; i<WTmOut; i++)
+			if (csr_ins(ctlr, WR_EvSts) & WAllocEv){
+				csr_ack(ctlr, WAllocEv);
+				rc=csr_ins(ctlr, WR_Alloc);
+				if (w_seek(ctlr, rc, 0, 0))
+					return -1;
+				len = len/2;
+				for (j=0; j<len; j++)
+					csr_outs(ctlr, WR_Data0, 0);
+				return rc;
+			}
+	return -1;
+}
+
+
+static int 
+w_enable(Ether* ether)
+{
+	Wltv	l;
+	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
+
+	if (!ctlr)
+		return -1;
+
+	w_intdis(ctlr);
+	w_cmd(ctlr, WCmdDis, 0);
+	w_intdis(ctlr);
+	if(w_cmd(ctlr, WCmdIni, 0))
+		return -1;
+
+	w_intdis(ctlr);
+	ltv_outs(ctlr, WTyp_Tick, 8);
+	ltv_outs(ctlr, WTyp_MaxLen, ctlr->maxlen);
+	ltv_outs(ctlr, WTyp_Ptype, ctlr->ptype);
+	ltv_outs(ctlr, WTyp_RtsThres, ctlr->rtsthres);
+	ltv_outs(ctlr, WTyp_TxRate, ctlr->txrate);
+	ltv_outs(ctlr, WTyp_ApDens, ctlr->apdensity);
+	ltv_outs(ctlr, WTyp_PM, ctlr->pmena);
+	ltv_outs(ctlr, WTyp_PMWait, ctlr->pmwait);
+	if (*ctlr->netname)
+		ltv_outstr(ctlr, WTyp_NetName, ctlr->netname);
+	if (*ctlr->wantname)
+		ltv_outstr(ctlr, WTyp_WantName, ctlr->wantname);
+	ltv_outs(ctlr, WTyp_Chan, ctlr->chan);
+	if (*ctlr->nodename)
+		ltv_outstr(ctlr, WTyp_NodeName, ctlr->nodename);
+	l.type = WTyp_Mac;
+	l.len = 4;
+	memmove(l.addr, ether->ea, Eaddrlen);
+	w_outltv(ctlr, &l);
+
+	ltv_outs(ctlr, WTyp_Prom, (ether->prom?1:0));
+
+	// BUG: set multicast addresses
+
+	if (w_cmd(ctlr, WCmdEna, 0)){
+		DEBUG("wavelan: Enable failed");
+		return -1;
+	}
+	ctlr->txdid = w_alloc(ctlr, 1518 + sizeof(WFrame) + 8);
+	ctlr->txmid = w_alloc(ctlr, 1518 + sizeof(WFrame) + 8);
+	if (ctlr->txdid == -1 || ctlr->txmid == -1)
+		DEBUG("wavelan: alloc failed");
+	ctlr->txbusy= 0;
+	w_intena(ctlr);
+	return 0;
+
+}
+
+
+static void
+w_rxdone(Ether* ether)
+{
+	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
+	ushort	sp;
+	WFrame	f;
+	Block*	bp=0;
+	ulong	l;
+	Etherpkt* ep;
+
+	sp = csr_ins(ctlr, WR_RXId);
+	l = w_read(ctlr, sp, 0, &f, sizeof(f));
+	if (l == 0){
+		DEBUG("wavelan: read frame error\n");
+		goto rxerror;
+	}
+	if (f.sts&WF_Err){
+		goto rxerror;
+	}
+	switch(f.sts){
+	case WF_1042:
+	case WF_Tunnel:
+	case WF_WMP:
+		l = f.dlen + WSnapHdrLen;
+		bp = iallocb(ETHERHDRSIZE + l + 2);
+		if (!bp)
+			goto rxerror;
+		ep = (Etherpkt*) bp->wp;
+		memmove(ep->d, f.addr1, Eaddrlen);
+		memmove(ep->s, f.addr2, Eaddrlen);
+		memmove(ep->type,&f.type,2);
+		bp->wp += ETHERHDRSIZE;
+		if (w_read(ctlr, sp, WF_802_11_Off, bp->wp, l+2) == 0){
+			DEBUG("wavelan: read 802.11 error\n");
+			goto rxerror;
+		}
+		bp->wp +=  l+2;
+		bp = trimblock(bp, 0, f.dlen+ETHERHDRSIZE);
+		break;
+	default:
+		l = ETHERHDRSIZE + f.dlen + 2;
+		bp = iallocb(l);
+		if (!bp)
+			goto rxerror;
+		if (w_read(ctlr, sp, WF_802_3_Off, bp->wp, l) == 0){
+			DEBUG("wavelan: read 800.3 error\n");
+			goto rxerror;
+		}
+		bp->wp += l;
+	}
+
+	ctlr->nrx++;
+	etheriq(ether,bp,1);
+	return;
+
+  rxerror:
+	freeb(bp);
+	ctlr->nrxerr++;
+}
+
+static int
+w_txstart(Ether* ether, int again)
+{
+
+	Etherpkt* ep;
+	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
+	Block*	bp; 
+	int		txid;
+	if (ctlr == 0 || ctlr->attached == 0 )
+		return -1;
+	if (ctlr->txbusy && again==0)
+		return -1;
+
+	txid = ctlr->txdid;
+	if (again){		
+		bp = 0;		// a watchdog reenabled the card. 
+		goto retry;	// must retry a previously failed tx. 
+	}
+
+	bp = qget(ether->oq);
+	if (bp == 0)
+		return 0;
+	ep = (Etherpkt*) bp->rp;
+	ctlr->txbusy = 1;
+	
+	// BUG: only  IP/ARP/RARP seem to be ok for 802.3
+	// Other packets should be just copied to the board.
+	// The driver is not doing so, though. 
+	// Besides, the Block should be used instead of txbuf,
+	// to save a memory copy.
+	memset(ctlr->txbuf,0,sizeof(ctlr->txbuf));
+	memset(&ctlr->txf,0,sizeof(ctlr->txf));
+	ctlr->txf.framectl = WF_Data;
+	memmove(ctlr->txf.addr1, ep->d, Eaddrlen);
+	memmove(ctlr->txf.addr2, ep->s, Eaddrlen);
+	memmove(ctlr->txf.dstaddr, ep->d, Eaddrlen);
+	memmove(ctlr->txf.srcaddr, ep->s, Eaddrlen);
+	memmove(&ctlr->txf.type,ep->type,2);
+	ctlr->txlen = BLEN(bp);
+	ctlr->txf.dlen = ctlr->txlen - WSnapHdrLen;
+	hnputs((uchar*)&ctlr->txf.dat[0], WSnap0);
+	hnputs((uchar*)&ctlr->txf.dat[1], WSnap1);
+	hnputs((uchar*)&ctlr->txf.len, ctlr->txlen - WSnapHdrLen);
+	if (ctlr->txlen - ETHERHDRSIZE > 1536){
+		print("wavelan: txbuf overflow");
+		freeb(bp);
+		return -1;
+	}
+	memmove(ctlr->txbuf, bp->rp+sizeof(ETHERHDRSIZE)+10, 
+			ctlr->txlen - ETHERHDRSIZE  );
+retry:
+	w_write(ctlr, txid, 0, &ctlr->txf, sizeof(ctlr->txf)); 
+
+	w_write(ctlr, txid, WF_802_11_Off, ctlr->txbuf,
+			ctlr->txlen - ETHERHDRSIZE + 2);
+	if (w_cmd(ctlr, WCmdTxFree, txid)){
+		DEBUG("wavelan: transmit failed\n");
+		ctlr->txbusy=0;	// added 
+		ctlr->ntxerr++;
+		freeb(bp);
+		return -1;
+	}
+	ctlr->txtmout = 2;
+	freeb(bp);
+	return 0;
+}
+
+static void
+w_txdone(Ctlr* ctlr, int sts)
+{
+	int b = ctlr->txbusy;
+
+	ctlr->txbusy = 0;
+	ctlr->txtmout= 0;
+	if (sts & WTxErrEv){
+		ctlr->ntxerr++;
+		if (sts&1) // it was a watchdog, stay busy to retry.
+			ctlr->txbusy = b;
+	} else
+		ctlr->ntx++;
+}
+
+static int
+w_stats(Ctlr* ctlr)
+{
+	int		sp,i;
+	ushort	rc;
+	Wltv	l;
+	ulong*	p = (ulong*)&ctlr->WStats;
+	ulong*	pend= (ulong*)&ctlr->end;
+
+	sp = csr_ins(ctlr, WR_InfoId);
+	l.type = l.len = 0;
+	w_read(ctlr, sp, 0, &l, 4);
+	if (l.type == WTyp_Stats){
+		l.len--;
+		for (i = 0; i < l.len && p < pend ; i++){
+			rc = csr_ins(ctlr, WR_Data1);
+			if (rc > 0xf000)
+				rc = ~rc & 0xffff;
+			p[i] += rc;
+		}
+		return 0;
+	}
+	return -1;
+}
+
+static void
+w_intr(Ether *ether)
+{
+	int 	rc, txid, i;
+	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
+
+	if (ctlr->attached == 0){
+		csr_ack(ctlr, 0xffff);
+		csr_outs(ctlr, WR_IntEna, 0); 
+		return;
+	}
+	for(i=0; i<7; i++){
+		csr_outs(ctlr, WR_IntEna, 0);
+		rc = csr_ins(ctlr, WR_EvSts);
+		csr_ack(ctlr, ~WEvs);	// Not interested on them
+	
+		if (rc & WRXEv){
+			w_rxdone(ether);
+			csr_ack(ctlr, WRXEv);
+		}
+		if (rc & WTXEv){
+			w_txdone(ctlr, rc);
+			csr_ack(ctlr, WTXEv);
+		}
+		if (rc & WAllocEv){
+			ctlr->nalloc++;
+			txid = csr_ins(ctlr, WR_Alloc);
+			csr_ack(ctlr, WAllocEv);
+			if (txid == ctlr->txdid){
+				if ((rc & WTXEv) == 0)
+					w_txdone(ctlr, rc);
+			}
+		}
+		if (rc & WInfoEv){
+			ctlr->ninfo++;
+			w_stats(ctlr);
+			csr_ack(ctlr, WInfoEv);
+		}
+		if (rc & WTxErrEv){
+			w_txdone(ctlr, rc);
+			csr_ack(ctlr, WTxErrEv);
+		}
+		if (rc & WIDropEv){
+			ctlr->nidrop++;
+			csr_ack(ctlr, WIDropEv);
+		}
+	
+		w_intena(ctlr);
+		w_txstart(ether,0);
+	}
+ }
+
+// Watcher to ensure that the card still works properly and 
+// to request WStats updates once a minute.
+// BUG: it runs much more often, see the comment below.
+
+static void
+w_timer(void* arg)
+{
+	Ether*	ether = (Ether*) arg;
+	Ctlr*	ctlr = (Ctlr*)ether->ctlr;
+	int tick=0;
+
+	for(;;){
+		tsleep(&ctlr->timer, return0, 0, 50);
+		ctlr = (Ctlr*)ether->ctlr;
+		if (ctlr == 0)
+			break;
+		if (ctlr->attached == 0)
+			continue;
+		tick++;
+
+		ilock(&ctlr->Lock);
+
+		// Seems that the card gets frames BUT does
+		// not send the interrupt; this is a problem because
+		// I suspect it runs out of receive buffers and
+		// stops receiving until a transmit watchdog
+		// reenables the card.
+		// The problem is serious because it leads to
+		// poor rtts.
+		// This can be seen clearly by commenting out
+		// the next if and doing a ping: it will stop
+		// receiving (although the icmp replies are being
+		// issued from the remote) after a few seconds. 
+		// Of course this `bug' could be because I'm reading
+		// the card frames in the wrong way; due to the
+		// lack of documentation I cannot know.
+
+		if (csr_ins(ctlr, WR_EvSts)&WEvs)
+				w_intr(ether);
+
+		if (tick % 10 == 0) {
+			if (ctlr->txtmout && --ctlr->txtmout == 0){
+				ctlr->nwatchdogs++;
+				w_txdone(ctlr, WTxErrEv|1); // 1: keep it busy
+				if (w_enable(ether))
+					DEBUG("wavelan: wdog enable failed\n");
+				if (ctlr->txbusy) 
+					w_txstart(ether,1);
+			}
+			if (tick % 120 == 0)
+			if (ctlr->txbusy == 0)
+				w_cmd(ctlr, WCmdAskStats, WTyp_Stats);
+		}
+		iunlock(&ctlr->Lock);
+	} 
+	pexit("terminated",0);
+}
+
+static void*
+emalloc(ulong size)
+{
+	void *r=malloc(size);
+	if (!r)
+		error(Enomem);
+	memset(r,0,size);
+	return r;
+}
+
+
+
+static void
+multicast(void*, uchar*, int)
+{
+	// BUG: to be added. 
 }
 
 static void
 attach(Ether* ether)
 {
-	Ctlr *ctlr;
+	Ctlr*	ctlr;
+	char	name[NAMELEN];
+	int		rc;
 
-	ctlr = ether->ctlr;
-	ilock(&ctlr->wlock);
-	if(ctlr->attached){
-		iunlock(&ctlr->wlock);
+	if (ether->ctlr == 0)
 		return;
-	}
-	ctlr->attached = 1;
-	iunlock(&ctlr->wlock);
+
+	snprint(name, NAMELEN, "#l%dtimer", ether->ctlrno);
+	ctlr = (Ctlr*) ether->ctlr;
+	if (ctlr->attached == 0){
+		ilock(&ctlr->Lock);
+		rc = w_enable(ether);
+		iunlock(&ctlr->Lock);
+		if(rc == 0){
+			ctlr->attached = 1;
+			kproc(name, w_timer, ether);
+		} else
+			print("#l%d: enable failed\n",ether->ctlrno);
+	} 
 }
 
-static void
-interrupt_handler(Ether *ether, uchar status)
+static long
+ifstat(Ether* ether, void* a, long n, ulong offset)
 {
-	Ctlr *ctlr;
-	int status0;
-	int tx_status;
-	int base;
-	ctlr = ether->ctlr;
-	base = ctlr->port;
+	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
+	char*	p;
+	int		l;
 
-	status0 = status;
-
-	/* Return if no actual interrupt from i82593 */
-	if(!(status0 & SR0_INTERRUPT)) {
-		print("Wavelan: Interrupt from dead card\n");
-		return;
-	}
-	ctlr->status = status0;	/* Save current status (for commands) */
-	if (status0 & SR0_RECEPTION) {
-		if((status0 & SR0_EVENT_MASK) == SR0_STOP_REG_HIT) {
-			print("wavelan: receive buffer overflow\n");
-			ctlr->rx_overflow++;
-			outb(LCCR(base), CR0_INT_ACK | OP0_NOP);	/* Acknowledge the interrupt */
-			return;
-		}
-		wavelan_receive(ether);
-		if (status0 & SR0_EXECUTION)
-			print("wavelan_cs: interrupt is both rx and tx, status0 = %x\n",
-				status0);
-		outb(LCCR(base), CR0_INT_ACK | OP0_NOP);	/* Acknowledge the interrupt */
-		return;
-	}
-	if (!(status0 & SR0_EXECUTION)) {
-		print("wavelan_cs: interrupt is neither rx or tx, status0 = %x\n",
-			status0);
-		outb(LCCR(base), CR0_INT_ACK | OP0_NOP);	/* Acknowledge the interrupt */
-		return;
-	}
-	/* interrupt due to configure_done or IA_setup_done */
-	if ((status0 & SR0_EVENT_MASK) == SR0_CONFIGURE_DONE ||
-			(status0 & SR0_EVENT_MASK) == SR0_IA_SETUP_DONE) {
-		outb(LCCR(base), CR0_INT_ACK | OP0_NOP);	/* Acknowledge the interrupt */
-		return;
-	}
-	/* so a transmit interrupt is remaining */
-	if((status0 & SR0_EVENT_MASK) == SR0_TRANSMIT_DONE ||
-			(status0 & SR0_EVENT_MASK) == SR0_RETRANSMIT_DONE) {
-		tx_status = inb(LCSR(base));
-		tx_status |= (inb(LCSR(base)) << 8);
-		if (!(tx_status & TX_OK)) {
-			if (tx_status & TX_FRTL) {
-				print("wavelan_cs: frame too long\n");
-				ctlr->tx_too_long++;
-			}
-			if (tx_status & TX_UND_RUN) {
-				/* print("wavelan_csd: DMA underrun\n"); */
-				ctlr->tx_DMA_underrun++;
-			}
-			if (tx_status & TX_LOST_CTS) {
-				/* print("wavelan: no CTS\n"); */
-				ctlr->tx_carrier_error++;
-			}
-			if (tx_status & TX_LOST_CRS) {
-				/* print("wavelan: lost CRS\n"); */
-				ctlr->tx_carrier_error++;
-			}
-			if (tx_status & TX_DEFER) {
-				/* print("wavelan: channel jammed\n"); */
-				ctlr->tx_congestion++;
-			}
-			if (tx_status & TX_COLL) {
-				if (tx_status & TX_MAX_COL) {
-					/* print("wavelan_cs: channel congestion\n"); */
-					ctlr->tx_congestion++;
-				}
-			}
-			if (tx_status & TX_HRT_BEAT) {
- 				/* print("wavelan_cs: heart beat\n"); */
-				ctlr->tx_heart_beat++;
-			}
-		}
-		
-		ctlr->tx_packets++;
-		ctlr->txbusy = 0;
-      		outb(LCCR(base), CR0_INT_ACK | OP0_NOP);	/* Acknowledge the interrupt */
-		txstart(ether);					/* start new transfer if any */
-		return;
-	}
-	print("wavelan: unknown interrupt\n");
-	outb(LCCR(base), CR0_INT_ACK | OP0_NOP);	/* Acknowledge the interrupt */
-
-}
-
-
-static Block*
-rbpalloc(Block* (*f)(int))
-{
-	Block *bp;
-	ulong addr;
-
-	/*
-	 * The receive buffers must be on a 32-byte
-	 * boundary for EISA busmastering.
-	 */
-	if(bp = f(ROUNDUP(sizeof(Etherpkt), 4) + 31)){
-		addr = (ulong)bp->base;
-		addr = ROUNDUP(addr, 32);
-		bp->rp = (uchar*)addr;
-	}
-
-	return bp;
-}
-
-static int 
-wavelan_cmd(Ether *ether, int base, char *str, int cmd, int result)
-{
-	int status;
-	unsigned long spin;
-
-	/* Spin until the chip finishes executing its current command (if any) */
-	do {
-		outb(LCCR(base), OP0_NOP | CR0_STATUS_3);
-		status = inb(LCSR(base));
-	} while ((status & SR3_EXEC_STATE_MASK) != SR3_EXEC_IDLE);
-
-	outb(LCCR(base), cmd);			/* Send the command */
-	if(result == SR0_NO_RESULT) {		/* Return immediately, if the command
-					   	doesn't return a result */
-		return(TRUE);
-	}
-
-	/* Busy wait while the LAN controller executes the command.
-	* Interrupts had better be enabled (or it will be a long wait).
-	*  (We could enable just the WaveLAN's IRQ..., we do not bother this is only for setup commands)
-	 */
-	for(spin = 0; (spin < 10000000); spin++)
-		;
-	outb(LCCR(base), CR0_STATUS_0 | OP0_NOP);
-	status = inb(LCSR(base));
-	if(status & SR0_INTERRUPT){
-		if (((status & SR0_EVENT_MASK) == SR0_CONFIGURE_DONE) ||
-				((status & SR0_EVENT_MASK) == SR0_IA_SETUP_DONE) ||
-				((status & SR0_EVENT_MASK) == SR0_EXECUTION_ABORTED) ||
-				((status & SR0_EVENT_MASK) == SR0_DIAGNOSE_PASSED))
-			outb(LCCR(base), CR0_INT_ACK | OP0_NOP); /* acknowledge interrupt */
-		else 
-			interrupt_handler(ether, status);
-	} else {
-		print("wavelan_cmd: %s timeout, status0 = 0x%uX\n", str, status);
-  		outb(OP0_ABORT, LCCR(base));
-		spin = 0;
-		while(spin++ < 250)	/* wait for the command to execute */
-		delay(1);
+	if (n == 0 || ctlr == 0){
 		return 0;
 	}
-	if((status & SR0_EVENT_MASK) != result){
-		print("wavelan_cmd: %s failed, status0 = 0x%uX\n", str, status);
-		return 0;  
-	}
-	return 1;
-} /* wavelan_cmd */
+	p = malloc(READSTR);
+	l = snprint(p, READSTR, "Interrupts: %lud\n",
+				ctlr->nints);
+	l+= snprint(p+l, READSTR-l, "TxPackets: %lud\n",
+				ctlr->ntx);
+	l+= snprint(p+l, READSTR-l, "RxPackets: %lud\n",
+				ctlr->nrx);
+	l+= snprint(p+l, READSTR-l, "TxErrors: %lud\n",
+				ctlr->ntxerr);
+	l+= snprint(p+l, READSTR-l, "RxErrors: %lud\n",
+				ctlr->nrxerr);
+	l+= snprint(p+l, READSTR-l, "TxRequests: %lud\n",
+				ctlr->ntxrq);
+	l+= snprint(p+l, READSTR-l, "AllocEvs: %lud\n",
+				ctlr->nalloc);
+	l+= snprint(p+l, READSTR-l, "InfoEvs: %lud\n",
+				ctlr->ninfo);
+	l+= snprint(p+l, READSTR-l, "InfoDrop: %lud\n",
+				ctlr->nidrop);
+	l+= snprint(p+l, READSTR-l, "WatchDogs: %lud\n",
+				ctlr->nwatchdogs);
+	if (ctlr->attached)
+		l+= snprint(p+l, READSTR-l, "Card attached");
+	else
+		l+= snprint(p+l, READSTR-l, "Card not attached");
+	if (ctlr->txbusy)
+		l+= snprint(p+l, READSTR-l, ", tx busy\n");
+	else
+		l+= snprint(p+l, READSTR-l, "\n");
 
-static uchar 
-mmc_in(int base, uchar o)
-{
-	while (inb(HASR(base)) & HASR_MMI_BUSY) ;	/* Wait for MMC to go idle */
-	outb(MMR(base), o << 1);			/* Set the read address */
-	outb(MMD(base), 0);				/* Required dummy write */
-	while (inb(HASR(base)) & HASR_MMI_BUSY) ;	/* Wait for MMC to go idle */
-	return((uchar) (inb(MMD(base))));	
+	// real card stats
+	ilock(&ctlr->Lock);
+	l+= snprint(p+l, READSTR-l, "\nCard stats: \n");
+	l+= snprint(p+l, READSTR-l, "Status: %ux\n",
+		csr_ins(ctlr, WR_Sts));
+	l+= snprint(p+l, READSTR-l, "Event status: %ux\n",
+		csr_ins(ctlr, WR_EvSts));
+	l+= snprint(p+l, READSTR-l, "Port type: %d\n",
+		ltv_ins(ctlr, WTyp_Ptype));
+	l+= snprint(p+l, READSTR-l, "Transmit rate: %d\n",
+		ltv_ins(ctlr, WTyp_TxRate));
+	l+= snprint(p+l, READSTR-l, "Channel: %d\n",
+		ltv_ins(ctlr, WTyp_Chan));
+	l+= snprint(p+l, READSTR-l, "AP density: %d\n",
+		ltv_ins(ctlr, WTyp_ApDens));
+	l+= snprint(p+l, READSTR-l, "Promiscuous mode: %d\n",
+		ltv_ins(ctlr, WTyp_Prom));
+
+	l+= snprint(p+l, READSTR-l, "SSID name: %s\n", 
+		ltv_inname(ctlr, WTyp_NetName));
+	l+= snprint(p+l, READSTR-l, "Net name: %s\n",
+		ltv_inname(ctlr, WTyp_WantName));
+	l+= snprint(p+l, READSTR-l, "Node name: %s\n",
+		ltv_inname(ctlr, WTyp_NodeName));
+	iunlock(&ctlr->Lock);
+
+	l+= snprint(p+l, READSTR-l, "ntxuframes: %lud\n",
+				ctlr->ntxuframes);
+	l+= snprint(p+l, READSTR-l, "ntxmframes: %lud\n",
+				ctlr->ntxmframes);
+	l+= snprint(p+l, READSTR-l, "ntxfrags: %lud\n",
+				ctlr->ntxfrags);
+	l+= snprint(p+l, READSTR-l, "ntxubytes: %lud\n",
+				ctlr->ntxubytes);
+	l+= snprint(p+l, READSTR-l, "ntxmbytes: %lud\n",
+				ctlr->ntxmbytes);
+	l+= snprint(p+l, READSTR-l, "ntxdeferred: %lud\n",
+				ctlr->ntxdeferred);
+	l+= snprint(p+l, READSTR-l, "ntxsretries: %lud\n",
+				ctlr->ntxsretries);
+	l+= snprint(p+l, READSTR-l, "ntxmultiretries: %lud\n",
+				ctlr->ntxmultiretries);
+	l+= snprint(p+l, READSTR-l, "ntxretrylimit: %lud\n",
+				ctlr->ntxretrylimit);
+	l+= snprint(p+l, READSTR-l, "ntxdiscards: %lud\n",
+				ctlr->ntxdiscards);
+	l+= snprint(p+l, READSTR-l, "nrxuframes: %lud\n",
+				ctlr->nrxuframes);
+	l+= snprint(p+l, READSTR-l, "nrxmframes: %lud\n",
+				ctlr->nrxmframes);
+	l+= snprint(p+l, READSTR-l, "nrxfrags: %lud\n",
+				ctlr->nrxfrags);
+	l+= snprint(p+l, READSTR-l, "nrxubytes: %lud\n",
+				ctlr->nrxubytes);
+	l+= snprint(p+l, READSTR-l, "nrxmbytes: %lud\n",
+				ctlr->nrxmbytes);
+	l+= snprint(p+l, READSTR-l, "nrxfcserr: %lud\n",
+				ctlr->nrxfcserr);
+	l+= snprint(p+l, READSTR-l, "nrxdropnobuf: %lud\n",
+				ctlr->nrxdropnobuf);
+	l+= snprint(p+l, READSTR-l, "nrxdropnosa: %lud\n",
+				ctlr->nrxdropnosa);
+	l+= snprint(p+l, READSTR-l, "nrxcantdecrypt: %lud\n",
+				ctlr->nrxcantdecrypt);
+	l+= snprint(p+l, READSTR-l, "nrxmsgfrag: %lud\n",
+				ctlr->nrxmsgfrag);
+	snprint(p+l, READSTR-l, "nrxmsgbadfrag: %lud\n",
+				ctlr->nrxmsgbadfrag);
+	n = readstr(offset, a, n, p);
+	free(p);
+	return n;
 }
 
-static int 
-read_ringbuf(Ether *ether, int addr, uchar *buf, int len)
-{	Ctlr *ctlr;
-	int base;
-	int ring_ptr = addr;
-	int chunk_len;
-	uchar *buf_ptr = buf;
-	ctlr = ether->ctlr;
-	base = ctlr->port;
-
-	/* If buf is NULL, just increment the ring buffer pointer */
-	if (buf == 0)
-	return((ring_ptr - RX_BASE + len) % RX_SIZE + RX_BASE);
-	while (len > 0) {
-		/* Position the Program I/O Register at the ring buffer pointer */
-		outb(PIORL(base), ring_ptr & 0xff);
-		outb(PIORH(base), ((ring_ptr >> 8) & PIORH_MASK));
-		/* First, determine how much we can read without wrapping around the
- 		ring buffer */
-		if ((addr + len) < (RX_BASE + RX_SIZE))
-			chunk_len = len;
-		else
-			chunk_len = RX_BASE + RX_SIZE - addr;
-		insb(PIOP(base), buf_ptr, chunk_len);
-		buf_ptr += chunk_len;
-		len -= chunk_len;
-		ring_ptr = (ring_ptr - RX_BASE + chunk_len) % RX_SIZE + RX_BASE;
-	}
-	return(ring_ptr);
-} /* read_ringbuf */
-
-static void 
-wavelan_hardware_send_packet(Ether *ether, void *buf, short length)
+/* from ../port/netif.c
+ * BUG?: make me a library function.
+ */
+static char*
+matchtoken(char *p, char *token)
 {
-	Ctlr *ctlr;
-	int base;
-	register ushort xmtdata_base = TX_BASE;
-	ctlr = ether->ctlr;
-	base = ctlr->port;
+	int n;
 
-	outb(PIORL(base), xmtdata_base & 0xff);
-	outb(PIORH(base), ((xmtdata_base >> 8) & PIORH_MASK) | PIORH_SEL_TX);
-	outb(PIOP(base), length & 0xff);		/* lsb */
-	outb(PIOP(base), length >> 8);  		/* msb */
-	outsb(PIOP(base), buf, length);		/* Send the data */
-	outb(PIOP(base), OP0_NOP);		/* Indicate end of transmit chain */
-
- 	/* Reset the transmit DMA pointer */
-	hacr_write_slow(base, HACR_PWR_STAT | HACR_TX_DMA_RESET);
-	outb(HACR(base), HACR_DEFAULT);
-	/* Send the transmit command */
-	wavelan_cmd(ether, base, "wavelan_hardware_send_packet(): transmit", OP0_TRANSMIT,
-	      SR0_NO_RESULT);
-} /* wavelan_hardware_send_packet */
-
-
-
-static int 
-txstart(Ether *ether)
-{	
-	Ctlr *ctlr;
-	Block *bp;
-	int base, length;
-	int status;
-	ctlr = ether->ctlr;
-	base = ctlr->port;
-
-	for(;;) { 
-		if(ctlr->txbp){
-			bp = ctlr->txbp;
-			ctlr->txbp = 0;
-		}
-		else{
-			bp = qget(ether->oq);
-			if(bp == nil)
-				break;
-		}
-
-		length = BLEN(bp);
-		length = (ETH_ZLEN < length) ? length : ETH_ZLEN;
-		outb(LCCR(base), OP0_NOP | CR0_STATUS_3);
-		status = inb(LCSR(base));
-		if ((status & SR3_EXEC_STATE_MASK) == SR3_EXEC_IDLE) {
-			wavelan_hardware_send_packet(ether, bp->rp, length);
-			freeb(bp);
-			ctlr->out_packets++;
-		}
-		else{
-			ctlr->txbp = bp;
-			if(ctlr->txbusy == 0){
-				ctlr->txbusy = 1;
-			}
-			break;
-		}
-
-	}
-	return 0;
-} /* wavelan txstart */
-
-
-static int 
-wavelan_start_of_frame(Ether *ether, int rfp, int wrap)
-{
-	Ctlr *ctlr;
-	int base;
-	int rp, len;
-
-	ctlr = ether->ctlr;
-	base = ctlr->port;
-
-	rp = (rfp - 5 + RX_SIZE) % RX_SIZE;
-	outb(PIORL(base), rp & 0xff);
-	outb(PIORH(base), ((rp >> 8) & PIORH_MASK));
-	len = inb(PIOP(base));
-	len |= inb(PIOP(base)) << 8;
-
-	if (len > 1600) {		/* Sanity check on size */
-		print("wavelan_cs: Received frame too large, rfp %d rp %d len 0x%x\n",
-			rfp, rp, len);
-		return -1;
-	}
-  
-	if(len < 7){
-		print("wavelan_start_of_frame: Received null frame, rfp %d len 0x%x\n", rfp, len);
-		return(-1);
-	}
-	/* Wrap around buffer */
-	if(len > ((wrap - (rfp - len) + RX_SIZE) % RX_SIZE)) {	/* magic formula ! */
-		print("wavelan_start_of_frame: wrap around buffer, wrap %d rfp %d len 0x%x\n",wrap, rfp, len);
-		return(-1);
-	}
-
-	return((rp - len + RX_SIZE) % RX_SIZE);
-} /* wv_start_of_frame */
-
-static void wavelan_read(Ether *ether, int fd_p, int sksize)
-{
-	Ctlr *ctlr;
-	Block *bp;
-	uchar stats[3];
-
-	ctlr = ether->ctlr;
-
-	ctlr->rx_packets++;
-
-	if ((bp = rbpalloc(allocb)) == 0){		
- 		print("wavelan: could not rbpalloc(%d).\n", sksize);
-		ctlr->rx_dropped++;
-		return;
-	} else {
-		fd_p = read_ringbuf(ether, fd_p, ctlr->rbp->rp, sksize);
-		ctlr->rbp->wp = ctlr->rbp->rp + sksize;
-		/* read signal level, silence level and signal quality bytes */
-		read_ringbuf(ether, (fd_p+4) % RX_SIZE+RX_BASE, stats, 3);
-		/*
-		* Hand the packet to the Network Module
-		*/
-		etheriq(ether, ctlr->rbp, 1);
-		ctlr->in_packets++;
-		ctlr->rbp = bp;
-		return;
-	}
-} /* wavelan_read */
-
-static void 
-wavelan_receive(Ether *ether)
-{
-	Ctlr *ctlr;
-	int base;
-	int newrfp, rp, len, f_start, status;
-	int i593_rfp, stat_ptr;
-	uchar c[4];
-
-	ctlr = ether->ctlr;
-	base = ctlr->port;
-
-	/* Get the new receive frame pointer from the i82593 chip */
-	outb(LCCR(base), CR0_STATUS_2 | OP0_NOP);
-	i593_rfp = inb(LCSR(base));
-	i593_rfp |= inb(LCSR(base)) << 8;
-	i593_rfp %= RX_SIZE;
-
-	/* Get the new receive frame pointer from the WaveLAN card.
-	* It is 3 bytes more than the increment of the i82593 receive
-	* frame pointer, for each packet. This is because it includes the
-	* 3 roaming bytes added by the mmc.
-	*/
-	newrfp = inb(RPLL(base));
-	newrfp |= inb(RPLH(base)) << 8;
-	newrfp %= RX_SIZE;
-
-// print("wavelan_cs: i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n",
-// 	i593_rfp, ctlr->stop, newrfp, ctlr->rfp);
-
-	if (newrfp == ctlr->rfp)
-		print("wavelan_cs: odd RFPs:  i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n",
-			i593_rfp, ctlr->stop, newrfp, ctlr->rfp);
-
-	while(newrfp != ctlr->rfp) {
-		rp = newrfp;
-		/* Find the first frame by skipping backwards over the frames */
-		while (((f_start = wavelan_start_of_frame(ether,rp, newrfp)) != ctlr->rfp) && (f_start != -1))
-			rp = f_start;
-		if(f_start == -1){
-			print("wavelan_cs: cannot find start of frame ");
-			print(" i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n",
-				i593_rfp, ctlr->stop, newrfp, ctlr->rfp);
-			ctlr->rfp = rp;
-			continue;
-		}
-		stat_ptr = (rp - 7 + RX_SIZE) % RX_SIZE;
-		read_ringbuf(ether, stat_ptr, c, 4);
-		status = c[0] | (c[1] << 8);
-		len = c[2] | (c[3] << 8);
-
-		if(!(status & RX_RCV_OK)) {
-			if(status & RX_NO_SFD) ctlr->rx_no_sfd++;
-			if(status & RX_CRC_ERR) ctlr->rx_crc++;
-			if(status & RX_OVRRUN) ctlr->rx_overrun++;
-
-  			print("wavelan_cs: packet not received ok, status = 0x%x\n", status);
-		} else	wavelan_read(ether, f_start, len - 2);
-
-		ctlr->rfp = rp;		/* one packet processed, skip it */
-	}
-
-	/*
-	* Update the frame stop register, but set it to less than
-	* the full 8K to allow space for 3 bytes of signal strength
-	* per packet.
-	*/
-	ctlr->stop = (i593_rfp + RX_SIZE - ((RX_SIZE / 64) * 3)) % RX_SIZE;
-	outb(LCCR(base), OP0_SWIT_TO_PORT_1 | CR0_CHNL);
-	outb(LCCR(base), CR1_STOP_REG_UPDATE | (ctlr->stop >> RX_SIZE_SHIFT));
-	outb(LCCR(base), OP1_SWIT_TO_PORT_0);
-} /* wavelan_receive */
-
-static void
-interrupt(Ureg*, void* arg)
-{
-	Ether *ether;
-	Ctlr *ctlr;
-	int base;
-
-	ether = arg;
-	ctlr = ether->ctlr;
-	base = ctlr->port;
-
-	ilock(&ctlr->wlock);
-
-	ctlr->interrupts++;
-
-	outb(LCCR(base), CR0_STATUS_0 | OP0_NOP);
-	interrupt_handler(ether, inb(LCSR(base)));
-		
-	iunlock(&ctlr->wlock);
-
-}; /* wavelan interrupt */
-
-
-
-static void
-promiscuous()
-{
-	;
-};
-
-static void
-multicast()
-{	
-	;
-};
-
-static void 
-mmc_read(int base, uchar o, uchar *b, int n)
-{
-	while (n-- > 0) {
-		while (inb(HASR(base)) & HASR_MMI_BUSY) ;	/* Wait for MMC to go idle */
-		outb(MMR(base), o << 1);			/* Set the read address */
-		o++;
-
-		outb(MMD(base), 0);				/* Required dummy write */
-		while (inb(HASR(base)) & HASR_MMI_BUSY) ;	/* Wait for MMC to go idle */
-		*b++ = (uchar)(inb(MMD(base)));			/* Now do the actual read */
-	}
-} /* mmc_read */
-
-
-static void
-fee_wait(int base, int del, int numb)
-{	int count = 0;
-	while ((count++ < numb) && (mmc_in(base, MMC_EECTRL) & MMR_FEE_STATUS_BUSY))
-		delay(del);
-	if (count==numb) print("Wavelan: fee wait timed out\n");
-}
-
-static void 
-mmc_write_b(int base, uchar o, uchar b)
-{
-	while (inb(HASR(base)) & HASR_MMI_BUSY) ;	/* Wait for MMC to go idle */
-	outb(MMR(base), (uchar)((o << 1) | MMR_MMI_WR));
-	outb(MMD(base), (uchar)(b));
-} /* mmc_write_b */
-
-static void 
-mmc_write(int base, uchar o, uchar *b, int n)
-{
-	o += n;
-	b += n;
-	while (n-- > 0 ) 
-		mmc_write_b(base, --o, *(--b));
-} /* mmc_write */
-
-
-static void wavelan_mmc_init(Ether *ether, int port)
-{
-	Ctlr *ctlr;
-	mmw_t	m;
-	ctlr = ether->ctlr;
-
-	memset(&m, 0x00, sizeof(m));
-
-	/*
-	* Set default modem control parameters.
-	* See NCR document 407-0024326 Rev. A.
-	*/
-	m.mmw_jabber_enable = 0x01;
-	m.mmw_anten_sel = MMW_ANTEN_SEL_ALG_EN;
-	m.mmw_ifs = 0x20;
-	m.mmw_mod_delay = 0x04;
-	m.mmw_jam_time = 0x38;
-	m.mmw_encr_enable = 0;
-	m.mmw_des_io_invert = 0;
-	m.mmw_freeze = 0;
-	m.mmw_decay_prm = 0;
-	m.mmw_decay_updat_prm = 0;
-	m.mmw_loopt_sel = MMW_LOOPT_SEL_UNDEFINED;
-	m.mmw_thr_pre_set = 0x04;   /* PCMCIA */
-	m.mmw_quality_thr = 0x03;
-	m.mmw_netw_id_l = ctlr->nwid[1];		/* use nwid of PSA memory */
-	m.mmw_netw_id_h = ctlr->nwid[0];
-  
-	mmc_write(port, 0, (uchar *)&m, 37); 		/* size of mmw_t == 37 */
-
-	/* Start the modem's receive unit on version 2.00 		     */
-						/* 2.4 Gz: half-card ver     */
-						/* 2.4 Gz		     */
-						/* 2.4 Gz: position ch #     */
-	mmc_write_b(port, MMC_EEADDR, 0x0f);	/* 2.4 Gz: named ch, wc=16   */
-	mmc_write_b(port, MMC_EECTRL,MMC_EECTRL_DWLD |	/* 2.4 Gz: Download Synths   */
-			MMC_EECTRL_EEOP_READ);	/* 2.4 Gz: Read EEPROM	     */
-	fee_wait(port, 10, 100);		/* 2.4 Gz: wait for download */
-						/* 2.4 Gz	      */
-	mmc_write_b(port, MMC_EEADDR,0x61);		/* 2.4 Gz: default pwr, wc=2 */
-	mmc_write_b(port, MMC_EECTRL,MMC_EECTRL_DWLD |	/* 2.4 Gz: Download Xmit Pwr */
-			MMC_EECTRL_EEOP_READ);	/* 2.4 Gz: Read EEPROM	     */
-	fee_wait(port, 10, 100);		/* 2.4 Gz: wait for download */
-
-} /* wavelan_mmc_init */
-
-
-int wavelan_diag(Ether *ether, int port)
-{
-  	if (wavelan_cmd(ether, port, "wavelan_diag(): diagnose", OP0_DIAGNOSE,
-		  SR0_DIAGNOSE_PASSED)){
+	n = strlen(token);
+	if(strncmp(p, token, n))
 		return 0;
-	}
-	print("wavelan_cs: i82593 Self Test failed!\n");
-	return 1;
-} /* wavelan_diag */
+	p += n;
+	if(*p == 0)
+		return p;
+	if(*p != ' ' && *p != '\t' && *p != '\n')
+		return 0;
+	while(*p == ' ' || *p == '\t' || *p == '\n')
+		p++;
+	return p;
+}
 
-
-
-int wavelan_hw_config(int base, Ether *ether)
+static void
+termtoken(char *tok)
 {
-	struct i82593_conf_block cfblk;
+	char *p = tok;
 
-	memset(&cfblk, 0x00, sizeof(struct i82593_conf_block));
-	cfblk.d6mod = FALSE;	/* Run in i82593 advanced mode */
-	cfblk.fifo_limit = 6;	/* = 48 bytes rx and tx fifo thresholds */
-	cfblk.forgnesi = FALSE;	/* 0=82C501, 1=AMD7992B compatibility */
-	cfblk.fifo_32 = 0;
-	cfblk.throttle_enb = TRUE;
-	cfblk.contin = TRUE;	/* enable continuous mode */
-	cfblk.cntrxint = FALSE;	/* enable continuous mode receive interrupts */
-	cfblk.addr_len = WAVELAN_ADDR_SIZE;
-	cfblk.acloc = TRUE;	/* Disable source addr insertion by i82593 */
-	cfblk.preamb_len = 2;	/* 7 byte preamble */
-	cfblk.loopback = FALSE;
-	cfblk.lin_prio = 0;	/* conform to 802.3 backoff algoritm */
-	cfblk.exp_prio = 0;	/* conform to 802.3 backoff algoritm */
-	cfblk.bof_met = 0;	/* conform to 802.3 backoff algoritm */
-	cfblk.ifrm_spc = 6;	/* 96 bit times interframe spacing */
-	cfblk.slottim_low = 0x10 & 0x7;	/* 512 bit times slot time */
-	cfblk.slottim_hi = 0x10 >> 3;
-	cfblk.max_retr = 15;	
-	cfblk.prmisc = FALSE;	/* Promiscuous mode ?? */
-	cfblk.bc_dis = FALSE;	/* Enable broadcast reception */
-	cfblk.crs_1 = TRUE;	/* Transmit without carrier sense */
-	cfblk.nocrc_ins = FALSE; /* i82593 generates CRC */	
-	cfblk.crc_1632 = FALSE;	/* 32-bit Autodin-II CRC */
- 	cfblk.crs_cdt = FALSE;	/* CD not to be interpreted as CS */
-	cfblk.cs_filter = 0;  	/* CS is recognized immediately */
-	cfblk.crs_src = FALSE;	/* External carrier sense */
-	cfblk.cd_filter = 0;  	/* CD is recognized immediately */
-	cfblk.min_fr_len = 64 >> 2;	/* Minimum frame length 64 bytes */
-	cfblk.lng_typ = FALSE;	/* Length field > 1500 = type field */
-	cfblk.lng_fld = TRUE; 	/* Disable 802.3 length field check */
-	cfblk.rxcrc_xf = TRUE;	/* Don't transfer CRC to memory */
-	cfblk.artx = TRUE;	/* Disable automatic retransmission */
-	cfblk.sarec = TRUE;	/* Disable source addr trig of CD */
-	cfblk.tx_jabber = TRUE;	/* Disable jabber jam sequence */
-	cfblk.hash_1 = FALSE; 	/* Use bits 0-5 in mc address hash */
-	cfblk.lbpkpol = TRUE; 	/* Loopback pin active high */
-	cfblk.fdx = FALSE;	/* Disable full duplex operation */
-	cfblk.dummy_6 = 0x3f; 	/* all ones */
-	cfblk.mult_ia = FALSE;	/* No multiple individual addresses */
-	cfblk.dis_bof = FALSE;	/* Disable the backoff algorithm ?! */
-	cfblk.dummy_1 = TRUE; 	/* set to 1 */
-	cfblk.tx_ifs_retrig = 3; /* Hmm... Disabled */
-	cfblk.mc_all = FALSE;	/* No multicast all mode */	
-	cfblk.rcv_mon = 0;	/* Monitor mode disabled */
-	cfblk.frag_acpt = TRUE;/* Do not accept fragments */
-	cfblk.tstrttrs = FALSE;	/* No start transmission threshold */
-	cfblk.fretx = TRUE;	/* FIFO automatic retransmission */
-	cfblk.syncrqs = TRUE; 	/* Synchronous DRQ deassertion... */
-	cfblk.sttlen = TRUE;  	/* 6 byte status registers */
-	cfblk.rx_eop = TRUE;  	/* Signal EOP on packet reception */
-	cfblk.tx_eop = TRUE;  	/* Signal EOP on packet transmission */
-	cfblk.rbuf_size = RX_SIZE>>11;	/* Set receive buffer size */
-	cfblk.rcvstop = TRUE; 	/* Enable Receive Stop Register */
-
-	outb(PIORL(base), (TX_BASE & 0xff));
-	outb(PIORH(base), (((TX_BASE >> 8) & PIORH_MASK) | PIORH_SEL_TX));
-	outb(PIOP(base), (sizeof(struct i82593_conf_block) & 0xff));    /* lsb */
-	outb(PIOP(base), (sizeof(struct i82593_conf_block) >> 8));	/* msb */
-	outsb(PIOP(base), ((char *) &cfblk), sizeof(struct i82593_conf_block));
-
-	/* reset transmit DMA pointer */
-	hacr_write_slow(base, HACR_PWR_STAT | HACR_TX_DMA_RESET);
-	outb(HACR(base), HACR_DEFAULT);
-	if(!wavelan_cmd(ether, base, "wavelan_hw_config(): configure", OP0_CONFIGURE,
-		  SR0_CONFIGURE_DONE))
-		return(FALSE);
-
-	/* Initialize adapter's ethernet MAC address */
-	outb(PIORL(base), (TX_BASE & 0xff));
-	outb(PIORH(base), (((TX_BASE >> 8) & PIORH_MASK) | PIORH_SEL_TX));
-	outb(PIOP(base), WAVELAN_ADDR_SIZE);	/* byte count lsb */
-	outb(PIOP(base), 0);			/* byte count msb */
-	outsb(PIOP(base), &ether->ea[0], WAVELAN_ADDR_SIZE);
-	/* reset transmit DMA pointer */
-	hacr_write_slow(base, HACR_PWR_STAT | HACR_TX_DMA_RESET);
-	outb(HACR(base), HACR_DEFAULT);
-	if(!wavelan_cmd(ether, base, "wavelan_hw_config(): ia-setup", OP0_IA_SETUP, SR0_IA_SETUP_DONE))
-		return(FALSE);
-	return(TRUE);
-} /* wavelan_hw_config */
-
-static void 
-wavelan_graceful_shutdown(Ether *ether, int base)
+	while(*p != 0 && *p != ' ' && *p != '\t' && *p != '\n')
+		p++;
+	*p = 0;
+}
+		
+#define min(a,b) (((a)<(b))?(a):(b))
+static long 
+ctl(Ether* ether, void* buf, long n)
 {
-  int status;
-  
-  /* First, send the LAN controller a stop receive command */
-  wavelan_cmd(ether, base, "wavelan_graceful_shutdown(): stop-rcv", OP0_STOP_RCV,
-	      SR0_NO_RESULT);
-  /* Then, spin until the receive unit goes idle */
-  do {
-    outb(LCCR(base), (OP0_NOP | CR0_STATUS_3));
-    status = inb(LCSR(base));
-  } while((status & SR3_RCV_STATE_MASK) != SR3_RCV_IDLE);
-		       
-  /* Now, spin until the chip finishes executing its current command */
-  do {
-    outb(LCCR(base), (OP0_NOP | CR0_STATUS_3));
-    status = inb(LCSR(base));
-  } while ((status & SR3_EXEC_STATE_MASK) != SR3_EXEC_IDLE);
-} /* wavelan_graceful_shutdown */
-
-
-static void 
-wavelan_ru_start(Ether *ether, int base)
-{
+	int i;
+	char *p;
 	Ctlr *ctlr;
-	ctlr = ether->ctlr;
+	Cmdbuf *cb;
 
-	/*
-	* We need to start from a quiescent state. To do so, we could check
-	* if the card is already running, but instead we just try to shut
-	* it down. First, we disable reception (in case it was already enabled).
-	*/
+	if((ctlr = ether->ctlr) == nil)
+		error(Enonexist);
+	if(ctlr->attached == 0)
+		error(Eshutdown);
 
-	wavelan_graceful_shutdown(ether, base);
+	cb = parsecmd(buf, n);
+	if(cb->nf < 2)
+		error(Ebadctl);
 
-	/* Now we know that no command is being executed. */
+	ilock(&ctlr->Lock);
+	if(waserror()){
+		iunlock(&ctlr->Lock);
+		free(cb);
+		nexterror();
+	}
 
-	/* Set the receive frame pointer and stop pointer */
-	ctlr->rfp = 0;
-	outb(LCCR(base), OP0_SWIT_TO_PORT_1 | CR0_CHNL);
+	if(strcmp(cb->f[0], "ssid") == 0)
+		strncpy(ctlr->netname, cb->f[1], WNameLen);
+	else if(strcmp(cb->f[0], "net") == 0)
+		strncpy(ctlr->wantname, cb->f[1], WNameLen);
+	else if(strcmp(cb->f[0], "node") == 0)
+		strncpy(ctlr->nodename, cb->f[1], WNameLen);
+	else if(strcmp(cb->f[0], "chan") == 0){
+		i = atoi(cb->f[1]);
+		if (i < 1 || i > 16 )
+			error("invalid wavelan channel");
+		ctlr->chan = i;
+	}
+	else if(strcmp(cb->f[0], "ptype") == 0){
+		i = atoi(cb->f[1]);
+		if (i < 1 || i > 3 )
+			error("invalid wavelan port type");
+		ctlr->ptype = i;
+	}
+	else
+		error(Ebadctl);
+	if(ctlr->txbusy)
+		w_txdone(ctlr, WTxErrEv|1);	// retry later.
+	w_enable(ether);
 
-	/* Reset ring management.  This sets the receive frame pointer to 1 */
-	outb(LCCR(base), OP1_RESET_RING_MNGMT);
-	ctlr->stop = (0 + RX_SIZE - ((RX_SIZE / 64) * 3)) % RX_SIZE;
-	outb(LCCR(base), CR1_STOP_REG_UPDATE | (ctlr->stop >> RX_SIZE_SHIFT));
-	outb(LCCR(base), OP1_INT_ENABLE);
-	outb(LCCR(base), OP1_SWIT_TO_PORT_0);
+	iunlock(&ctlr->Lock);
+	poperror();
+	free(cb);
 
-	/* Reset receive DMA pointer */
-	outb(HACR(base), HACR_PWR_STAT | HACR_RX_DMA_RESET);
-	delay(100);
-	outb(HACR(base), HACR_PWR_STAT);
-	delay(100);
-
-	/* Receive DMA on channel 1 */
-	wavelan_cmd(ether, base, "wavelan_ru_start(): rcv-enable",
-	      (CR0_CHNL | OP0_RCV_ENABLE), SR0_NO_RESULT);
-
-} /* wavelan_ru_start */
+	return n;
+}
 
 static void
 transmit(Ether* ether)
 {
-	Ctlr *ctlr;
-	ctlr = ether->ctlr;
+	Ctlr* ctlr = ether->ctlr;
 
-	ilock(&ctlr->wlock);
-	txstart(ether);	
-	iunlock(&ctlr->wlock);
+	if (ctlr == 0)
+		return;
+
+	ilock(&ctlr->Lock);
+	ctlr->ntxrq++;
+	w_txstart(ether,0);
+	iunlock(&ctlr->Lock);
 }
 
+static void
+promiscuous(void* arg, int on)
+{
+	Ether*	ether = (Ether*)arg;
+	Ctlr*	ctlr = ether->ctlr;
+
+	if (ctlr == nil)
+		error("card not found");
+	if (ctlr->attached == 0)
+		error("card not attached");
+	ilock(&ctlr->Lock);
+	ltv_outs(ctlr, WTyp_Prom, (on?1:0));
+	iunlock(&ctlr->Lock);
+}
+
+
+
+static void 
+interrupt(Ureg* ,void* arg)
+{
+	Ether*	ether = (Ether*) arg;
+	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
+
+	if (ctlr == 0)
+		return;
+	ilock(&ctlr->Lock);
+	ctlr->nints++;
+	w_intr(ether);
+	iunlock(&ctlr->Lock);
+}
 
 static int
 reset(Ether* ether)
 {
-	int slot, p;
-	int port;
-	char *pp;
-	Ctlr *ctlr;
-	PCMmap *m;
+	Ctlr*	ctlr;
+	Wltv	ltv;
+	int		i;
 
-	ctlr = ether->ctlr = malloc(sizeof(Ctlr)); 
-	ilock(&ctlr->wlock);
-
-	if(ether->port == 0)
-		ether->port = 0x280;
-	port = ether->port;
-
-	if((slot = pcmspecial(ether->type, ether)) < 0) {
-		print("could not find the PCMCIA WaveLAN card.\n"); 
+	if (ether->ctlr){
+		print("#l%d: only one card supported\n", ether->ctlrno);
 		return -1;
 	}
 
-	if(ioalloc(port, 0x20, 0, "wavelan") < 0){
-		print("wavelan: port %d in use\n", port);
-		return -1;
-	}
-
-	print("#l%dWaveLAN: slot %d, port 0x%ulX irq %ld type %s\n", ether->ctlrno, slot, ether->port, ether->irq, ether->type);
-
-	/* create a receive buffer */
-	ctlr->rbp = rbpalloc(allocb);
-
-/* map a piece of memory (Attribute memory) first */
-	m = pcmmap(slot, 0, 0x5000, 1);
-	if (m==0) {
-		iofree(port);
-		return 1;
-	}
-/* read ethernet address from the card and put in ether->ea */
-	pp = (char*)(KZERO|m->isa) + 0x0E00 + 2*0x10;
-	for(p = 0; p<sizeof(ether->ea); p++)
-		ether->ea[p] = (uchar) (*(pp+2*p))&0xFF;
-
-//	print("wavelan: dump of PSA memory\n");
-//	pp = (char *) (KZERO|m->isa) + 0x0E00;
-//	for(p=0; p<64; p++) {
-//		print("%2uX ", (*(pp+2*p)&0xFF));
-//		if (p%16==15) print("\n");
-//	}
-
-/* read nwid from PSA into ctlr->nwid */
-	pp = (char*)(KZERO|m->isa) + 0x0E00;
-	ctlr->nwid[0] = *(pp+2*0x23); 
-	ctlr->nwid[1] = *(pp+2*0x24); 
+	ether->arg = ctlr = (Ctlr*)emalloc(sizeof(Ctlr));
+	ilock(&ctlr->Lock);
 	
-/* access the configuration option register 	*/
-	pp = (char *)(KZERO|m->isa) + 0x4000;	
-	*pp = *pp | COR_SW_RESET; 		
-	delay(5); 				
-	*pp = (COR_LEVEL_IRQ | COR_CONFIG); 	
-	delay(5); 				
+	if (ether->port==0)
+		ether->port=WDfltIOB;
+	ctlr->iob = ether->port;
+	if (ether->irq==0)
+		ether->irq=WDfltIRQ;
+	if ((ctlr->slot = pcmspecial("WaveLAN/IEEE", ether))<0){
+		DEBUG("no wavelan found\n");
+		goto abort;
+	}
+	DEBUG("#l%d: port=0x%lx irq=%ld\n", 
+			ether->ctlrno, ether->port, ether->irq);
+ 
+	*ctlr->netname = *ctlr->wantname = *ctlr->nodename = 0;
+	for (i=0; i < ether->nopt; i++){
+		if (strncmp(ether->opt[i],"ssid=",4) == 0)
+			strncpy(ctlr->netname,&ether->opt[i][4],WNameLen);
+		if (strncmp(ether->opt[i],"net=",4) == 0)
+			strncpy(ctlr->wantname,&ether->opt[i][4],WNameLen);
+		if (strncmp(ether->opt[i],"node=",5) == 0)
+			strncpy(ctlr->nodename,&ether->opt[i][5],WNameLen);
+	}
+	ctlr->netname[WNameLen-1] = 0;
+	ctlr->wantname[WNameLen-1] = 0;
+	ctlr->nodename[WNameLen-1] =0;
 
-	hacr_write_slow(port, HACR_RESET);
-	outb(HACR(port), HACR_DEFAULT);
-
-	if(inb(HASR(port)) & HASR_NO_CLK) {
-		iofree(port);
-		print("wavelan: modem not connected\n");
-		return 1;
+	if (ioalloc(ether->port,WIOLen,0,"wavelan")<0){
+		print("#l%d: port 0x%lx in use\n", 
+				ether->ctlrno, ether->port);
+		goto abort;
 	}
 
-	wavelan_mmc_init(ether, port);		/* initialize modem */
-
-	outb(LCCR(port), OP0_RESET);	/* reset the LAN controller */
-	delay(10);
-
-	if (wavelan_hw_config(port, ether) == FALSE){
-		iofree(port);
-		return 1;
+	w_intdis(ctlr);
+	if (w_cmd(ctlr,WCmdIni,0)){
+		print("#l%d: init failed\n", ether->ctlrno);
+		goto abort;
 	}
+	w_intdis(ctlr);
+	ltv_outs(ctlr, WTyp_Tick, 8);
 
-	if (wavelan_diag(ether, port) == 1){
-		iofree(port);
-		return 1;
+	ltv.type = WTyp_Mac;
+	ltv.len	= 4;
+	if (w_inltv(ctlr, &ltv)){
+		print("#l%d: unable to read mac addr\n", 
+			ether->ctlrno);
+		goto abort;
 	}
-	wavelan_ru_start(ether, port);
+	memmove(ether->ea, ltv.addr, Eaddrlen);
+	DEBUG("#l%d: %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n", 
+			ether->ctlrno,
+			ether->ea[0], ether->ea[1], ether->ea[2],
+			ether->ea[3], ether->ea[4], ether->ea[5]);
 
-	print("wavelan: init done; receiver started\n");
+	ctlr->chan = ltv_ins(ctlr, WTyp_Chan);
 
-	iunlock(&ctlr->wlock);	
-
-	ctlr->port = port;
-	ether->port = port;
-	ether->mbps = 2;		/* 2 Mpbs */
+	ctlr->ptype = WDfltPType;
+	ctlr->apdensity = WDfltApDens;
+	ctlr->rtsthres = WDfltRtsThres;
+	ctlr->txrate = WDfltTxRate;
+	ctlr->maxlen = WMaxLen;
+	ctlr->pmena = 0;
+	ctlr->pmwait= 100;
+	// link to ether
+	ether->ctlr = ctlr;
+	ether->mbps = 10;	
 	ether->attach = attach;
-	ether->transmit = transmit;
 	ether->interrupt = interrupt;
+	ether->transmit = transmit;
 	ether->ifstat = ifstat;
-
+	ether->ctl = ctl;
 	ether->promiscuous = promiscuous;
 	ether->multicast = multicast;
 	ether->arg = ether;
 
-	return 0;			/* reset succeeded */
+	DEBUG("#l%d: irq %ld port %lx type %s",
+		ether->ctlrno, ether->irq, ether->port,	ether->type);
+	DEBUG(" %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n",
+		ether->ea[0], ether->ea[1], ether->ea[2],
+		ether->ea[3], ether->ea[4], ether->ea[5]);
+
+	iunlock(&ctlr->Lock);
+	return 0; 
+
+abort:
+	iunlock(&ctlr->Lock);
+	free(ctlr);
+	ether->ctlr = nil;
+	return -1;
 }
 
 void
 etherwavelanlink(void)
 {
-	addethercard("WaveLAN", reset);
+	addethercard("wavelan", reset);
 }

@@ -333,9 +333,9 @@ tcpstate(Conv *c, char *state, int n)
 	s = (Tcpctl*)(c->ptcl);
 
 	return snprint(state, n,
-		"%s srtt %d mdev %d cwin %d swin %d timer.start %d timer.count %d\n",
+		"%s srtt %d mdev %d cwin %d swin %d rwin %d timer.start %d timer.count %d\n",
 		tcpstates[s->state], s->srtt, s->mdev,
-		s->cwind, s->snd.wnd,
+		s->cwind, s->snd.wnd, s->rcv.wnd,
 		s->timer.start, s->timer.count);
 }
 
@@ -1082,6 +1082,7 @@ update(Conv *s, Tcp *seg)
 	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
 
+	/* if everything has been acked, force output(?) */
 	if(seq_gt(seg->ack, tcb->snd.nxt)) {
 		tcb->flags |= FORCE;
 		return;
@@ -1092,8 +1093,8 @@ update(Conv *s, Tcp *seg)
 	    seg->len == 0 && seg->wnd == tcb->snd.wnd ) {
 
 		/* this is a pure ack w/o window update */
-//		print("dupack %lud ack %lud sndwnd %d advwin %d\n",
-//		tcb->snd.dupacks, seg->ack, tcb->snd.wnd, seg->wnd);
+		netlog(s->p->f, Logtcpmsg, "dupack %lud ack %lud sndwnd %d advwin %d\n",
+			tcb->snd.dupacks, seg->ack, tcb->snd.wnd, seg->wnd);
 
 		if(++tcb->snd.dupacks == TCPREXMTTHRESH) {
 			/*
@@ -1102,15 +1103,21 @@ update(Conv *s, Tcp *seg)
 			 */
 			tcb->snd.recovery = 1;
 			tcb->snd.rxt = tcb->snd.nxt;
-//			print("fast rxt %lud, nxt %lud\n", tcb->snd.una, tcb->snd.nxt);
+			netlog(s->p->f, Logtcpmsg, "fast rxt %lud, nxt %lud\n", tcb->snd.una, tcb->snd.nxt);
 			tcprxmit(s);
 		} else {
 			/* do reno tcp here. */
 		}
 	}
 
+	/*
+	 *  update our send window if this is a new ack (ignore old packets
+	 *  even if the ack is new)
+	 */
 	if(seq_ge(seg->ack,tcb->snd.wl2))
-	if(seq_gt(seg->seq,tcb->snd.wl1) || (seg->seq == tcb->snd.wl1)) {
+	if(seq_ge(seg->seq,tcb->snd.wl1)) {
+
+		/* a closed window opened, start retransmitting.  why? - presotto */
 		if(seg->wnd != 0 && tcb->snd.wnd == 0)
 			tcb->snd.ptr = tcb->snd.una;
 
@@ -1129,9 +1136,8 @@ update(Conv *s, Tcp *seg)
 	if(!tcb->snd.recovery || seq_ge(seg->ack, tcb->snd.rxt)) {
 		tcb->snd.dupacks = 0;
 		tcb->snd.recovery = 0;
-	} else {
-//		print("rxt next %lud, cwin %ud\n", seg->ack, tcb->cwind);
-	}
+	} else
+		netlog(s->p->f, Logtcp, "rxt next %lud, cwin %ud\n", seg->ack, tcb->cwind);
 
 	/* Compute the new send window size */
 	acked = seg->ack - tcb->snd.una;
@@ -1554,16 +1560,23 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 					bp = nil;
 				}
 				tcb->rcv.nxt += length;
+
+				/*
+				 *  update our rcv window
+				 */
 				tcprcvwin(s);
 
 				/*
-				 *  force an ack if we've got 2 segs
-				 *  and the user isn't backing up
+				 *  force an ack if we've got 2 segs since we
+				 *  last acked.
 				 */
-				if(tcb->rcv.nxt - tcb->last_ack >= 2*tcb->mss &&
-				   qlen(s->rq) < 8*tcb->mss){
+				if(tcb->rcv.nxt - tcb->last_ack >= 2*tcb->mss)
 					tcb->flags |= FORCE;
-				}
+
+				/*
+				 *  turn on the acktimer if there's something
+				 *  to ack
+				 */
 				if(tcb->acktimer.state != TimerON)
 					tcpgo(tpriv, &tcb->acktimer);
 
@@ -1711,6 +1724,9 @@ tcpoutput(Conv *s)
 			usable -= sent;
 		}
 		ssize = sndcnt-sent;
+		if(ssize && usable < 2)
+			netlog(s->p->f, Logtcp, "throttled snd.wnd 0x%ux cwind 0x%ux\n",
+				tcb->snd.wnd, tcb->cwind);
 		if(usable < ssize)
 			ssize = usable;
 		if(tcb->mss < ssize)
@@ -1782,8 +1798,8 @@ tcpoutput(Conv *s)
 				seg.flags |= FIN;
 				dsize--;
 			}
-			netlog(f, Logtcp, "qcopy: dlen %d blen %d sndcnt %d qlen %d sent %d rp[0] %d\n",
-				dsize, BLEN(bp), sndcnt, qlen(s->wq), sent, bp->rp[0]);
+/*			netlog(f, Logtcp, "qcopy: dlen %d blen %d sndcnt %d qlen %d sent %d rp[0] %d\n",
+				dsize, BLEN(bp), sndcnt, qlen(s->wq), sent, bp->rp[0]); */
 		}
 
 		if(sent+dsize == sndcnt)
@@ -1989,11 +2005,6 @@ tcprxmit(Conv *s)
 	 *  We should be halving the slow start thershhold (down to one
 	 *  mss) but leaving it at mss seems to work well enough
 	 */
-//	win = (tcb->cwind<tcb->snd.wnd)?tcb->cwind:tcb->snd.wnd/ tcb->mss;
-//	win = win/2;
-//	if ( win < 2 )
-//		win = 2;
-//	tcb->ssthresh = win * tcb->mss;
  	tcb->ssthresh = tcb->mss;
 
 	/*
@@ -2032,6 +2043,7 @@ tcptimeout(void *arg)
 			localclose(s, Etimedout);
 			break;
 		}
+		netlog(s->p->f, Logtcp, "timeout rexmit 0x%lux\n", tcb->snd.una);
 		tcprxmit(s);
 		tpriv->stats[RetransTimeouts]++;
 		tcb->snd.dupacks = 0;
