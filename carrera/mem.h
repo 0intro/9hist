@@ -13,7 +13,7 @@
 #define	BY2PG		4096			/* bytes per page */
 #define	WD2PG		(BY2PG/BY2WD)		/* words per page */
 #define	PGSHIFT		12			/* log(BY2PG) */
-#define 	ROUND(s, sz)	(((s)+(sz-1))&~(sz-1))
+#define ROUND(s, sz)	(((s)+((sz)-1))&~((sz)-1))
 #define 	PGROUND(s)	ROUND(s, BY2PG)
 
 #define	MAXMACH		1			/* max # cpus system can run */
