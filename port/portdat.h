@@ -35,6 +35,7 @@ typedef struct Schedq	Schedq;
 typedef struct Segment	Segment;
 typedef struct Session	Session;
 typedef struct Talarm	Talarm;
+typedef struct Target	Target;
 typedef struct Waitq	Waitq;
 typedef int    Devgen(Chan*, Dirtab*, int, int, Dir*);
 
@@ -637,6 +638,25 @@ enum
 	RXstick	= 1,
 
 	AUTHLEN	= 8,
+};
+
+/* Things scsi */
+enum
+{
+	STharderr	=-1,	/* Command status error returns */
+	STok		= 0,
+	STcheck		= 2,
+	STcondmet	= 4,
+	STbusy		= 8,
+	STintok		= 16,
+	STconflict	= 18,
+	STintcondmet	= 20,
+	STterminated	= 22,
+	STresconf	= 24,
+	STqfull		= 28,
+
+	SCSIread	= 0,
+	SCSIwrite,
 };
 
 /*
