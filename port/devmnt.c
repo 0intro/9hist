@@ -35,8 +35,6 @@ struct Mntalloc
 	int	rpctag;
 }mntalloc;
 
-#define MAXRPC		(16*1024+MAXMSG)
-
 void	mattach(Mnt*, Chan*, char*);
 void	mntauth(Mnt*, Mntrpc*, char*, ushort);
 Mnt*	mntchk(Chan*);
@@ -57,7 +55,6 @@ int	rpcattn(void*);
 void	mclose(Mnt*, Chan*);
 Chan*	mntchan(void);
 
-int defmaxmsg = MAXFDATA;
 void (*mntstats)(int, Chan*, uvlong, ulong);
 
 enum
@@ -145,7 +142,7 @@ mntattach(char *muxattach)
 		bogus.spec = "";
 	}
 	else
-		m->blocksize = defmaxmsg;
+		m->blocksize = MAXFDATA;
 	m->flags = bogus.flags & ~MCACHE;
 
 	incref(m->c);

@@ -372,9 +372,8 @@ void
 confinit(void)
 {
 	char *p;
-	int i, userpcnt;
+	int userpcnt;
 	ulong kpages, maxmem;
-	extern int defmaxmsg;
 
 	if(p = getconf("*maxmem"))
 		maxmem = strtoul(p, 0, 0);
@@ -384,11 +383,6 @@ confinit(void)
 		userpcnt = 100 - strtol(p, 0, 0);
 	else
 		userpcnt = 0;
-	if(p = getconf("*defmaxmsg")){
-		i = strtol(p, 0, 0);
-		if(i < defmaxmsg && i >=128)
-			defmaxmsg = i;
-	}
 
 	meminit(maxmem);
 

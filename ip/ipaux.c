@@ -109,7 +109,7 @@ enum
 	Isprefix= 16,
 };
 
-uchar prefixvals[256] =
+static uchar prefixvals[256] =
 {
 [0x00] 0 | Isprefix,
 [0x80] 1 | Isprefix,
