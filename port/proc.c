@@ -734,6 +734,8 @@ procdump(void)
 			p->time[0], p->time[1], bss);
 	}
 	for(rq = runq; rq < &runq[Nrq]; rq++){
+		if(rq->head == 0)
+			continue;
 		print("rq%d:", rq-runq);
 		for(p = rq->head; p; p = p->rnext)
 			print(" %d(%d)", p->pid, m->ticks - p->readyticks);
