@@ -79,6 +79,7 @@ struct Vgacard
 {
 	char	*name;
 	void	(*setpage)(int);	/* routine to page though display memory */
+	void	(*mvcursor)(Point);	/* routine to move hardware cursor */
 };
 
 enum
@@ -95,19 +96,22 @@ enum
 static void	nopage(int), tsengpage(int), tridentpage(int), parapage(int);
 static void	atipage(int), cirruspage(int), s3page(int);
 
+static void	nomvcursor(Point);
+
 Vgacard vgachips[] =
 {
-[Ati]		{ "ati", atipage, },
-[Pvga1a]	{ "pvga1a", parapage, },
-[Trident]	{ "trident", tridentpage, },
-[Tseng]		{ "tseng", tsengpage, },
-[Cirrus]	{ "cirrus", cirruspage, },
-[S3]		{ "s3", s3page, },
-[Generic]	{ "generic", nopage, },
+[Ati]		{ "ati", atipage, nomvcursor, },
+[Pvga1a]	{ "pvga1a", parapage, nomvcursor, },
+[Trident]	{ "trident", tridentpage, nomvcursor, },
+[Tseng]		{ "tseng", tsengpage, nomvcursor, },
+[Cirrus]	{ "cirrus", cirruspage, nomvcursor, },
+[S3]		{ "s3", s3page, nomvcursor, },
+[Generic]	{ "generic", nopage, nomvcursor, },
 		{ 0, 0, },
 };
 
 Vgacard	*vgacard;	/* current vga card */
+static int hwcursor;
 
 /*
  *  work areas for bitblting screen characters, scrolling, and cursor redraw
@@ -174,13 +178,15 @@ enum
 	Qvgatype=	2,
 	Qvgaport=	3,
 	Qvgaportw=	4,
-	Nvga=		4,
+	Qvgactl=	5,
+	Nvga=		5,
 };
 Dirtab vgadir[]={
 	"vgasize",	{Qvgasize},	0,		0666,
 	"vgatype",	{Qvgatype},	0,		0666,
 	"vgaport",	{Qvgaport},	0,		0666,
 	"vgaportw",	{Qvgaportw},	0,		0666,
+	"vgactl",	{Qvgactl},	0,		0666,
 };
 
 void
@@ -295,6 +301,14 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 				return n;
 			}
 		error(Ebadarg);
+	case Qvgactl:
+		if(offset != 0 || n >= sizeof(cbuf))
+			error(Ebadarg);
+		memmove(cbuf, buf, n);
+		cbuf[n] = 0;
+		if(strncmp(cbuf, "hwcursor", 8) == 0)
+			hwcursor = 1;
+		break;
 	case Qvgasize:
 		if(offset != 0 || n >= sizeof(cbuf))
 			error(Ebadarg);
@@ -675,7 +689,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	if(!rectclip(&r, gscreen.r) || tl<=0)
 		return;
 
-	if(dolock)
+	if(dolock && hwcursor == 0)
 		cursorlock(r);
 	lock(&loadlock);
 
@@ -758,7 +772,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 		}
 
 	unlock(&loadlock);
-	if(dolock)
+	if(dolock && hwcursor == 0)
 		cursorunlock();
 }
 
@@ -831,7 +845,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	if(!rectclip(&r, gscreen.r) || tl<=0)
 		return;
 
-	if(dolock)
+	if(dolock && hwcursor == 0)
 		cursorlock(r);
 	lock(&loadlock);
 
@@ -914,7 +928,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 		}
 
 	unlock(&loadlock);
-	if(dolock)
+	if(dolock && hwcursor == 0)
 		cursorunlock();
 }
 
@@ -1061,6 +1075,15 @@ s3page(int page)
 	}
 	else
 		crout(0x35, (page<<2) & 0x0C);
+}
+
+/*
+ *  hardware cursor routines
+ */
+static void
+nomvcursor(Point p)
+{
+	USED(p.x);
 }
 
 /*
@@ -1321,7 +1344,9 @@ cursoron(int dolock)
 	if(dolock)
 		lock(&cursor);
 
-	if(cursor.visible++ == 0){
+	if(hwcursor)
+		(*vgacard->mvcursor)(mousexy());
+	else if(cursor.visible++ == 0){
 		cursor.r.min = mousexy();
 		cursor.r.max = add(cursor.r.min, Pt(16, 16));
 		cursor.r = raddp(cursor.r, cursor.offset);
@@ -1374,6 +1399,8 @@ cursoron(int dolock)
 void
 cursoroff(int dolock)
 {
+	if(hwcursor)
+		return;
 	if(cursor.disable)
 		return;
 	if(dolock)

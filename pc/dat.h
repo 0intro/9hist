@@ -83,6 +83,7 @@ struct Conf
 	ulong	maxx;		/* screen width */
 	ulong	maxy;		/* screen length */
 	ulong	ialloc;		/* max interrupt time allocation in bytes */
+	ulong	pipeqsize;	/* size in bytes of pipe queues */
 };
 
 /*

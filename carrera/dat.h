@@ -48,6 +48,7 @@ struct Conf
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	int	monitor;
 	ulong	ialloc;		/* bytes available for interrupt time allocation */
+	ulong	pipeqsize;	/* size in bytes of pipe queues */
 };
 
 /*

@@ -52,6 +52,7 @@ struct Conf
 	ulong	frag;		/* Ip fragment assemble queue size */
 	ulong	debugger;	/* use processor 1 as a kernel debugger */
 	ulong	ialloc;		/* bytes available for interrupt time allocation */
+	ulong	pipeqsize;	/* size in bytes of pipe queues */
 };
 
 /*

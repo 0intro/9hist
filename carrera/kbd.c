@@ -190,12 +190,12 @@ mouseintr(void)
 void
 kbdintr(void)
 {
-	int c, i, nk;
+	int c, i;
 	static int esc1, esc2;
 	static int caps;
 	static int ctl;
 	static int num;
-	static int lstate;
+	static int collecting, nk;
 	static uchar kc[5];
 	static int shift;
 	int keyup;
@@ -257,39 +257,21 @@ kbdintr(void)
 	if(!(c & Spec)){
 		if(ctl)
 			c &= 0x1f;
-		switch(lstate){
-		case 1:
-			kc[0] = c;
-			lstate = 2;
-			if(c == 'X')
-				lstate = 3;
-			break;
-		case 2:
-			kc[1] = c;
-			c = latin1(kc);
-			nk = 2;
-		putit:
-			lstate = 0;
-			if(c != -1)
-				kbdputc(kbdq, c);
-			else for(i=0; i<nk; i++)
-				kbdputc(kbdq, kc[i]);
-			break;
-		case 3:
-		case 4:
-		case 5:
-			kc[lstate-2] = c;
-			lstate++;
-			break;
-		case 6:
-			kc[4] = c;
-			c = unicode(kc);
-			nk = 5;
-			goto putit;
-		default:
+		if(!collecting){
 			kbdputc(kbdq, c);
-			break;
+			return;
 		}
+		kc[nk++] = c;
+		c = latin1(kc, nk);
+		if(c < -1)	/* need more keystrokes */
+			return;
+		if(c != -1)	/* valid sequence */
+			kbdputc(kbdq, c);
+		else	/* dump characters */
+			for(i=0; i<nk; i++)
+				kbdputc(kbdq, kc[i]);
+		nk = 0;
+		collecting = 0;
 		return;
 	}
 	else {
@@ -304,7 +286,8 @@ kbdintr(void)
 			shift = 1;
 			return;
 		case Latin:
-			lstate = 1;
+			collecting = 1;
+			nk = 0;
 			return;
 		case Ctrl:
 			ctl = 1;
@@ -369,6 +352,7 @@ int
 kbdinit(void)
 {
 	int i;
+return 0;
 
 	/*
 	 *  empty the buffer
