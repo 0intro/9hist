@@ -857,12 +857,9 @@ procctlclosefiles(Proc *p)
 	Chan *c;
 	Fgrp *f;
 
-	qlock(&p->debug);
 	f = p->fgrp;
-	if(f == nil){
-		qunlock(&p->debug);
+	if(f == nil)
 		error(Eprocdied);
-	}
 
 	lock(f);
 	f->ref++;
@@ -879,8 +876,6 @@ procctlclosefiles(Proc *p)
 	}
 	unlock(f);
 	closefgrp(f);
-
-	qunlock(&p->debug);
 }
 
 void
