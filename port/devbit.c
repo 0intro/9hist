@@ -1604,6 +1604,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(ptinrect(pt1, gscreen.r)){
 				mouse.xy = pt1;
 				mouse.redraw = 1;
+				mouse.track = 1;
 				mouseclock();
 			}
 			m -= 9;
