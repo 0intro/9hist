@@ -534,6 +534,8 @@ struct Proc
 	Mach	*mach;		/* machine running this proc */
 	char	text[NAMELEN];
 	char	user[NAMELEN];
+	char	*args;
+	int	nargs;		/* number of bytes of args */
 	Proc	*rnext;		/* next process in run queue */
 	Proc	*qnext;		/* next process on queue for a QLock */
 	QLock	*qlock;		/* addrof qlock being queued for DEBUG */
@@ -753,6 +755,7 @@ extern int nsyscall;
 #pragma	varargck	type	"e"	double
 #pragma	varargck	type	"g"	double
 #pragma	varargck	type	"s"	char*
+#pragma	varargck	type	"q"	char*
 #pragma	varargck	type	"S"	Rune*
 #pragma	varargck	type	"r"	void
 #pragma	varargck	type	"%"	void

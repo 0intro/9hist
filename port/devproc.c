@@ -9,6 +9,7 @@
 enum
 {
 	Qctl,
+	Qargs,
 	Qdir,
 	Qfd,
 	Qfpregs,
@@ -30,6 +31,7 @@ enum
 #define	STATSIZE	(2*NAMELEN+12+9*12)
 Dirtab procdir[] =
 {
+	"args",	{Qargs},		0,			0440,
 	"ctl",		{Qctl},		0,			0000,
 	"fd",		{Qfd},		0,			0000,
 	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
@@ -233,6 +235,7 @@ procopen(Chan *c, int omode)
 			error(Eperm);
 		break;
 
+	case Qargs:
 	case Qctl:
 	case Qnote:
 	case Qnoteid:
@@ -405,6 +408,28 @@ int2flag(int flag, char *s)
 	*s = '\0';
 }
 
+static int
+procargs(Proc *p, char *buf, int nbuf)
+{
+	int j, k, m;
+	char *a;
+	int n;
+
+	a = p->args;
+	n = p->nargs;	
+	for(j = 0; j < nbuf - 1; j += m){
+		if(n == 0)
+			break;
+		if(j != 0)
+			buf[j++] = ' ';
+		m = snprint(buf+j, nbuf-j, "%q",  a);
+		k = strlen(a) + 1;
+		a += k;
+		n -= k;
+	}
+	return j;
+}
+
 static long
 procread(Chan *c, void *va, long n, vlong off)
 {
@@ -428,6 +453,15 @@ procread(Chan *c, void *va, long n, vlong off)
 		error(Eprocdied);
 
 	switch(QID(c->qid)){
+	case Qargs:
+		j = procargs(p, statbuf, sizeof statbuf);
+		if(offset >= j)
+			return 0;
+		if(offset+n > j)
+			n = j-offset;
+		memmove(a, &statbuf[offset], n);
+		return n;
+
 	case Qmem:
 		if(offset < KZERO
 		|| (offset >= USTKTOP-USTKSIZE && offset < USTKTOP))

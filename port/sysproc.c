@@ -214,7 +214,7 @@ sysexec(ulong *arg)
 	int i;
 	Chan *tc;
 	char **argv, **argp;
-	char *a, *charp, *file;
+	char *a, *charp, *args, *file;
 	char *progarg[sizeof(Exec)/2+1], elem[NAMELEN];
 	ulong ssize, spage, nargs, nbytes, n, bssend;
 	int indir;
@@ -334,6 +334,7 @@ sysexec(ulong *arg)
 	 */
 	argv = (char**)(TSTKTOP - ssize);
 	charp = (char*)(TSTKTOP - nbytes);
+	args = charp;
 	if(indir)
 		argp = progarg;
 	else
@@ -351,6 +352,26 @@ sysexec(ulong *arg)
 	}
 
 	memmove(up->text, elem, NAMELEN);
+
+	/* copy args; easiest from new process's stack */
+	n = charp - args;
+	if(n > 128)	/* don't waste too much space on huge arg lists */
+		n = 128;
+	a = up->args;
+	up->args = nil;
+	free(a);
+	up->args = smalloc(n);
+	memmove(up->args, args, n);
+	if(n>0 && up->args[n-1]!='\0'){
+		/* make sure last arg is NUL-terminated */
+		/* put NUL at UTF-8 character boundary */
+		for(i=n-1; i>0; --i)
+			if(fullrune(up->args+i, n-i))
+				break;
+		up->args[i] = 0;
+		n = i+1;
+	}
+	up->nargs = n;
 
 	/*
 	 * Committed.
