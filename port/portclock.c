@@ -174,8 +174,6 @@ timerintr(Ureg *u, uvlong)
 		ilock(tt);
 		if(t->period){
 			t->when += t->period;
-			if (t->when <= now)
-				t->when = now + t->period;
 			tadd(tt, t);
 		}
 	}

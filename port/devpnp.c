@@ -485,10 +485,12 @@ pnpclose(Chan*)
 static long
 pnpread(Chan *c, void *va, long n, vlong offset)
 {
+	ulong x;
 	Card *cp;
 	Pcidev *p;
-	int csn, i, tbdf;
+	char buf[256], *ebuf, *w;
 	char *a = va;
+	int csn, i, tbdf, r;
 
 	switch(TYPE(c->qid)){
 	case Qtopdir:
@@ -511,9 +513,9 @@ pnpread(Chan *c, void *va, long n, vlong offset)
 		qlock(&pnp);
 		initiation();
 		cmd(0x03, csn);				/* Wake up the card */
-		for (i = 0; i < offset+9; i++)		/* 9 == skip serial + csum */
+		for(i = 0; i < offset+9; i++)		/* 9 == skip serial + csum */
 			getresbyte(pnp.rddata);
-		for (i = 0; i < n; i++)
+		for(i = 0; i < n; i++)
 			a[i] = getresbyte(pnp.rddata);
 		cmd(0x03, 0);					/* Wake all cards with a CSN of 0, putting this card to sleep */
 		cmd(0x02, 0x02);				/* return cards to Wait for Key state */
@@ -531,15 +533,39 @@ pnpread(Chan *c, void *va, long n, vlong offset)
 		p = pcimatchtbdf(tbdf);
 		if(p == nil)
 			error(Egreg);
-		sprint(up->genbuf, "class %.2x subclass %.2x piclass %.2x vid %.4x did %.4x intl %d\n",
+		ebuf = buf+sizeof buf-1;	/* -1 for newline */
+		w = seprint(buf, ebuf, "%.2x.%.2x.%.2x %.4x/%.4x %3d",
 			p->ccrb, p->ccru, p->ccrp, p->vid, p->did, p->intl);
-		return readstr(offset, a, n, up->genbuf);
+		for(i=0; i<nelem(p->mem); i++){
+			if(p->mem[i].size == 0)
+				continue;
+			w = seprint(w, ebuf, " %d:%.8lux %d", i, p->mem[i].bar, p->mem[i].size);
+		}
+		*w++ = '\n';
+		*w = '\0';
+		return readstr(offset, a, n, buf);
 	case Qpciraw:
 		tbdf = MKBUS(BusPCI, 0, 0, 0)|BUSBDF((ulong)c->qid.path);
 		p = pcimatchtbdf(tbdf);
 		if(p == nil)
 			error(Egreg);
-		break;
+		if(offset > 128)
+			return 0;
+		if(n+offset > 128)
+			n = 128-offset;
+		if(offset%4)
+			error(Ebadarg);
+		r = offset;
+		for(i = 0; i+4 <= n; i+=4) {
+			x = pcicfgr32(p, r);
+			a[0] = x;
+			a[1] = (x>>8);
+			a[2] = (x>>16);
+			a[3] = (x>>24);
+			a += 4;
+			r += 4;
+		}
+		return i;
 	default:
 		error(Egreg);
 	}

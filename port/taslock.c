@@ -152,7 +152,6 @@ canlock(Lock *l)
 	return 1;
 }
 
-int buggeredsched;
 void
 unlock(Lock *l)
 {
@@ -165,17 +164,8 @@ unlock(Lock *l)
 	l->key = 0;
 	coherence();
 
-	/* give up the processor if ... */
-	if(up && --up->nlocks == 0	/* we've closed the last nested lock */
-	&& up->delaysched		/* we delayed scheduling because of the lock */
-	&& up->state == Running){		/* we're in running state */
-		if(!islo())
-			buggeredsched++;
-		else{
-			up->delaysched = 0;
-			sched();
-		}
-	}
+	if(up)
+		--up->nlocks;
 }
 
 void

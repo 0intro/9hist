@@ -584,9 +584,6 @@ devi82365link(void)
 	if(_pcmspecial)
 		return;
 	
-	_pcmspecial = pcmcia_pcmspecial;
-	_pcmspecialclose = pcmcia_pcmspecialclose;
-
 	/* look for controllers if the ports aren't already taken */
 	if(ioalloc(0x3E0, 2, 0, "i82365.0") >= 0){
 		i82365probe(0x3E0, 0x3E1, 0);
@@ -601,6 +598,13 @@ devi82365link(void)
 		if(ncontroller == i)
 			iofree(0x3E2);
 	}
+
+	if(ncontroller == 0)
+		return;
+
+	_pcmspecial = pcmcia_pcmspecial;
+	_pcmspecialclose = pcmcia_pcmspecialclose;
+
 	for(i = 0; i < ncontroller; i++)
 		nslot += controller[i]->nslot;
 	slot = xalloc(nslot * sizeof(PCMslot));

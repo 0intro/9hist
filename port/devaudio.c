@@ -747,12 +747,12 @@ audioinit(void)
 	}
 
 	if(ioalloc(sbconf.port, 0x10, 0, "audio") < 0){
-		print("#A: cannot ioalloc range %x+0x10\n", sbconf.port);
+		print("#A: cannot ioalloc range %lux+0x10\n", sbconf.port);
 		return;
 	}
 	if(ioalloc(sbconf.port+0x100, 1, 0, "audio.mpu401") < 0){
 		iofree(sbconf.port);
-		print("#A: cannot ioalloc range %x+0x01\n", sbconf.port+0x100);
+		print("#A: cannot ioalloc range %lux+0x01\n", sbconf.port+0x100);
 		return;
 	}
 

@@ -777,6 +777,7 @@ txstart905(Ether* ether)
 
 		coherence();
 		ctlr->dnhead->np = PADDR(&pd->np);
+		coherence();
 		ctlr->dnhead->control &= ~dnIndicate;
 		ctlr->dnhead = pd;
 		if(ctlr->dnq == 0)
@@ -850,6 +851,7 @@ receive905(Ether* ether)
 			pd->bp->wp = pd->bp->rp+len;
 			etheriq(ether, pd->bp, 1);
 			pd->bp = bp;
+			coherence();
 			pd->addr = PADDR(bp->rp);
 			coherence();
 		}
