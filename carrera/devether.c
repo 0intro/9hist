@@ -1,819 +1,372 @@
-#include	"u.h"
-#include	"../port/lib.h"
-#include	"mem.h"
-#include	"dat.h"
-#include	"fns.h"
-#include	"io.h"
-#include	"../port/error.h"
-#include	"../port/netif.h"
+#include "u.h"
+#include "../port/lib.h"
+#include "mem.h"
+#include "dat.h"
+#include "fns.h"
+#include "io.h"
+#include "ureg.h"
+#include "../port/error.h"
+#include "../port/netif.h"
 
-/*
- * National Semiconductor DP83932
- * Systems-Oriented Network Interface Controller
- * (SONIC)
- */
+#include "etherif.h"
 
-#define SONICADDR	((Sonic*)Sonicbase)
+static Ether *etherxx[MaxEther];
 
-#define RD(rn)		(delay(0), *(ulong*)((ulong)&SONICADDR->rn^4))
-#define WR(rn, v)	(delay(0), *(ulong*)((ulong)&SONICADDR->rn^4) = (v))
-#define ISquad(s)	if((ulong)s & 0x7) panic("sonic: Quad alignment");
-
-typedef struct Pbuf Pbuf;
-struct Pbuf
+Chan*
+etherattach(char* spec)
 {
-	uchar	d[6];
-	uchar	s[6];
-	uchar	type[2];
-	uchar	data[1500];
-	uchar	crc[4];
-};
+	ulong ctlrno;
+	char *p;
+	Chan *chan;
 
-typedef struct
-{
-	ulong	cr;		/* command */
-	ulong	dcr;		/* data configuration */
-	ulong	rcr;		/* receive control */
-	ulong	tcr;		/* transmit control */
-	ulong	imr;		/* interrupt mask */
-	ulong	isr;		/* interrupt status */
-	ulong	utda;		/* upper transmit descriptor address */
-	ulong	ctda;		/* current transmit descriptor address */
-	ulong	pad0x08[5];	/*  */
-	ulong	urda;		/* upper receive descriptor address */
-	ulong	crda;		/* current receive descriptor address */
-	ulong	crba0;		/* DO NOT WRITE THESE */
-	ulong	crba1;
-	ulong	rbwc0;
-	ulong	rbwc1;
-	ulong	eobc;		/* end of buffer word count */
-	ulong	urra;		/* upper receive resource address */
-	ulong	rsa;		/* resource start address */
-	ulong	rea;		/* resource end address */
-	ulong	rrp;		/* resource read pointer */
-	ulong	rwp;		/* resource write pointer */
-	ulong	pad0x19[8];	/*  */
-	ulong	cep;		/* CAM entry pointer */
-	ulong	cap2;		/* CAM address port 2 */
-	ulong	cap1;		/* CAM address port 1 */
-	ulong	cap0;		/* CAM address port 0 */
-	ulong	ce;		/* CAM enable */
-	ulong	cdp;		/* CAM descriptor pointer */
-	ulong	cdc;		/* CAM descriptor count */
-	ulong	sr;		/* silicon revision */
-	ulong	wt0;		/* watchdog timer 0 */
-	ulong	wt1;		/* watchdog timer 1 */
-	ulong	rsc;		/* receive sequence counter */
-	ulong	crct;		/* CRC error tally */
-	ulong	faet;		/* FAE tally */
-	ulong	mpt;		/* missed packet tally */
-	ulong	mdt;		/* maximum deferral timer */
-	ulong	pad0x30[15];	/*  */
-	ulong	dcr2;		/* data configuration 2 */
-} Sonic;
-
-enum
-{
-	Nrb		= 16,		/* receive buffers */
-	Ntb		= 8,		/* transmit buffers */
-};
-
-enum
-{
-	Htx	= 0x0001,	/* halt transmission */
-	Txp	= 0x0002,	/* transmit packet(s) */
-	Rxdis	= 0x0004,	/* receiver disable */
-	Rxen	= 0x0008,	/* receiver enable */
-	Stp	= 0x0010,	/* stop timer */
-	St	= 0x0020,	/* start timer */
-	Rst	= 0x0080,	/* software reset */
-	Rrra	= 0x0100,	/* read RRA */
-	Lcam	= 0x0200,	/* load CAM */
-
-	Dw32	= 0x0020,	/* data width select */
-	Sterm	= 0x0400,	/* synchronous termination */
-	Lbr	= 0x4000,	/* latched bus retry */
-	Efm	= 0x0010,	/* Empty fill mode */
-	W14tf	= 0x0003,	/* 14 Word transmit fifo */
-
-	Prx	= 0x0001,	/* packet received ok */
-	Fae	= 0x0004,	/* frame alignment error */
-	Crc	= 0x0008,	/* CRC error */
-	Lpkt	= 0x0040,	/* last packet in rba */
-	Bc	= 0x0080,	/* broadcast packet received */
-	Pro	= 0x1000,	/* physical promiscuous mode */
-	Brd	= 0x2000,	/* accept broadcast packets */
-	Rnt	= 0x4000,	/* accept runt packets */
-	Err	= 0x8000,	/* accept packets with errors */
-
-	Ptx	= 0x0001,	/* packet transmitted ok */
-	Pintr	= 0x8000,	/* programmable interrupt */
-
-	Rfo	= 0x0001,	/* receive fifo overrun */
-	MpTally	= 0x0002,	/* missed packet tally counter rollover */
-	FaeTally= 0x0004,	/* frame alignment error tally counter rollover */
-	CrcTally= 0x0008,	/* Crc tally counter rollover */
-	Rbae	= 0x0010,	/* receive buffer area exceeded */
-	Rbe	= 0x0020,	/* receive buffer exhausted */
-	Rde	= 0x0040,	/* receive descriptors exhausted */
-	Txer	= 0x0100,	/* transmit error */
-	Txdn	= 0x0200,	/* transmission done */
-	Pktrx	= 0x0400,	/* packet received */
-	Pint	= 0x0800,	/* programmed interrupt */
-	Lcd	= 0x1000,	/* load CAM done */
-	Hbl	= 0x2000,	/* CD heartbeat lost */
-	Br	= 0x4000,	/* bus retry occurred */
-	AllIntr	= 0x7771,	/* all of the above */
-
-	Rxbuf	= sizeof(Pbuf)+4,
-	Txbuf	= sizeof(Pbuf),
-};
-
-/*
- * Receive Resource Descriptor.
- */
-typedef struct
-{
-	ushort	pad1;
-	ushort		ptr1;		/* buffer pointer in the RRA */
-	ushort  pad2;
-	ushort		ptr0;
-	ushort  pad3;
-	ushort		wc1;		/* buffer word count in the RRA */
-	ushort  pad4;
-	ushort		wc0;
-} RXrsc;
-
-/*
- * Receive Packet Descriptor.
- */
-typedef struct
-{
-	ushort	pad0;
-		ushort	count;		/* packet byte count */
-	ushort	pad1;
-		ushort	status;		/* receive status */
-	ushort	pad2;
-		ushort	ptr1;		/* buffer pointer */
-	ushort	pad3;
-		ushort	ptr0;
-	ushort  pad4;
-		ushort	link;		/* descriptor link and EOL */
-	ushort	pad5;
-		ushort	seqno;		/*  */
-	ulong	pad6;
-	ushort  pad7;
-		ushort	owner;		/* in use */
-} RXpkt;
-
-/*
- * Transmit Packet Descriptor.
- */
-typedef struct
-{
-	ushort	pad1;
-		ushort	config;		/*  */
-	ushort	pad0;
-		ushort	status;		/* transmit status */
-	ushort	pad3;
-		ushort	count;		/* fragment count */
-	ushort	pad2;
-		ushort	size;		/* byte count of entire packet */
-	ushort	pad5;
-		ushort	ptr1;
-	ushort	pad4;
-		ushort	ptr0;		/* packet pointer */
-	ushort	pad7;
-		ushort	link;		/* descriptor link */
-	ushort	pad6;
-		ushort	fsize;		/* fragment size */
-} TXpkt;
-
-enum{
-	Eol		= 1,	/* end of list bit in descriptor link */
-	Host		= 0,	/* descriptor belongs to host */
-	Interface	= -1,	/* descriptor belongs to interface */
-
-	Nether		= 1,
-	Ntypes		= 8,
-};
-
-/*
- * CAM Descriptor
- */
-typedef struct
-{
-	ushort	pad0;
-		ushort	cap0;		/* CAM address port 0 */
-	ushort	pad1;
-		ushort	cep;		/* CAM entry pointer */
-	ushort	pad2;
-		ushort	cap2;		/* CAM address port 2 */
-	ushort	pad3;
-		ushort	cap1;		/* CAM address port 1 */
-	ulong	pad4;
-	ushort	pad5;
-		ushort	ce;		/* CAM enable */
-} Cam;
-
-typedef struct Ether Ether;
-struct Ether
-{
-	uchar	ea[6];
-	uchar	ba[6];
-
-	QLock	tlock;		/* lock for grabbing transmitter queue */
-	Rendez	tr;		/* wait here for free xmit buffer */
-	int	th;		/* first transmit buffer owned by host */	
-	int	ti;		/* first transmit buffer owned by interface */
-
-	int	rh;		/* first receive buffer owned by host */
-	int	ri;		/* first receive buffer owned by interface */
-
-	RXrsc	*rra;		/* receive resource area */
-	RXpkt	*rda;		/* receive descriptor area */
-	TXpkt	*tda;		/* transmit descriptor area */
-	Cam	*cda;		/* CAM descriptor area */
-
-	uchar	*rb[Nrb];	/* receive buffer area */
-	uchar	*tb[Ntb];	/* transmit buffer area */
-
-	Netif;
-};
-
-static Ether *ether[Nether];
-
-#define NEXT(x, l)	(((x)+1)%(l))
-#define PREV(x, l)	(((x) == 0) ? (l)-1: (x)-1)
-#define LS16(addr)	(PADDR(addr) & 0xFFFF)
-#define MS16(addr)	((PADDR(addr)>>16) & 0xFFFF)
-
-static void sonicswap(void*, int);
-
-static void
-wus(ushort *a, ushort v)
-{
-	a[0] = v;
-	a[-1] = v;
-}
-
-static void
-reset(Ether *ctlr)
-{
-	int i;
-	ushort lolen, hilen, loadr, hiadr;
-
-	/*
-	 * Reset the SONIC, toggle the Rst bit.
-	 * Set the data config register for synchronous termination
-	 * and 32-bit data-path width.
-	 * Setup the descriptor and buffer area.
-	 */
-	WR(cr, Rst);
-	WR(dcr, 0x2423);	/* 5-19 Carrera manual */
-	WR(cr, 0);
-
-	/*
-	 * Initialise the receive resource area (RRA) and
-	 * the receive descriptor area (RDA).
-	 *
-	 * We use a simple scheme of one packet per descriptor.
-	 * We achieve this by setting the EOBC register to be
-	 * 2 (16-bit words) less than the buffer size;
-	 * thus the size of the receive buffers must be sizeof(Pbuf)+4.
-	 * Set up the receive descriptors as a ring.
-	 */
-
-	lolen = (Rxbuf/2) & 0xFFFF;
-	hilen = ((Rxbuf/2)>>16) & 0xFFFF;
-
-	for(i = 0; i < Nrb; i++) {
-		wus(&ctlr->rra[i].wc0, lolen);
-		wus(&ctlr->rra[i].wc1, hilen);
-
-		ctlr->rda[i].link =  LS16(&ctlr->rda[NEXT(i, Nrb)]);
-		ctlr->rda[i].owner = Interface;
-
-		loadr = LS16(ctlr->rb[i]);
-		wus(&ctlr->rra[i].ptr0, loadr);
-		wus(&ctlr->rda[i].ptr0, loadr);
-
-		hiadr = MS16(ctlr->rb[i]);
-		wus(&ctlr->rra[i].ptr1, hiadr);
-		wus(&ctlr->rda[i].ptr1, hiadr);
+	ctlrno = 0;
+	if(spec && *spec){
+		ctlrno = strtoul(spec, &p, 0);
+		if((ctlrno == 0 && p == spec) || *p || (ctlrno >= MaxEther))
+			error(Ebadarg);
 	}
+	if(etherxx[ctlrno] == 0)
+		error(Enodev);
 
-	/*
-	 * Check the important resources are QUAD aligned
-	 */
-	ISquad(ctlr->rra);
-	ISquad(ctlr->rda);
-
-	/*
-	 * Terminate the receive descriptor ring
-	 * and load the SONIC registers to describe the RDA.
-	 */
-	ctlr->rda[Nrb-1].link |= Eol;
-
-	WR(crda, LS16(ctlr->rda));
-	WR(urda, MS16(ctlr->rda));
-	WR(eobc, Rxbuf/2 - 2);
-
-	/*
-	 * Load the SONIC registers to describe the RRA.
-	 * We set the rwp to beyond the area delimited by rsa and
-	 * rea. This means that since we've already allocated all
-	 * the buffers, we'll never get a 'receive buffer area
-	 * exhausted' interrupt and the rrp will just wrap round.
-	 */
-	WR(urra, MS16(&ctlr->rra[0]));
-	WR(rsa, LS16(&ctlr->rra[0]));
-	WR(rrp, LS16(&ctlr->rra[0]));
-	WR(rea, LS16(&ctlr->rra[Nrb]));
-	WR(rwp, LS16(&ctlr->rra[Nrb+1]));
-
-	/*
-	 * Initialise the transmit descriptor area (TDA).
-	 * Each descriptor describes one packet, we make no use
-	 * of having the packet in multiple fragments.
-	 * The descriptors are linked in a ring; overlapping transmission
-	 * with buffer queueing will cause some packets to
-	 * go out back-to-back.
-	 *
-	 * Load the SONIC registers to describe the TDA.
-	 */
-	for(i = 0; i < Ntb; i++){
-		ctlr->tda[i].status = Host;
-		ctlr->tda[i].config = 0;
-		ctlr->tda[i].count = 1;
-		ctlr->tda[i].ptr0 = LS16(ctlr->tb[i]);
-		ctlr->tda[i].ptr1 = MS16(ctlr->tb[i]);
-		ctlr->tda[i].link = LS16(&ctlr->tda[NEXT(i, Ntb)]);
-	}
-
-	WR(ctda, LS16(&ctlr->tda[0]));
-	WR(utda, MS16(&ctlr->tda[0]));
-
-	/*
-	 * Initialise the software receive and transmit
-	 * ring indexes.
-	 */
-	ctlr->rh = 0;
-	ctlr->ri = 0;
-	ctlr->th = 0;
-	ctlr->ti = 0;
-
-	/*
-	 * Initialise the CAM descriptor area (CDA).
-	 * We only have one ethernet address to load,
-	 * broadcast is defined by the SONIC as all 1s.
-	 *
-	 * Load the SONIC registers to describe the CDA.
-	 */
-	ctlr->cda->cep = 0;
-	ctlr->cda->cap0 = (ctlr->ea[1]<<8)|ctlr->ea[0];
-	ctlr->cda->cap1 = (ctlr->ea[3]<<8)|ctlr->ea[2];
-	ctlr->cda->cap2 = (ctlr->ea[5]<<8)|ctlr->ea[4];
-	ctlr->cda->ce = 1;
-
-	WR(cdp, LS16(ctlr->cda));
-	WR(cdc, 1);
-
-	/*
-	 * Load the Resource Descriptors and Cam contents
-	 */
-	WR(cr, Rrra);
-	while(RD(cr) & Rrra)
-		;
-
-	WR(cr, Lcam);
-	while(RD(cr) & Lcam)
-		;
-
-	/*
-	 * Configure the receive control, transmit control
-	 * and interrupt-mask registers.
-	 * The SONIC is now initialised, but not enabled.
-	 */
-	WR(rcr, Brd);
-	WR(tcr, 0);
-	WR(imr, AllIntr);
-}
-
-static void
-sonicpkt(Ether *ctlr, RXpkt *r, Pbuf *p)
-{
-	int len;
-	ushort type;
-	Netfile *f, **fp, **ep;
-
-	/*
-	 * Sonic delivers CRC as part of the packet count
-	 */
-	len = (r->count & 0xFFFF)-4;
-
-	sonicswap(p, len);
-
-	type = (p->type[0]<<8) | p->type[1];
-	ep = &ctlr->f[Ntypes];
-	for(fp = ctlr->f; fp < ep; fp++) {
-		f = *fp;
-		if(f && (f->type == type || f->type < 0))
-			qproduce(f->in, p->d, len);
-	}
+	chan = devattach('l', spec);
+	chan->dev = ctlrno;
+	if(etherxx[ctlrno]->dev && etherxx[ctlrno]->dev->attach)
+		etherxx[ctlrno]->dev->attach(etherxx[ctlrno]);
+	return chan;
 }
 
 static int
-isoutbuf(void *arg)
+etherwalk(Chan* chan, char* name)
 {
-	Ether *ctlr = arg;
-
-	return ctlr->tda[ctlr->th].status == Host;
-}
-
-void
-etherintr(void)
-{
-	Ether *c;
-	ushort *s;
-	ulong status;
-	TXpkt *txpkt;
-	RXpkt *rxpkt;
-
-	c = ether[0];
-
-	for(;;) {
-		status = RD(isr) & AllIntr;
-		if(status == 0)
-			break;
-
-		/*
-		 * Warnings that something is atoe.
-		 */
-		if(status & Hbl){
-			WR(isr, Hbl);
-			status &= ~Hbl;
-			print("sonic: cd heartbeat lost\n");
-		}
-		if(status & Br){
-WR(cr, Rst);
-			print("sonic: bus retry occurred\n");
-(*(void(*)(void))0xA001C020)();
-			status &= ~Br;
-		}
-	
-		/*
-		 * Transmission complete, for good or bad.
-		 */
-		if(status & (Txdn|Txer)) {
-			txpkt = &c->tda[c->ti];
-			while(txpkt->status != Host){
-				if(txpkt->status == Interface){
-					WR(ctda, LS16(txpkt));
-					WR(cr, Txp);
-					break;
-				}
-	
-				if((txpkt->status & Ptx) == 0)
-					c->oerrs++;
-	
-				txpkt->status = Host;
-				c->ti = NEXT(c->ti, Ntb);
-				txpkt = &c->tda[c->ti];
-			}
-			WR(isr, status & (Txdn|Txer));
-			status &= ~(Txdn|Txer);
-			if(isoutbuf(c))
-				wakeup(&c->tr);
-		}
-
-		if((status & (Pktrx|Rde)) == 0)
-			goto noinput;
-
-		/*
-		 * A packet arrived or we ran out of descriptors.
-		 */
-		rxpkt = &c->rda[c->rh];
-		while(rxpkt->owner == Host){
-			c->inpackets++;
-	
-			/*
-			 * If the packet was received OK, pass it up,
-			 * otherwise log the error.
-			 */
-			if(rxpkt->status & Prx)
-				sonicpkt(c, rxpkt, (Pbuf*)c->rb[c->rh]);
-			else
-			if(rxpkt->status & Fae)
-				c->frames++;
-			else
-			if(rxpkt->status & Crc)
-				c->crcs++;
-			else
-				c->buffs++;
-	
-			rxpkt->status  = 0;
-			/*
-			 * Finished with this packet, it becomes the
-			 * last free packet in the ring, so give it Eol,
-			 * and take the Eol bit off the previous packet.
-			 * Move the ring index on.
-			 */
-			wus(&rxpkt->link,  rxpkt->link|Eol);
-			rxpkt->owner = Interface;
-			s = &c->rda[PREV(c->rh, Nrb)].link;
-			wus(s, *s & ~Eol);
-			c->rh = NEXT(c->rh, Nrb);
-	
-			rxpkt = &c->rda[c->rh];
-		}
-		WR(isr, status & (Pktrx|Rde));
-		status &= ~(Pktrx|Rde);
-
-	noinput:
-		/*
-		 * We get a 'load CAM done' interrupt
-		 * after initialisation. Ignore it.
-		 */
-		if(status & Lcd) {
-			WR(isr, Lcd);
-			status &= ~Lcd;
-		}
-	
-		if(status & AllIntr) {
-			WR(isr, status);
-			print("sonic #%lux\n", status);
-		}
-	}
-}
-
-/*
- *  turn promiscuous mode on/off
- */
-static void
-promiscuous(void *arg, int on)
-{
-	ushort reg;
-
-	USED(arg);
-
-	reg = RD(rcr);
-	if(on)
-		WR(rcr, reg|Pro);
-	else
-		WR(rcr, reg&~Pro);
+	return netifwalk(etherxx[chan->dev], chan, name);
 }
 
 static void
-initbufs(Ether *c)
+etherstat(Chan* chan, char* dp)
 {
-	int i;
-	uchar *mem, *base;
-
-	/* Put the ethernet buffers in the same place
-	 * as the bootrom
-	 */
-	mem = (void*)(KZERO|0x2000);
-	base = mem;
-	mem = CACHELINE(uchar, mem);
-
-	/*
-	 * Descriptors must be built in uncached space
-	 */
-	c->rra = UNCACHED(RXrsc, mem);
-	mem = QUAD(uchar, mem+Nrb*sizeof(RXrsc));
-
-	c->rda = UNCACHED(RXpkt, mem);
-	mem = QUAD(uchar, mem+Nrb*sizeof(RXpkt));
-
-	c->tda = UNCACHED(TXpkt, mem);
-	mem = QUAD(uchar, mem+Ntb*sizeof(TXpkt));
-
-	c->cda = UNCACHED(Cam, mem);
-
-	mem = CACHELINE(uchar, mem+sizeof(Cam));
-	for(i = 0; i < Nrb; i++) {
-		c->rb[i] = UNCACHED(uchar, mem);
-		mem += sizeof(Pbuf)+4;
-		mem = QUAD(uchar, mem);
-	}
-	for(i = 0; i < Ntb; i++) {
-		c->tb[i] = UNCACHED(uchar, mem);
-		mem += sizeof(Pbuf);
-		mem = QUAD(uchar, mem);
-	}
-	if(mem >= base+64*1024)
-		panic("sonic init");
-}
-
-static void
-etherreset(void)
-{
-	Ether *ctlr;
-
-	/*
-	 * Map the device registers and allocate
-	 * memory for the receive/transmit rings.
-	 * Set the physical ethernet address and
-	 * prime the interrupt handler.
-	 */
-	if(ether[0] == 0) {
-		ctlr = malloc(sizeof(Ether));
-		ether[0] = ctlr;
-		initbufs(ctlr);
-		enetaddr(ether[0]->ea);
-	}
-	ctlr = ether[0];
-
-	reset(ctlr);
-
-	memset(ctlr->ba, 0xFF, sizeof(ctlr->ba));
-
-	/* general network interface structure */
-	netifinit(ether[0], "ether0", Ntypes, 32*1024);
-	ether[0]->alen = 6;
-	memmove(ether[0]->addr, ether[0]->ea, 6);
-	memmove(ether[0]->bcast, ctlr->ba, 6);
-	ether[0]->promiscuous = promiscuous;
-	ether[0]->arg = ether[0];
+	netifstat(etherxx[chan->dev], chan, dp);
 }
 
 static Chan*
-etherattach(char *spec)
+etheropen(Chan* chan, int omode)
 {
-	static int enable;
-
-	if(enable == 0) {
-		enable = 1;
-		WR(cr, Rxen);
-	}
-	if(*spec && strcmp(spec, "0") != 0)
-		error(Eio);
-	return devattach('l', spec);
-}
-
-static int
-etherwalk(Chan *c, char *name)
-{
-	return netifwalk(ether[0], c, name);
-}
-
-static Chan*
-etheropen(Chan *c, int omode)
-{
-	return netifopen(ether[0], c, omode);
+	return netifopen(etherxx[chan->dev], chan, omode);
 }
 
 static void
-ethercreate(Chan *c, char *name, int omode, ulong perm)
+ethercreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 }
 
 static void
-etherclose(Chan *c)
+etherclose(Chan* chan)
 {
-	netifclose(ether[0], c);
-}
-
-long
-etherread(Chan *c, void *buf, long n, ulong offset)
-{
-	return netifread(ether[0], c, buf, n, offset);
-}
-
-static int
-etherloop(Etherpkt *p, long n)
-{
-	int s, different;
-	ushort t;
-	Netfile *f, **fp;
-	Ether *ctlr = ether[0];
-
-	different = memcmp(p->d, ctlr->ea, sizeof(ctlr->ea));
-	if(different && memcmp(p->d, ctlr->bcast, sizeof(p->d)))
-		return 0;
-
-	s = splhi();
-	t = (p->type[0]<<8) | p->type[1];
-	for(fp = ctlr->f; fp < &ctlr->f[Ntypes]; fp++) {
-		f = *fp;
-		if(f == 0)
-			continue;
-		if(f->type == t || f->type < 0)
-			switch(qproduce(f->in, p->d, n)){
-			case -1:
-				print("etherloop overflow\n");
-				break;
-			case -2:
-				print("etherloop memory\n");
-				break;
-			}
-	}
-	splx(s);
-	return !different;
+	netifclose(etherxx[chan->dev], chan);
 }
 
 static long
-etherwrite(Chan *c, void *buf, long n, ulong offset)
+etherread(Chan* chan, void* buf, long n, ulong offset)
 {
-	Pbuf *p;
-	ushort *s;
-	TXpkt *txpkt;
-	Ether *ctlr = ether[0];
+	Ether *ether;
 
-	USED(offset);
+	ether = etherxx[chan->dev];
+	if((chan->qid.path & CHDIR) == 0 && ether->dev && ether->dev->ifstat){
+		/*
+		 * With some controllers it is necessary to reach
+		 * into the chip to extract statistics.
+		 */
+		if(NETTYPE(chan->qid.path) == Nifstatqid)
+			return ether->dev->ifstat(ether, buf, n, offset);
+		else if(NETTYPE(chan->qid.path) == Nstatqid)
+			ether->dev->ifstat(ether, buf, 0, offset);
+	}
 
-	/* etherif.c handles structure */
-	if(NETTYPE(c->qid.path) != Ndataqid)
-		return netifwrite(ether[0], c, buf, n);
+	return netifread(ether, chan, buf, n, offset);
+}
+
+static Block*
+etherbread(Chan* chan, long n, ulong offset)
+{
+	return netifbread(etherxx[chan->dev], chan, n, offset);
+}
+
+static void
+etherremove(Chan*)
+{
+}
+
+static void
+etherwstat(Chan* chan, char* dp)
+{
+	netifwstat(etherxx[chan->dev], chan, dp);
+}
+
+static void
+etherrtrace(Netfile* f, Etherpkt* pkt, int len)
+{
+	int i, n;
+	Block *bp;
+
+	if(qwindow(f->in) <= 0)
+		return;
+	if(len > 64)
+		n = 64;
+	else
+		n = len;
+	bp = iallocb(n);
+	if(bp == 0)
+		return;
+	memmove(bp->wp, pkt->d, n);
+	i = TK2MS(MACHP(0)->ticks);
+	bp->wp[58] = len>>8;
+	bp->wp[59] = len;
+	bp->wp[60] = i>>24;
+	bp->wp[61] = i>>16;
+	bp->wp[62] = i>>8;
+	bp->wp[63] = i;
+	bp->wp += 64;
+	qpass(f->in, bp);
+}
+
+Block*
+etheriq(Ether* ether, Block* bp, int freebp)
+{
+	Etherpkt *pkt;
+	ushort type;
+	int len;
+	Netfile **ep, *f, **fp, *fx;
+	Block *xbp;
+
+	ether->inpackets++;
+
+	pkt = (Etherpkt*)bp->rp;
+	len = BLEN(bp);
+	type = (pkt->type[0]<<8)|pkt->type[1];
+	fx = 0;
+	ep = &ether->f[Ntypes];
+
+	/* check for valid multcast addresses */
+	if((pkt->d[0] & 1) && memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) && ether->prom == 0){
+		if(!activemulti(ether, pkt->d, sizeof(pkt->d))){
+			if(freebp){
+				freeb(bp);
+				bp = 0;
+			}
+			return bp;
+		}
+	}
+
+	/*
+	 * Multiplex the packet to all the connections which want it.
+	 * If the packet is not to be used subsequently (freebp != 0),
+	 * attempt to simply pass it into one of the connections, thereby
+	 * saving a copy of the data (usual case hopefully).
+	 */
+	for(fp = ether->f; fp < ep; fp++){
+		if((f = *fp) && (f->type == type || f->type < 0)){
+			if(f->type > -2){
+				if(freebp && fx == 0)
+					fx = f;
+				else if(xbp = iallocb(len)){
+					memmove(xbp->wp, pkt, len);
+					xbp->wp += len;
+					qpass(f->in, xbp);
+				}
+				else
+					ether->soverflows++;
+			}
+			else
+				etherrtrace(f, pkt, len);
+		}
+	}
+
+	if(fx){
+		qpass(fx->in, bp);
+		return 0;
+	}
+	if(freebp){
+		freeb(bp);
+		return 0;
+	}
+
+	return bp;
+}
+
+static int
+etheroq(Ether* ether, Block* bp)
+{
+	int len, loopback, s;
+	Etherpkt *pkt;
+
+	ether->outpackets++;
+
+	/*
+	 * Check if the packet has to be placed back onto the input queue,
+	 * i.e. if it's a loopback or broadcast packet or the interface is
+	 * in promiscuous mode.
+	 * If it's a loopback packet indicate to etheriq that the data isn't
+	 * needed and return, etheriq will pass-on or free the block.
+	 */
+	pkt = (Etherpkt*)bp->rp;
+	len = BLEN(bp);
+	loopback = (memcmp(pkt->d, ether->addr, sizeof(pkt->d)) == 0);
+	if(loopback || memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) == 0 || ether->prom){
+		s = splhi();
+		etheriq(ether, bp, loopback);
+		splx(s);
+	}
+
+	if(!loopback){
+		if(ether->dev && ether->dev->transmit){
+			qbwrite(ether->oq, bp);
+			ether->dev->transmit(ether);
+		}
+		else{
+			freeb(bp);
+			return 0;
+		}
+	}
+
+	return len;
+}
+
+static long
+etherwrite(Chan* chan, void* buf, long n, ulong)
+{
+	Ether *ether;
+	Block *bp;
+
+	ether = etherxx[chan->dev];
+	if(NETTYPE(chan->qid.path) != Ndataqid)
+		return netifwrite(ether, chan, buf, n);
 
 	if(n > ETHERMAXTU)
-		error(Ebadarg);
+		error(Etoobig);
+	if(n < ETHERMINTU)
+		error(Etoosmall);
 
-	p = buf;
-	memmove(p->s, ctlr->ea, sizeof(ctlr->ea));
-
-	/* we handle data */
-	if(etherloop(buf, n))
-		return n;
-
-	qlock(&ctlr->tlock);
-	ctlr->outpackets++;
-	if(waserror()) {
-		qunlock(&ctlr->tlock);
+	bp = allocb(n);
+	if(waserror()){
+		freeb(bp);
 		nexterror();
 	}
-
-	tsleep(&ctlr->tr, isoutbuf, ctlr, 10000);
-
-	if(!isoutbuf(ctlr))
-		print("ether transmitter jammed cr #%lux\n", RD(cr));
-	else {
-		p = (Pbuf*)ctlr->tb[ctlr->th];
-		memmove(p->d, buf, n);
-		if(n < 60) {
-			memset(p->d+n, 0, 60-n);
-			n = 60;
-		}
-		sonicswap(p, n);
-
-		txpkt = &ctlr->tda[ctlr->th];
-		txpkt->size = n;
-		txpkt->fsize = n;
-		wus(&txpkt->link, txpkt->link|Eol);
-		txpkt->status = Interface;
-		s = &ctlr->tda[PREV(ctlr->th, Ntb)].link;
-		wus(s, *s & ~Eol);
-
-		ctlr->th = NEXT(ctlr->th, Ntb);
-		WR(cr, Txp);
-	}
+	memmove(bp->rp, buf, n);
+	memmove(bp->rp+Eaddrlen, ether->addr, Eaddrlen);
 	poperror();
-	qunlock(&ctlr->tlock);
+	bp->wp += n;
 
-	return n;
+	return etheroq(ether, bp);
 }
 
-static void
-etherremove(Chan *c)
+static long
+etherbwrite(Chan* chan, Block* bp, ulong)
 {
-	USED(c);
-}
+	Ether *ether;
+	long n;
 
-static void
-etherstat(Chan *c, char *dp)
-{
-	netifstat(ether[0], c, dp);
-}
-
-static void
-etherwstat(Chan *c, char *dp)
-{
-	netifwstat(ether[0], c, dp);
-}
-
-#define swiz(s)	(s<<24)|((s>>8)&0xff00)|((s<<8)&0xff0000)|(s>>24)
-
-static void
-sonicswap(void *a, int n)
-{
-	ulong *p, t0, t1;
-
-	n = ((n+8)/8)*8;
-	p = a;
-	while(n) {
-		t0 = p[0];
-		t1 = p[1];
-		p[0] = swiz(t1);
-		p[1] = swiz(t0);
-		p += 2;
-		n -= 8;
+	n = BLEN(bp);
+	ether = etherxx[chan->dev];
+	if(NETTYPE(chan->qid.path) != Ndataqid){
+		n = netifwrite(ether, chan, bp->rp, n);
+		freeb(bp);
+		return n;
 	}
+
+	if(n > ETHERMAXTU){
+		freeb(bp);
+		error(Ebadarg);
+	}
+	if(n < ETHERMINTU){
+		freeb(bp);
+		error(Etoosmall);
+	}
+
+	return etheroq(ether, bp);
+}
+
+void
+etherreset(void)
+{
+	Ether *ether;
+	int i, n, ctlrno;
+	char name[NAMELEN], buf[128];
+
+	for(ether = 0, ctlrno = 0; ctlrno < MaxEther; ctlrno++){
+		if(ether == 0)
+			ether = malloc(sizeof(Ether));
+		memset(ether, 0, sizeof(Ether));
+		ether->ctlrno = ctlrno;
+		ether->tbdf = BUSUNKNOWN;
+		ether->mbps = 10;
+		if(isaconfig("ether", ctlrno, ether) == 0)
+			continue;
+		for(n = 0; endev[n]; n++){
+			if(cistrcmp(endev[n]->name, ether->type))
+				continue;
+			ether->dev = endev[n];
+			for(i = 0; i < ether->nopt; i++){
+				if(strncmp(ether->opt[i], "ea=", 3))
+					continue;
+				if(parseether(ether->addr, &ether->opt[i][3]) == -1)
+					memset(ether->addr, 0, Eaddrlen);
+			}	
+			if(endev[n]->reset(ether))
+				break;
+
+			/*
+			 * IRQ2 doesn't really exist, it's used to gang the interrupt
+			 * controllers together. A device set to IRQ2 will appear on
+			 * the second interrupt controller as IRQ9.
+			 */
+			if(ether->irq == 2)
+				ether->irq = 9;
+			intrenable(VectorPIC+ether->irq, ether->interrupt, ether, ether->tbdf);
+
+			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX",
+				ctlrno, ether->type, ether->mbps, ether->port);
+			if(ether->irq)
+				i += sprint(buf+i, " irq %d", ether->irq);
+			if(ether->mem)
+				i += sprint(buf+i, " addr 0x%luX", PADDR(ether->mem));
+			if(ether->size)
+				i += sprint(buf+i, " size 0x%luX", ether->size);
+			i += sprint(buf+i, ": %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX",
+				ether->addr[0], ether->addr[1], ether->addr[2],
+				ether->addr[3], ether->addr[4], ether->addr[5]);
+			sprint(buf+i, "\n");
+			print(buf);
+
+			snprint(name, sizeof(name), "ether%d", ctlrno);
+			if(ether->mbps == 100){
+				netifinit(ether, name, Ntypes, 256*1024);
+				if(ether->oq == 0)
+					ether->oq = qopen(256*1024, 1, 0, 0);
+			}
+			else{
+				netifinit(ether, name, Ntypes, 32*1024);
+				if(ether->oq == 0)
+					ether->oq = qopen(64*1024, 1, 0, 0);
+			}
+			if(ether->oq == 0)
+				panic("etherreset %s", name);
+
+			ether->alen = Eaddrlen;
+			memset(ether->bcast, 0xFF, Eaddrlen);
+			ether->arg = ether;
+			ether->promiscuous = ether->dev->promiscuous;
+			ether->multicast = ether->dev->multicast;
+
+			etherxx[ctlrno] = ether;
+			ether = 0;
+			break;
+		}
+	}
+	if(ether)
+		free(ether);
 }
 
 int
-parseether(uchar *to, char *from)
+parseether(uchar* to, char* from)
 {
 	char nip[4];
 	char *p;
@@ -835,6 +388,26 @@ parseether(uchar *to, char *from)
 	return 0;
 }
 
+#define POLY 0xedb88320
+
+/* really slow 32 bit crc for ethers */
+ulong
+ethercrc(uchar* p, int len)
+{
+	int i, j;
+	ulong crc, b;
+
+	crc = 0xffffffff;
+	for(i = 0; i < len; i++){
+		b = *p++;
+		for(j = 0; j < 8; j++){
+			crc = (crc>>1) ^ (((crc^b) & 1) ? POLY : 0);
+			b >>= 1;
+		}
+	}
+	return crc;
+}
+
 Dev etherdevtab = {
 	'l',
 	"ether",
@@ -849,9 +422,9 @@ Dev etherdevtab = {
 	ethercreate,
 	etherclose,
 	etherread,
-	devbread,
+	etherbread,
 	etherwrite,
-	devbwrite,
+	etherbwrite,
 	etherremove,
 	etherwstat,
 };

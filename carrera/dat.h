@@ -153,11 +153,23 @@ struct
 	short	exiting;
 }active;
 
+/*
+ *  a parsed plan9.ini line
+ */
+#define ISAOPTLEN	16
+#define NISAOPT		8
+
 struct ISAConf {
 	char	type[NAMELEN];
 	ulong	port;
 	ulong	irq;
-	int	dma;
+	ulong	dma;
+	ulong	mem;
+	ulong	size;
+	ulong	freq;
+
+	int	nopt;
+	char	opt[NISAOPT][ISAOPTLEN];
 };
 
 extern KMap kpte[];

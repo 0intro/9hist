@@ -3,6 +3,7 @@
 void		addclock0link(void (*)(void));
 void		arginit(void);
 int		busprobe(ulong);
+int		cistrcmp(char*, char*);
 void		cleancache(void);
 void		clearmmucache(void);
 void		clock(Ureg*);

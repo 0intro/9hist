@@ -104,28 +104,58 @@ newchan(void)
 	return c;
 }
 
-int
-okchan1(Chan *c)
+void
+okchan1(Chan *c, char *msg, int n)
 {
-	if(c->type > 64)
-		return 0;
-	if((ulong)(c->next) & 3)
-		return 0;
-	if((ulong)(c->link) & 3)
-		return 0;
-	if((ulong)(c->path) & 3)
-		return 0;
-	if((ulong)(c->mnt) & 3)
-		return 0;
-	if((ulong)(c->xmnt) & 3)
-		return 0;
-	if((ulong)(c->mcp) & 3)
-		return 0;
-	if((ulong)(c->mchan) & 3)
-		return 0;
-	if((ulong)(c->session) & 3)
-		return 0;
-	return 1;
+	int i, bad;
+
+	bad = 0;
+	if(c->type > 64){
+		print("bad type %d\n", c->type);
+		bad = 1;
+	}
+	if((ulong)(c->next) & 3){
+		print("bad next %.8lux\n", c->next);
+		bad = 1;
+	}
+	if((ulong)(c->link) & 3){
+		print("bad link %.8lux\n", c->link);
+		bad = 1;
+	}
+	if((ulong)(c->path) & 3){
+		print("bad path %.8lux\n", c->path);
+		bad = 1;
+	}
+	if((ulong)(c->mnt) & 3){
+		print("bad mnt %.8lux\n", c->mnt);
+		bad = 1;
+	}
+	if((ulong)(c->xmnt) & 3){
+		print("bad xmnt %.8lux\n", c->xmnt);
+		bad = 1;
+	}
+	if((ulong)(c->mcp) & 3){
+		print("bad mcp %.8lux\n", c->mcp);
+		bad = 1;
+	}
+	if((ulong)(c->mchan) & 3){
+		print("bad mchan %.8lux\n", c->mchan);
+		bad = 1;
+	}
+	if((ulong)(c->session) & 3){
+		print("bad session %.8lux\n", c->session);
+		bad = 1;
+	}
+	if(!bad)
+		return;
+
+	print("okchan: %s (%d=#%.8lux)\n", msg, n, n);
+	for(i=0; i<16; i++){
+		print("%d=%.8lux\n", i, ((ulong*)c)[i]);
+		if((i&7) == 7)
+			print("\n");
+	}
+	for(;;);
 }
 
 void
@@ -134,14 +164,9 @@ okchan(char *msg, int n)
 	int s;
 	Chan *c;
 
-	return;
 	s = splhi();
 	for(c = chanalloc.list; c; c = c->link)
-		if(!okchan1(c)){
-			spllo();
-			print("okchan: %s (%d=#%.8lux)\n", msg, n, n);
-			panic("okchan");
-		}
+		okchan1(c, msg, n);
 	splx(s);
 }
 

@@ -482,14 +482,40 @@ buzz(int f, int d)
 	USED(d);
 }
 
+int
+cistrcmp(char *a, char *b)
+{
+	int ac, bc;
+
+	for(;;){
+		ac = *a++;
+		bc = *b++;
+	
+		if(ac >= 'A' && ac <= 'Z')
+			ac = 'a' + (ac - 'A');
+		if(bc >= 'A' && bc <= 'Z')
+			bc = 'a' + (bc - 'A');
+		ac -= bc;
+		if(ac)
+			return ac;
+		if(bc == 0)
+			break;
+	}
+	return 0;
+}
+
 /*
  * dummy routine for interoperability with pc's
  */
 int
 isaconfig(char *class, int ctlrno, ISAConf *isa)
 {
-	if(strcmp(class, "audio") == 0 && ctlrno == 0){
+	if(cistrcmp(class, "audio") == 0 && ctlrno == 0){
 		strcpy(isa->type, "sb16");
+		return 1;
+	}
+	if(cistrcmp(class, "ether") == 0 && ctlrno == 0){
+		strcpy(isa->type, "sonic");
 		return 1;
 	}
 	return 0;

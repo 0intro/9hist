@@ -62,7 +62,7 @@ enum
 	  Floppyint	= (1<<1),
 	  Parallelint	= (1<<0),
 	Intenareg	= 0xE0200004,	/* Device interrupt enable */
-	Intcause	= 0xE0200007,	/* Decice interrupt cause register */
+	Intcause	= 0xE0200007,	/* Device interrupt cause register */
 
 	Promvirt	= 0xE1000000,	/* From ARCS chipset */
 	Promphys	= 0x1FC00000,	/* MIPs processors */
@@ -125,3 +125,9 @@ enum
 
 extern int	int0mask;	/* interrupts enabled for first 8259 */
 extern int	int1mask;	/* interrupts enabled for second 8259 */
+
+/*
+ * All motherboard and ISA interrupts are enabled by default.
+ */
+#define intrenable(a, b, c, d)
+#define BUSUNKNOWN	(-1)
