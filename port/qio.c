@@ -590,6 +590,7 @@ qconsume(Queue *q, void *vp, int len)
 	Block *b;
 	int n, dowakeup;
 	uchar *p = vp;
+	Block *tofree = nil;
 
 	/* sync with qwrite */
 	ilock(q);
@@ -608,7 +609,10 @@ qconsume(Queue *q, void *vp, int len)
 			break;
 		q->bfirst = b->next;
 		q->len -= BALLOC(b);
-		freeb(b);
+
+		/* remember to free this */
+		b->next = tofree;
+		tofree = b;
 	};
 
 	if(n < len)
@@ -619,6 +623,17 @@ qconsume(Queue *q, void *vp, int len)
 		q->bfirst = b->next;
 	b->rp += len;
 	q->dlen -= len;
+
+	/* discard the block if we're done with it */
+	if((q->state & Qmsg) || len == n){
+		b->next = 0;
+		q->len -= BALLOC(b);
+		q->dlen -= BLEN(b);
+
+		/* remember to free this */
+		b->next = tofree;
+		tofree = b;
+	}
 
 	/* if writer flow controlled, restart */
 	if((q->state & Qflow) && q->len < q->limit/2){
@@ -632,14 +647,9 @@ qconsume(Queue *q, void *vp, int len)
 	if(dowakeup)
 		wakeup(&q->wr);
 
-	QDEBUG checkb(b, "qconsume 2");
-	/* discard the block if we're done with it */
-	if((q->state & Qmsg) || len == n){
-		b->next = 0;
-		q->len -= BALLOC(b);
-		q->dlen -= BLEN(b);
-		freeb(b);
-	}
+	if(tofree != nil)
+		freeblist(tofree);
+
 	return len;
 }
 
@@ -798,6 +808,9 @@ qproduce(Queue *q, void *vp, int len)
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
+
+	if(q->len >= q->limit)
+		q->state |= Qflow;
 	iunlock(q);
 
 	if(dowakeup)
@@ -938,13 +951,6 @@ qbread(Queue *q, int len)
 	q->len -= BALLOC(b);
 	QDEBUG checkb(b, "qbread 1");
 
-	/* if writer flow controlled, restart */
-	if((q->state & Qflow) && q->len < q->limit/2){
-		q->state &= ~Qflow;
-		dowakeup = 1;
-	} else
-		dowakeup = 0;
-
 	/* split block if it's too big and this is not a message-oriented queue */
 	nb = b;
 	if(n > len){
@@ -966,6 +972,13 @@ qbread(Queue *q, int len)
 		}
 		nb->wp = nb->rp + len;
 	}
+
+	/* if writer flow controlled, restart */
+	if((q->state & Qflow) && q->len < q->limit/2){
+		q->state &= ~Qflow;
+		dowakeup = 1;
+	} else
+		dowakeup = 0;
 
 	iunlock(q);
 

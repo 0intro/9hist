@@ -369,6 +369,9 @@ needpages(void*)
 void
 setswapchan(Chan *c)
 {
+	char dirbuf[DIRLEN];
+	Dir d;
+
 	if(swapimage.c) {
 		if(swapalloc.free != conf.nswap){
 			cclose(c);
@@ -376,5 +379,20 @@ setswapchan(Chan *c)
 		}
 		cclose(swapimage.c);
 	}
+
+	/*
+	 *  if this isn't a file, set the swap space
+	 *  to be at most the size of the partition
+	 */
+	if(devtab[c->type]->dc != L'M'){
+		devtab[c->type]->stat(c, dirbuf);
+		convM2D(dirbuf, &d);
+		if(d.length < conf.nswap*BY2PG){
+			conf.nswap = d.length/BY2PG;
+			swapalloc.top = &swapalloc.swmap[conf.nswap];
+			swapalloc.free = conf.nswap;
+		}
+	}
+
 	swapimage.c = c;
 }
