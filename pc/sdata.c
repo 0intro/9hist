@@ -509,7 +509,7 @@ ataidentify(int cmdport, int ctlport, int dev, int pkt, void* info)
 	outb(cmdport+Command, command);
 	microdelay(1);
 
-	as = ataready(cmdport, ctlport, 0, Bsy, Drq|Err, 104*1000);
+	as = ataready(cmdport, ctlport, 0, Bsy, Drq|Err, 400*1000);
 	if(as < 0)
 		return -1;
 	if(as & Err)
