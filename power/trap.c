@@ -392,6 +392,7 @@ notify(Ureg *ur)
 		sp -= sizeof(Ureg);
 		if(waserror()){
 			pprint("suicide: trap in notify\n");
+			unlock(&u->p->debug);
 			pexit("Suicide", 0);
 		}
 		validaddr((ulong)u->notify, 1, 0);

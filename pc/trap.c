@@ -303,6 +303,14 @@ notify(Ureg *ur)
 		u->svflags = ur->flags;
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
+		if(waserror()){
+			pprint("suicide: trap in notify\n");
+			unlock(&u->p->debug);
+			pexit("Suicide", 0);
+		}
+		validaddr((ulong)u->notify, 1, 0);
+		validaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 0);
+		poperror();
 		u->ureg = (void*)sp;
 		memmove((Ureg*)sp, ur, sizeof(Ureg));
 		sp -= ERRLEN;
@@ -351,9 +359,7 @@ noted(Ureg *ur, ulong arg0)
 	case NCONT:
 		splhi();
 		unlock(&u->p->debug);
-		rfnote(ur);
-		break;
-		/* never returns */
+		return;
 
 	default:
 		pprint("unknown noted arg 0x%lux\n", arg0);

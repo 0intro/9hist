@@ -235,6 +235,14 @@ notify(Ureg *ur)
 		u->svpsr = ur->psr;
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
+		if(waserror()){
+			pprint("suicide: trap in notify\n");
+			unlock(&u->p->debug);
+			pexit("Suicide", 0);
+		}
+		validaddr((ulong)u->notify, 1, 0);
+		validaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 0);
+		poperror();
 		u->ureg = (void*)sp;
 		memmove((Ureg*)sp, ur, sizeof(Ureg));
 		sp -= ERRLEN;

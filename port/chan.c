@@ -22,16 +22,29 @@ incref(Ref *r)
 	return x;
 }
 
+#include "ureg.h"
+
 int
 decref(Ref *r)
 {
 	int x;
+	int i;
+	Segment *s;
 
 	lock(r);
 	x = --r->ref;
 	unlock(r);
-	if(x < 0)
+	if(x < 0) {
+		if(u) {
+			print("%d: %s %lux %lux\n", u->p->pid, u->p->text, *(ulong*)((Ureg*)UREGADDR)->pc, r);
+			for(i = 0; i < NSEG; i++) {
+				s = u->p->seg[i];
+				if(s)
+					print("%d: %lux %lux %lux", i, s, s->base, s->top);
+			}
+		}
 		panic("decref");
+	}
 	return x;
 }
 
