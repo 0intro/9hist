@@ -408,7 +408,8 @@ ipclose(Chan* c)
 	default:
 		break;
 	case Qipifc:
-		closeifcconv(c->aux);
+		if(c->flag & COPEN)
+			closeifcconv(c->aux);
 		c->aux = nil;
 		break;
 	case Qlog:

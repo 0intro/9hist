@@ -331,7 +331,7 @@ vgactl(char *arg)
 		}
 
 		/* grab new space */
-		if(align == 0){
+		if(align == 0 || (screenmem % (align-1)) == 0){
 			if(footprint >= size)
 				return;
 		} else {

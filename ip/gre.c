@@ -142,11 +142,11 @@ grekick(Conv *c, int l)
 
 	ghp = (GREhdr *)(bp->rp);
 
-	raddr = nhgetl(ghp->src);
-	laddr = nhgetl(ghp->dst);
+	raddr = nhgetl(ghp->dst);
+	laddr = nhgetl(ghp->src);
 	if(raddr == 0)
 		raddr = c->raddr;
-	if(laddr == 0 || Mediaforme(ghp->dst) <= 0)
+	if(laddr == 0 || Mediaforme(ghp->src) <= 0)
 		laddr = c->laddr;
 
 	ghp->proto = IP_GREPROTO;
