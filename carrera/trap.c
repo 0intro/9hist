@@ -196,6 +196,8 @@ trap(Ureg *ur)
 	int user, cop, x, fpchk;
 	char buf[2*ERRLEN], buf1[ERRLEN], *fpexcep;
 
+	m->intrts = fastticks(nil);
+
 	/*
 	 * Retry failed probes of legal addresses from tstbadvaddr
 	 * workaround for the R4400 >2.3

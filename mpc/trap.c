@@ -152,6 +152,7 @@ trap(Ureg *ur)
 	int ecode;
 	static struct {int callsched;} c = {1};
 
+	m->intrts = fastticks(nil);
 	ecode = (ur->cause >> 8) & 0xff;
 	if(ecode < 0 || ecode >= 0x1F)
 		ecode = 0x1F;

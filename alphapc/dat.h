@@ -148,6 +148,7 @@ struct Mach
 	ulong	cpuhz;			/* hwrpb->cfreq */
 	ulong	pcclast;
 	uvlong	fastclock;
+	vlong	intrts;			/* time stamp of last interrupt */
 
 	int	pfault;
 	int	cs;

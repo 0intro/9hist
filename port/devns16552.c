@@ -149,41 +149,6 @@ struct Uartalloc {
 
 void ns16552intr(int);
 
-/* interrupt timestamps, l.s fills intrts each interupt */
-uvlong	intrts;
-static	struct {
-	Lock;
-	int	vno;		/* vector to save timestamps for */
-	int	n;		/* number of valid timestamps in ts[] */
-	uvlong	ts[128];	/* time stamps */
-} tsalloc;
-
-/* called with interrupts off by interrupt routine */
-static void
-savets(void)
-{
-	lock(&tsalloc);
-	if(tsalloc.n < nelem(tsalloc.ts))
-		tsalloc.ts[tsalloc.n++] = intrts;
-	unlock(&tsalloc);
-}
-
-/* read interrupt timestamps */
-long
-readintrts(void *buf, int n)
-{
-	n /= sizeof(uvlong);
-	if(n <= 0)
-		return 0;
-	ilock(&tsalloc);
-	if(n > tsalloc.n)
-		n = tsalloc.n;
-	memmove(buf, tsalloc.ts, n*sizeof(uvlong));
-	tsalloc.n = 0;
-	iunlock(&tsalloc);
-	return n*sizeof(uvlong);
-}
-
 /*
  *  pick up architecture specific routines and definitions
  */
@@ -713,8 +678,8 @@ ns16552intr(int dev)
 			}
 	 		if (ch & Dcdc) {
 				l = ch & Dcd;
-				if(l == 0 && p->dcd != 0 && p->dcdts)
-					savets();
+				if(l == 0 && p->dcd != 0 && p->dcdts && saveintrts != nil)
+					(*saveintrts)();
 				if(p->hup_dcd && p->dcd && !l){
 					ilock(&p->rlock);
 					p->dohup = 1;

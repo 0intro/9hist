@@ -15,9 +15,6 @@ static void fault386(Ureg*, void*);
 static Lock vctllock;
 static Vctl *vctl[256];
 
-/* interrupt timestamps, l.s fills intrts each interupt */
-uvlong	intrts;
-
 void
 intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
 {
@@ -175,6 +172,7 @@ trap(Ureg* ureg)
 	Vctl *ctl, *v;
 	Mach *mach;
 
+	m->intrts = fastticks(nil);
 	user = 0;
 	if((ureg->cs & 0xFFFF) == UESEL){
 		user = 1;
@@ -375,7 +373,6 @@ fault386(Ureg* ureg, void*)
 	read = !(ureg->ecode & 2);
 	insyscall = up->insyscall;
 	up->insyscall = 1;
-	spllo();
 	n = fault(addr, read);
 	if(n < 0){
 		if(!user){

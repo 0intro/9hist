@@ -95,7 +95,6 @@ void	procsetup(Proc*);
 void	putcr3(ulong);
 void	putcr4(ulong);
 void	rdmsr(int, vlong*);
-long	readintrts(void*, int);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	(*screenputs)(char*, int);

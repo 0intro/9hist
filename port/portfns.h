@@ -266,6 +266,7 @@ long		rtctime(void);
 void		runlock(RWlock*);
 Proc*		runproc(void);
 void		savefpregs(FPsave*);
+void		(*saveintrts)(void);
 void		sched(void);
 void		scheddump(void);
 void		schedinit(void);

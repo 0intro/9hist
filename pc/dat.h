@@ -171,6 +171,7 @@ struct Mach
 	int	load;
 	int	intr;
 	vlong	fastclock;		/* last sampled value */
+	vlong	intrts;			/* time stamp of last interrupt */
 	int	flushmmu;		/* make current proc flush it's mmu state */
 
 	ulong	spuriousintr;

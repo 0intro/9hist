@@ -41,6 +41,7 @@ trap(Ureg *ur)
 	char buf[ERRLEN];
 	int user, x;
 
+	m->intrts = fastticks(nil);
 	user = ur->status&UMODE;
 
 	if(user){
