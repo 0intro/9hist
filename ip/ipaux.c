@@ -249,34 +249,57 @@ isv4(uchar *ip)
 	return memcmp(ip, v4prefix, IPv4off) == 0;
 }
 
-/* 
- *  since we call v4tov6 so often (per packet in), avoiding the memmove's is
- *  useful.  However, we need to check allignment for processors
- *  without unalligned moves.
+
+/*
+ *  the following routines are unrolled with no memset's to speed
+ *  up the usual case
  */
 void
 v4tov6(uchar *v6, uchar *v4)
 {
-	if((((ulong)v6) & 0x3) != 0 || (((ulong)v4) & 0x3) != 0){
-		memmove(v6, v4prefix, IPv4off);
-		memmove(v6 + IPv4off, v4, IPv4addrlen);
-	} else {
-		*(ulong*)v6 = *(ulong*)v4prefix;
-		*(ulong*)(v6+4) = *(ulong*)(v4prefix+4);
-		*(ulong*)(v6+8) = *(ulong*)(v4prefix+8);
-		*(ulong*)(v6+12) = *(ulong*)v4;
-	}
+	v6[0] = 0;
+	v6[1] = 0;
+	v6[2] = 0;
+	v6[3] = 0;
+	v6[4] = 0;
+	v6[5] = 0;
+	v6[6] = 0;
+	v6[7] = 0;
+	v6[8] = 0;
+	v6[9] = 0;
+	v6[10] = 0xff;
+	v6[11] = 0xff;
+	v6[12] = v4[0];
+	v6[13] = v4[1];
+	v6[14] = v4[2];
+	v6[15] = v4[3];
 }
 
 int
 v6tov4(uchar *v4, uchar *v6)
 {
-	if(memcmp(v6, v4prefix, IPv4off) != 0){
+	if(v6[0] == 0
+	&& v6[1] == 0
+	&& v6[2] == 0
+	&& v6[3] == 0
+	&& v6[4] == 0
+	&& v6[5] == 0
+	&& v6[6] == 0
+	&& v6[7] == 0
+	&& v6[8] == 0
+	&& v6[9] == 0
+	&& v6[10] == 0xff
+	&& v6[11] == 0xff)
+	{
+		v4[0] = v6[12];
+		v4[1] = v6[13];
+		v4[2] = v6[14];
+		v4[3] = v6[15];
+		return 0;
+	} else {
 		memset(v4, 0, 4);
 		return -1;
 	}
-	memmove(v4, v6 + IPv4off, IPv4addrlen);
-	return 0;
 }
 
 ulong
@@ -434,6 +457,7 @@ iphtadd(Ipht *ht, Conv *c)
 		}
 	}
 	h->c = c;
+
 	lock(ht);
 	h->next = ht->tab[hv];
 	ht->tab[hv] = h;

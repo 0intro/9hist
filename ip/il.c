@@ -515,6 +515,7 @@ ilackto(Ilcb *ic, ulong ackto, Block *bp)
 		bp->list = nil;
 		ic->unackedbytes -= blocklen(bp);
 		freeblist(bp);
+		ic->rexmit = 0;
 		ilsettimeout(ic);
 	}
 	qunlock(&ic->ackq);
@@ -569,6 +570,8 @@ iliput(Proto *il, uchar*, Block *bp)
 	qlock(il);
 	s = iphtlook(&ipriv->ht, raddr, dp, laddr, sp);
 	if(s == nil){
+		if(ih->iltype == Ilsync)
+			ilreject(il->f, ih);		/* no listener */
 		qunlock(il);
 		goto raise;
 	}
@@ -653,6 +656,8 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 				ic->rstart = id;
 				ilsendctl(s, nil, Ilack, ic->next, ic->recvd, 0);
 				ic->state = Ilestablished;
+				ic->fasttimeout = 0;
+				ic->rexmit = 0;
 				Fsconnected(s, nil);
 				ilpullup(s);
 			}
@@ -679,12 +684,16 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 		case Ilack:
 			if(ack == ic->start) {
 				ic->state = Ilestablished;
+				ic->fasttimeout = 0;
+				ic->rexmit = 0;
 				ilpullup(s);
 			}
 			break;
 		case Ildata:
 			if(ack == ic->start) {
 				ic->state = Ilestablished;
+				ic->fasttimeout = 0;
+				ic->rexmit = 0;
 				goto established;
 			}
 			break;
