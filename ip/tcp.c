@@ -900,7 +900,7 @@ seq_within(ulong x, ulong low, ulong high)
 			return 1;
 	}
 	else {
-		if(low >= x && x >= high)
+		if(x >= low || x <= high)
 			return 1;
 	}
 	return 0;
