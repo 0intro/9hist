@@ -433,7 +433,8 @@ kbdintr0(void)
 	if(esc1){
 		c = kbtabesc1[c];
 		esc1 = 0;
-		kbdputc(&kbdq, c);
+		if(!keyup)
+			kbdputc(&kbdq, c);
 		return 0;
 	} else if(esc2){
 		esc2--;

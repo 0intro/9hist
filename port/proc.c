@@ -207,7 +207,8 @@ canpage(Proc *p)
 
 	splhi();
 	lock(&runhiq);
-	if(p->state != Running) {
+	/* Only reliable way to see if we are Running */
+	if(p->mach == 0) {
 		p->newtlb = 1;
 		ok = 1;
 	}

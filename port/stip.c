@@ -28,6 +28,7 @@ Queue 		*Etherq;
 
 Ipaddr		Myip;
 Ipaddr		Mymask;
+uchar		Netmyip[4];	/* In Network byte order */
 
 /* Predeclaration */
 static void	ipetherclose(Queue*);
@@ -161,6 +162,10 @@ ipetheroput(Queue *q, Block *bp)
 		if(!Myip && streamparse("setip", bp)) {
 			ptr = bp->rptr;
 			Myip = ipparse((char *)ptr);
+			Netmyip[0] = (Myip>>24)&0xff;
+			Netmyip[1] = (Myip>>16)&0xff;
+			Netmyip[2] = (Myip>>8)&0xff;
+			Netmyip[3] = Myip&0xff;
 			Mymask = classmask[Myip>>30];
 			while(*ptr != ' ' && *ptr)
 				ptr++;
@@ -301,6 +306,10 @@ ipetheriput(Queue *q, Block *bp)
 		if(!bp)
 			return;
 	}
+
+	/* Look to see if its for me before we waste time checksuming it */
+	if(memcmp(h->dst, Netmyip, sizeof(Netmyip)) != 0)
+		goto drop;
 
 	if(ipcksum && ip_csum(&h->vihl)) {
 		print("ip: checksum error (from %d.%d.%d.%d ?)\n",
@@ -579,50 +588,4 @@ ipparse(char *ipa)
 
 	shift += 8;
 	return net | ((address & ~classmask[address>>30])>>shift);
-}
-
-/* 
- * XXX debugging code !
- */
-void
-ppkt(Block *bp)
-{
-	uchar *x;
-	int len, cnt = 0;
-	Block *xp;
-	uchar ch;
-
-	if(bp)
-		print("ppkt: %lux len %d\n", bp, blen(bp));
-	else
-		print("ppkt: Null packet pointer\n");
-
-	xp = bp;
-	while(bp) {
-		len = BLEN(bp);
-		x = bp->rptr;
-		while(len--) {
-			if(cnt%64 == 0)
-				print("\n%.04d: ", cnt);
-			print("%.02x ", *x++);
-			cnt++;
-		}
-		bp = bp->next;
-	}
-	bp = xp;
-	cnt = 0;
-	while(bp) {
-		len = BLEN(bp);
-		x = bp->rptr;
-		while(len--) {
-			if(cnt%64 == 0)
-				print("\n%.04d: ", cnt);
-			ch = *x++;
-			print("%c  ", ch < ' ' || ch >= 0x7f ? '.' : ch);
-			cnt++;
-		}
-		bp = bp->next;
-	}
-	print("\n");
-
 }

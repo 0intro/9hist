@@ -7,10 +7,9 @@
 #include	"ureg.h"
 #include	"init.h"
 
-char	user[NAMELEN] = "bootes";
 extern long edata;
 
-
+char	user[NAMELEN] = "bootes";
 
 void
 main(void)
@@ -23,6 +22,7 @@ main(void)
 	print("%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
 	mmuinit();
 	trapinit();
+	mathinit();
 	kbdinit();
 	clockinit();
 	faultinit();
@@ -52,7 +52,6 @@ machinit(void)
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
 	m->mmask = 1<<m->machno;
-	m->fpstate = FPinit;
 	active.machs = 1;
 }
 
@@ -90,8 +89,6 @@ userinit(void)
 	User *up;
 	KMap *k;
 
-	setvec(Coprocvec, coprocintr);
-
 	p = newproc();
 	p->pgrp = newpgrp();
 	p->egrp = newegrp();
@@ -99,6 +96,7 @@ userinit(void)
 
 	strcpy(p->text, "*init*");
 	p->fpstate = FPinit;
+	fpoff();
 
 	/*
 	 * Kernel Stack
@@ -224,28 +222,77 @@ confinit(void)
 }
 
 /*
+ *  math coprocessor error
+ */
+void
+matherror(Ureg *ur)
+{
+	postnote(u->p, 1, "math: 837 error", 0);
+}
+
+/*
+ *  math coprocessor emulation fault
+ */
+void
+mathemu(Ureg *ur)
+{
+	switch(u->p->fpstate){
+	case FPinit:
+		fpinit();
+		u->p->fpstate = FPactive;
+		break;
+	case FPinactive:
+		fprestore(&u->fpsave);
+		u->p->fpstate = FPactive;
+		break;
+	case FPactive:
+print("emu actv 0x%lux\n", getcr0());
+		postnote(u->p, 1, "math: emulation", 0);
+		break;
+	}
+}
+
+/*
+ *  math coprocessor segment overrun
+ */
+void
+mathover(Ureg *ur)
+{
+	postnote(u->p, 1, "math: segment overrun", 0);
+}
+
+void
+mathinit(void)
+{
+	setvec(Matherrorvec, matherror);
+	setvec(Mathemuvec, mathemu);
+	setvec(Mathovervec, mathover);
+}
+
+/*
  *  set up floating point for a new process
- *	BUG -- needs floating point support
  */
 void
 procsetup(Proc *p)
 {
 	p->fpstate = FPinit;
-	m->fpstate = FPinit;
+	fpoff();
 }
 
 /*
- * Save the part of the process state.
- *	BUG -- needs floating point support
+ *  Save the mach dependent part of the process state.
  */
 void
 procsave(uchar *state, int len)
 {
+	if(u->p->fpstate == FPactive){
+		fpsave(&u->fpsave);
+		u->p->fpstate = FPinactive;
+	}
 }
 
 /*
  *  Restore what procsave() saves
- *	BUG -- needs floating point support
  */
 void
 procrestore(Proc *p, uchar *state)
@@ -258,7 +305,9 @@ firmware(void)
 	panic("firmware");
 }
 
-
+/*
+ *  make noise, blink lights
+ */
 void
 buzz(int f, int d)
 {
@@ -268,7 +317,6 @@ void
 lights(int val)
 {
 }
-
 
 /*
  *  special stuff for 80c51 power management and headland system controller

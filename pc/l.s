@@ -137,6 +137,7 @@ setpte:
 	MOVL	AX,CR3
 	MOVL	CR0,AX
 	ORL	$0X80000000,AX
+	ANDL	$~(0x8|0x2),AX	/* TS=0, MP=0 */
 	MOVL	AX,CR0
 
 	/*
@@ -274,8 +275,47 @@ TEXT	puttr(SB),$0		/* task register */
 	MOVW	AX,TASK
 	RET
 
+TEXT	getcr0(SB),$0		/* coprocessor bits */
+	MOVL	CR0,AX
+	RET
+
 TEXT	getcr2(SB),$0		/* fault address */
 	MOVL	CR2,AX
+	RET
+
+#define	FPOFF\
+	WAIT;\
+	MOVL	CR0,AX;\
+	ORL	$0x4,AX		/* EM=1 */;\
+	MOVL	AX,CR0
+
+#define	FPON\
+	MOVL	CR0,AX;\
+	ANDL	$~0x4,AX	/* EM=0 */;\
+	MOVL	AX,CR0
+	
+TEXT	fpoff(SB),$0		/* turn off floating point */
+	FPOFF
+	RET
+
+TEXT	fpinit(SB),$0		/* turn on & init the floating point */
+	FPON
+	FINIT
+	WAIT
+	RET
+
+TEXT	fpsave(SB),$0		/* save floating point state and turn off */
+	MOVL	p+0(FP),AX
+	WAIT
+	FSAVE	0(AX)
+	FPOFF
+	RET
+
+TEXT	fprestore(SB),$0	/* turn on floating point and restore regs */
+	FPON
+	MOVL	p+0(FP),AX
+	FRSTOR	0(AX)
+	WAIT
 	RET
 
 /*
@@ -511,17 +551,6 @@ TEXT	touser(SB),$0
 	MOVW	AX,DS
 	MOVW	AX,ES
 	IRETL
-
-/*
- *  save/restore floating point
- *	- to be filled in at some future time
- */
-TEXT	fpsave(SB),$0
-	RET
-
-TEXT	fprestore(SB),$0
-	RET
-
 
 /*
  *  set configuration register

@@ -152,12 +152,16 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	if(loadrec == 0) {			/* This is demand load */
 		c = s->image->c;
 		qlock(&c->rdl);
-		if(waserror()) {
+		/* We are unable to correctly error up throught the kernel
+		 * during faults. Therefore note delivery is postponed until
+		 * we leave the system. Read errors cause the process to die.
+		 */
+		while(waserror()) {
+			if(strcmp(u->error, errstrtab[Eintr]) == 0)
+				continue;
 			qunlock(&c->rdl);
 			kunmap(k);
 			putpage(new);
-			qlock(&s->lk);
-			qunlock(&s->lk);
 			pexit("demand load I/O error", 0);
 		}
 

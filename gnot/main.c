@@ -23,7 +23,8 @@ struct Boot
 };
 #define BOOT ((Boot*)0)
 
-char user[NAMELEN];
+char	user[NAMELEN];
+char bootuser[NAMELEN];
 char bootline[64];
 char bootserver[64];
 char bootdevice[2];
@@ -64,7 +65,7 @@ main(void)
 void
 unloadboot(void)
 {
-	strncpy(user, BOOT->user, NAMELEN);
+	strncpy(bootuser, BOOT->user, NAMELEN);
 	memmove(bootline, BOOT->line, 64);
 	memmove(bootserver, BOOT->server, 64);
 	bootdevice[0] = BOOT->device;
@@ -120,6 +121,9 @@ init0(void)
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 	if(!waserror()){
+		c = namec("#e/bootuser", Acreate, OWRITE, 0600);
+		(*devtab[c->type].write)(c, bootuser, 64, 0);
+		close(c);
 		c = namec("#e/bootline", Acreate, OWRITE, 0600);
 		(*devtab[c->type].write)(c, bootline, 64, 0);
 		close(c);
@@ -151,8 +155,10 @@ userinit(void)
 	p->fgrp = newfgrp();
 
 	strcpy(p->text, "*init*");
-	strcpy(p->pgrp->user, user);
+	strcpy(p->pgrp->user, "bootes");
+	strcpy(user, "bootes");
 	p->fpstate = FPinit;
+
 	/*
 	 * Kernel Stack
 	 */

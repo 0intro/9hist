@@ -647,9 +647,8 @@ hardintr(Ureg *ur)
 	Controller *cp;
 	Drive *dp;
 	long loop;
-	int x;
 
-	x = spllo();	/* let in other interrupts */
+	spllo();	/* let in other interrupts */
 
 	/*
  	 *  BUG!! if there is ever more than one controller, we need a way to

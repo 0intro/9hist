@@ -700,10 +700,7 @@ floppyseek(Drive *dp)
 static long
 floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 {
-	ulong addr;
 	long offset;
-
-	addr = (ulong)a;
 
 	qlock(&floppy);
 	qlock(dp);
@@ -728,8 +725,9 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	if(floppyseek(dp) < 0)
 		errors("seeking floppy");
 
+	
 /*print("tcyl %d, thead %d, tsec %d, addr %lux, n %d\n",
-		dp->tcyl, dp->thead, dp->tsec, addr, n);/**/
+		dp->tcyl, dp->thead, dp->tsec, a, n);/**/
 
 	/*
 	 *  set up the dma (dp->len may be trimmed)

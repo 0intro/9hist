@@ -2,208 +2,127 @@
 #include <libc.h>
 #include <fcall.h>
 
-Fcall	hdr;
-char	buf[100];
-char	bootline[64];
-char	bootdevice;
-char	bootserver[64];
-int	format;
-int	manual;
+#define DEFSYS "Nfs"
 
-void	error(char*);
-void	sendmsg(int, char*);
+enum
+{
+	CtrlD	= 4,
+	Cr	= 13,
+};
+
+char	*net;
+char	*netdev;
+
+Fcall	hdr;
+char	*scmd;
+char 	bootdevice;
+int	authenticated;
+
+char	bootline[64];
+char	password[32];
+char	username[32];
+char	sys[NAMELEN];
+char	buf[4*1024];
+
+int format;
+int manual;
+
+/*
+ *  predeclared
+ */
 void	bootparams(void);
-void	dkconfig(void);
-int	dkdial(void);
+int	outin(char *, char *, int);
+void	prerror(char *);
+void	error(char *);
+int	dkdial(char *);
 void	nop(int);
 void	session(int);
 int	cache(int);
+void	sendmsg(int, char *);
+void	connect(int);
+void	kill(int);
+void	passwd(void);
+int	authenticate(int);
+void	termtype(char*);
+void	userpasswd(void);
+int	fileserver(void);
+int	inconctl(void);
+int	asyncctl(char*);
+void	dkconfig(int);
+void	boot(int);
 
+/*
+ * Ethernet type stations boot over ether or use dk via RS232.
+ */
 main(int argc, char *argv[])
 {
-	int fd, f, i;
-	char buf[256];
-	Dir dir;
+	int cfd;
+	int fd;
+
 
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
+	sleep(1000);
 
-	i = create("#e/sysname", 1, 0666);
-	if(i < 0)
-		error("sysname");
-	if(write(i, argv[0], strlen(argv[0])) != strlen(argv[0]))
-		error("sysname");
-	close(i);
-	i = create("#e/terminal", 1, 0666);
-	if(i < 0)
-		error("terminal");
-	if(write(i, "at&t gnot 1", strlen("at&t gnot 1")) < 0)
-		error("terminal");
-	close(i);
-
+	/*
+	 *  get parameters passed by boot rom to kernel
+	 */
 	bootparams();
-	dkconfig();
-	fd = dkdial();
-	nop(fd);
-	session(fd);
-	fd = cache(fd);
+	termtype("at&t gnot 1");
 
 	/*
-	 *  make a /srv/boot and a /srv/bootes
+	 *  user/passwd pair if the boot rom didn't
+	 *  authenticate
 	 */
-	print("post...");
-	sprint(buf, "#s/%s", "bootes");
-	f = create(buf, 1, 0666);
-	if(f < 0)
-		error("create");
-	sprint(buf, "%d", fd);
-	if(write(f, buf, strlen(buf)) != strlen(buf))
-		error("write");
-	close(f);
-	sprint(buf, "#s/%s", "bootes");
-	f = create("#s/boot", 1, 0666);
-	if(f < 0)
-		error("create");
-	sprint(buf, "%d", fd);
-	if(write(f, buf, strlen(buf)) != strlen(buf))
-		error("write");
-	close(f);
+	if(!authenticated){
+		strcpy(username, "none");
+		userpasswd();
+	}
 
 	/*
-	 *  mount file server root after #/ root
+	 *  get the control channel for the network
+	 *  device
 	 */
-	if(bind("/", "/", MREPL) < 0)
-		error("bind");
-	print("mount...");
-	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
-		error("mount");
+	switch(fileserver()){
+	case 'a':
+		cfd = asyncctl("B19200");
+		break;
+	case 'A':
+		cfd = asyncctl("B9600");
+		break;
+	case 'i':
+	default:
+		cfd = inconctl();
+		break;
+	}
 
 	/*
-	 * set the time from the access time of the root of the file server,
-	 * accessible as /..
+	 *  start up the datakit and connect to
+	 *  file server
 	 */
-	print("time...");
-	if(stat("/..", buf) < 0)
-		error("stat");
-	convM2D(buf, &dir);
-	f = open("#c/time", OWRITE);
-	sprint(buf, "%ld", dir.atime);
-	write(f, buf, strlen(buf));
-	close(f);
-	
-	print("success\n");
+	dkconfig(cfd);
+	for(;;){
+		fd = dkdial(sys);
+		if(fd >= 0)
+			break;
+		print("can't connect, retrying...\n");
+		sleep(1000);
+	}
 
-	bind("#k", "/net/net", MREPL);
-	bind("#k", "/net/dk", MREPL);
+	/*
+	 *  set up the file system connection
+	 */
+	boot(fd);
 
+	/*
+	 *  go to init
+	 */
 	if(manual)
 		execl("/68020/init", "init", "-m", 0);
-	else {
+	else
 		execl("/68020/init", "init", 0);
-	}
 	error("/68020/init");
-}
-
-/*
- *  open the network device, push on the needed multiplexors
- */
-void
-dkconfig(void)
-{
-	int cfd;
-
-	switch(bootdevice){
-	case 'A':
-		/*
-		 *  grab the rs232 line,
-		 *  make it 9600 baud,
-		 *  push the async protocol onto it,
-		 */
-		cfd = open("#t/tty0ctl", 2);
-		if(cfd < 0)
-			error("opening #t/tty0ctl");
-		sendmsg(cfd, "B9600");
-		sendmsg(cfd, "push async");
-		break;
-	case 'a':
-	case 's':
-		/*
-		 *  grab the rs232 line,
-		 *  make it 19200 baud,
-		 *  push the async protocol onto it,
-		 */
-		cfd = open("#t/tty0ctl", 2);
-		if(cfd < 0)
-			error("opening #t/tty0ctl");
-		sendmsg(cfd, "B19200");
-		sendmsg(cfd, "push async");
-		break;
-	default:
-		/*
-		 *  grab the incon,
-		 */
-		cfd = open("#i/ctl", 2);
-		if(cfd < 0)
-			error("opening #i/ctl");
-		break;
-	}
-
-	/*
-	 *  push the dk multiplexor onto the communications link,
-	 *  and use line 1 as the signalling channel.
-	 */
-	sendmsg(cfd, "push dkmux");
-	sendmsg(cfd, "config 1 16 norestart");
-
-	/*
-	 *  fork a process to hold the device channel open
-	 *  forever
-	 */
-	switch(fork()){
-	case -1:
-		break;
-	case 0:
-		for(;;)
-			sleep(60*1000);
-		exit(0);
-	default:
-		close(cfd);
-		break;
-	}
-}
-
-/*
- *  open a datakit channel and call ken, return an fd to the
- *  connection.
- */
-int
-dkdial(void)
-{
-	int fd, cfd;
-	int i;
-	long n;
-
-	for(i = 0; ; i++){
-		fd = open("#k/2/data", 2);
-		if(fd < 0)
-			error("opening #k/2/data");
-		cfd = open("#k/2/ctl", 2);
-		if(cfd < 0)
-			error("opening #k/2/ctl");
-		sprint(buf, "connect %s", bootserver);
-		n = strlen(buf);
-		if(write(cfd, buf, n) == n)
-			break;
-		if(i == 5)
-			error("dialing");
-		print("error dialing %s, retrying ...\n", bootserver);
-		close(fd);
-		close(cfd);
-	}
-	print("connected to %s\n", bootserver);
-	close(cfd);
-	return fd;
 }
 
 /*
@@ -244,10 +163,298 @@ bootparams(void)
 	}
 	f = open("#e/bootserver", OREAD);
 	if(f >= 0){
-		read(f, bootserver, 64);
+		read(f, sys, sizeof(sys));
 		close(f);
 	} else
-		strcpy(bootserver, "nfs");
+		strcpy(sys, DEFSYS);
+
+	/*
+	 *  perhaps a stupid assumption
+	 */
+	if(bootdevice == 'i')
+		authenticated = 1;
+}
+
+/*
+ *  set flavor of terminal
+ */
+void
+termtype(char *t)
+{
+	int fd;
+
+	fd = create("#e/terminal", 1, 0666);
+	if(fd < 0)
+		error("terminal");
+	if(write(fd, t, strlen(t)) < 0)
+		error("terminal");
+	close(fd);
+}
+
+/*
+ *  get user and password if the
+ *  boot rom didn't authenticate
+ */
+void
+userpasswd(void)
+{
+	int fd;
+
+	outin("user", username, sizeof(username));
+	passwd();
+
+	/*
+	 *  set user id
+	 */
+	fd = open("#c/user", OWRITE|OTRUNC);
+	if(fd >= 0){
+		write(fd, username, strlen(username));
+		close(fd);
+	}
+}
+
+#define FS "(9)600 serial, (1)9200 serial, (i)incon"
+/*
+ *  if we've booted off the disk, figure out where to get the
+ *  file service from
+ */
+int
+fileserver(void)
+{
+	char reply[4];
+
+	if(bootdevice != 's')
+		return bootdevice;
+
+	for(;;){
+		strcpy(reply, "9");
+		strcpy(sys, DEFSYS);
+		outin(FS, reply, sizeof(reply));
+		switch(reply[0]){
+		case 'i':
+			outin("server", sys, sizeof(sys));
+			return 'i';
+		case 'l':
+			return 'l';
+		case '1':
+			outin("server", sys, sizeof(sys));
+			return 'a';
+		case '9':
+			outin("server", sys, sizeof(sys));
+			return 'A';
+		}
+	}
+}
+
+/*
+ *  get the incon control channel
+ */
+int
+inconctl(void)
+{
+	int cfd;
+
+	cfd = open("#i/ctl", ORDWR);
+	if(cfd < 0)
+		error("opening #i/ctl");
+
+	return cfd;
+}
+
+/*
+ *  get the serial control channel and let the
+ *  user connect to the TSM8
+ */
+int
+asyncctl(char *baud)
+{
+	int cfd, dfd;
+	char reply[4];
+
+	cfd = open("#t/tty0ctl", ORDWR);
+	if(cfd < 0)
+		error("opening #t/tty0ctl");
+
+	sendmsg(cfd, baud);
+
+	dfd = open("#t/tty0", ORDWR);
+	if(dfd < 0)
+		error("opening #t/tty0");
+
+	connect(dfd);
+	close(dfd);
+	sendmsg(cfd, "push async");
+	return cfd;
+}
+
+/*
+ *  configure the datakit
+ */
+void
+dkconfig(int cfd)
+{
+	sendmsg(cfd, "push dkmux");
+	if(authenticated)
+		sendmsg(cfd, "config 1 16 norestart");
+	else
+		sendmsg(cfd, "config 1 16 restart");
+
+	/*
+	 *  fork a process to hold the device channel open
+	 *  forever
+	 */
+	switch(fork()){
+	case -1:
+		break;
+	case 0:
+		for(;;)
+			sleep(60*1000);
+		exit(0);
+	default:
+		close(cfd);
+		break;
+	}
+}
+
+int
+dkdial(char *arg)
+{
+	int fd, cfd;
+	int i;
+	long n;
+
+	sprint(buf, "connect %s", arg);
+	n = strlen(buf);
+
+	for(i = 0; ; i++){
+		fd = open("#k/2/data", ORDWR);
+		if(fd < 0)
+			error("opening #k/2/data");
+		cfd = open("#k/2/ctl", ORDWR);
+		if(cfd < 0)
+			error("opening #k/2/ctl");
+
+		if(write(cfd, buf, n)==n && authenticate(fd)==0)
+			break;
+		if(i == 5)
+			return -1;
+		close(fd);
+		close(cfd);
+		sleep(500);
+	}
+	print("connected to %s\n", arg);
+	sendmsg(cfd, "init");
+	close(cfd);
+	net = "dk";
+	netdev = "#k";
+	return fd;	
+}
+
+void
+boot(int fd)
+{
+	int n, f;
+	char *srvname;
+	Dir dir;
+	char dirbuf[DIRLEN];
+
+	srvname = strrchr(sys, '/');
+	if(srvname)
+		srvname++;
+	else
+		srvname = sys;
+	nop(fd);
+	session(fd);
+	fd = cache(fd);
+
+	/*
+	 *  stick handles to the file system
+	 *  into /srv
+	 */
+	print("post...");
+	sprint(buf, "#s/%s", srvname);
+	f = create(buf, 1, 0666);
+	if(f < 0)
+		error("create");
+	sprint(buf, "%d", fd);
+	if(write(f, buf, strlen(buf)) != strlen(buf))
+		error("write");
+	close(f);
+	f = create("#s/boot", 1, 0666);
+	if(f < 0)
+		error("create");
+	sprint(buf, "%d", fd);
+	if(write(f, buf, strlen(buf)) != strlen(buf))
+		error("write");
+	close(f);
+
+	/*
+	 *  make the root a union
+	 */
+	print("mount...");
+	if(bind("/", "/", MREPL) < 0)
+		error("bind");
+	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
+		error("mount");
+
+	/*
+	 *  set the time from the access time of the root
+	 *  of the file server, accessible as /..
+	 */
+	print("time...");
+	if(stat("/..", dirbuf) < 0)
+		error("stat");
+	convM2D(dirbuf, &dir);
+	f = open("#c/time", OWRITE);
+	sprint(dirbuf, "%ld", dir.atime);
+	write(f, dirbuf, strlen(dirbuf));
+	close(f);
+
+	print("success\n");
+
+	/*
+	 *  put a generic network device into the namespace
+	 */
+	if(netdev){
+		char buf[64];
+		sprint(buf, "/net/%s", net);
+		bind(netdev, buf, MREPL);
+		bind(netdev, "/net/net", MREPL);
+	}
+	if(net){
+		char buf[64];
+		sprint(buf, "/lib/netaddr.%s", net);
+		print("binding %s onto /lib/netaddr.net\n", buf);
+		bind(buf, "/lib/netaddr.net", MREPL);
+	}
+}
+
+/*
+ * authenticate with r70
+ */
+int
+authenticate(int fd)
+{
+	int n;
+
+	for(;;) {
+		n = read(fd, buf, sizeof(buf));
+		if(n != 2){
+			passwd();
+			return -1;
+		}
+		buf[2] = '\0';
+		if(strcmp(buf, "OK") == 0)
+			return 0;
+		else if(strcmp(buf, "CH") == 0) {
+			sprint(buf, "%s\n%s\n", username, password);
+			write(fd, buf, strlen(buf));	
+		} else  if(strcmp(buf, "NO") == 0) {
+			passwd();
+			sprint(buf, "%s\n%s\n", username, password);
+			write(fd, buf, strlen(buf));	
+		}
+	}
 }
 
 /*
@@ -270,7 +477,7 @@ nop(int fd)
 	if(n <= 0)
 		error("read nop");
 	if(convM2S(buf, &hdr, n) == 0) {
-		print("n = %d; buf = %.2x %.2x %.2x %.2x\n",
+		print("n = %d; buf = %#.2x %#.2x %#.2x %#.2x\n",
 			n, buf[0], buf[1], buf[2], buf[3]);
 		error("format nop");
 	}
@@ -279,7 +486,7 @@ nop(int fd)
 }
 
 /*
- *  send nop to file server
+ *  send session to file server
  */
 void
 session(int fd)
@@ -312,16 +519,17 @@ session(int fd)
 int
 cache(int fd)
 {
-	int f;
 	ulong i;
 	int p[2];
+	Dir d;
 
 	/*
 	 *  if there's no /cfs, just return the fd to the
 	 *  file server
 	 */
-	f = open("/cfs", OREAD);
-	if(f < 0)
+	if(dirstat("/cfs", &d) < 0)
+		return fd;
+	if(dirstat("#r/hd0cache", &d) < 0)
 		return fd;
 	print("cfs...");
 
@@ -341,9 +549,9 @@ cache(int fd)
 		dup(p[0], 1);
 		close(p[0]);
 		if(format)
-			execl("/cfs", "bootcfs", "-fs", 0);
+			execl("/cfs", "bootcfs", "-fs", "-p", "#r/hd0cache", 0);
 		else
-			execl("/cfs", "bootcfs", "-s", 0);
+			execl("/cfs", "bootcfs", "-s", "-p", "#r/hd0cache", 0);
 		break;
 	default:
 		close(p[0]);
@@ -364,6 +572,21 @@ sendmsg(int fd, char *msg)
 		error(msg);
 }
 
+/*
+ *  print error
+ */
+void
+prerror(char *s)
+{
+	char buf[64];
+
+	errstr(buf);
+	fprint(2, "boot: %s: %s\n", s, buf);
+}
+
+/*
+ *  print error and exit
+ */
 void
 error(char *s)
 {
@@ -372,4 +595,125 @@ error(char *s)
 	errstr(buf);
 	fprint(2, "boot: %s: %s\n", s, buf);
 	exits(0);
+}
+
+/*
+ *  prompt and get input
+ */
+int
+outin(char *prompt, char *def, int len)
+{
+	int n;
+	char buf[256];
+
+	do{
+		print("%s[%s]: ", prompt, def);
+		n = read(0, buf, len);
+	}while(n==0);
+	if(n < 0)
+		error("can't read #c/cons; please reboot");
+	if(n != 1){
+		buf[n-1] = 0;
+		strcpy(def, buf);
+	}
+	return n;
+}
+void
+connect(int fd)
+{
+	char xbuf[128];
+	int i, pid, n, rcons;
+
+	print("[ctrl-d to attach fs]\n");
+
+	switch(pid = fork()) {
+	case -1:
+		error("fork failed");
+	case 0:
+		for(;;) {
+			n = read(fd, xbuf, sizeof(xbuf));
+			if(n < 0) {
+				errstr(xbuf);
+				print("[remote read error (%s)]\n", xbuf);
+				for(;;);
+			}
+			for(i = 0; i < n; i++)
+				if(xbuf[i] == Cr)
+					xbuf[i] = ' ';
+			write(1, xbuf, n);
+		}
+	default:
+		rcons = open("#c/rcons", OREAD);
+		if(rcons < 0)
+			error("opening rcons");
+
+		for(;;) {
+			read(rcons, xbuf, 1);
+			switch(xbuf[0]) {
+			case CtrlD:
+				kill(pid);
+				close(rcons);
+				return;
+			default:
+				n = write(fd, xbuf, 1);
+				if(n < 0) {
+					errstr(xbuf);
+					kill(pid);
+					close(rcons);
+					print("[remote write error (%s)]\n", xbuf);
+				}
+			}
+		}
+	}
+}
+
+void
+kill(int pid)
+{
+	char xbuf[32];
+	int f;
+
+	sprint(xbuf, "/proc/%d/note", pid);
+	f = open(xbuf, OWRITE);
+	write(f, "die", 3);
+	close(f);
+}
+
+void
+passwd(void)
+{
+	Dir d;
+	char c;
+	int i, n, fd, p[2];
+
+	fd = open("#c/rcons", OREAD);
+	if(fd < 0)
+		error("can't open #c/rcons; please reboot");
+ Prompt:		
+	print("password: ");
+	n = 0;
+	do{
+		do{
+			i = read(fd, &c, 1);
+			if(i < 0)
+				error("can't read #c/rcons; please reboot");
+		}while(i == 0);
+		switch(c){
+		case '\n':
+			break;
+		case '\b':
+			if(n > 0)
+				n--;
+			break;
+		case 'u' - 'a' + 1:		/* cntrl-u */
+			print("\n");
+			goto Prompt;
+		default:
+			password[n++] = c;
+			break;
+		}
+	}while(c != '\n' && n < sizeof(password));
+	password[n] = '\0';
+	close(fd);
+	print("\n");
 }

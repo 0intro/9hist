@@ -45,8 +45,7 @@ enum
 
 struct	FPsave
 {
-	long	status;
-	uchar	reg[94];
+	uchar	regs[108];
 };
 
 struct Conf
@@ -124,7 +123,6 @@ struct Mach
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
-	int	fpstate;		/* state of fp registers on machine */
 
 	int	tlbfault;
 	int	tlbpurge;

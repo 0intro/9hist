@@ -176,13 +176,8 @@ newpage(int clear, Segment **s, ulong va)
 		}
 		qlock(&palloc.pwait);			/* Hold memory requesters here */
 
-		if(waserror()) {
-			qunlock(&palloc.pwait);
-			lock(&palloc);
-			palloc.wanted--;
-			unlock(&palloc);
-			nexterror();
-		}
+		while(waserror())			/* Ignore interrupts */
+			;
 
 		kickpager();
 		tsleep(&palloc.r, ispages, 0, 1000);
