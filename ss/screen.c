@@ -9,6 +9,7 @@
 
 #include	<libg.h>
 #include	<gnot.h>
+#include	"mouse.h"
 
 #define	MINX	8
 
@@ -470,4 +471,50 @@ buzz(int freq, int dur)
 void
 lights(int mask)
 {
+}
+
+int
+screenbits(void)
+{
+	return 1;	/* bits per pixel */
+}
+
+void
+getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
+{
+	ulong ans;
+
+	/*
+	 * The slc monochrome says 0 is white (max intensity)
+	 */
+	if(p == 0)
+		ans = ~0;
+	else
+		ans = 0;
+	*pr = *pg = *pb = ans;
+}
+
+
+int
+setcolor(ulong p, ulong r, ulong g, ulong b)
+{
+	return 0;	/* can't change mono screen colormap */
+}
+
+int
+hwcursset(uchar *s, uchar *c, int ox, int oy)
+{
+	return 0;
+}
+
+int
+hwcursmove(int x, int y)
+{
+	return 0;
+}
+
+void
+mouseclock(void)	/* called splhi */
+{
+	mouseupdate(1);
 }

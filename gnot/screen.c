@@ -9,6 +9,7 @@
 
 #include	<libg.h>
 #include	<gnot.h>
+#include	"mouse.h"
 
 #define	MINX	8
 
@@ -77,6 +78,13 @@ screenputc(int c)
 	}
 }
 
+/* Use the balu version */
+void
+gbitblt(GBitmap *d, Point p, GBitmap *s, Rectangle r, Fcode f)
+{
+	balubitblt(d, p, s, r, f);
+}
+
 void
 screenputs(char *s, int n)
 {
@@ -112,6 +120,7 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 		case 1:		ans = 0xAAAAAAAA;	break;
 		case 2:		ans = 0x55555555;	break;
 		default:	ans = 0;		break;
+		}
 	}
 	*pr = *pg = *pb = ans;
 }
@@ -132,4 +141,24 @@ int
 hwcursmove(int x, int y)
 {
 	return 0;
+}
+
+void
+mouseclock(void)	/* called spl6 */
+{
+	++mouse.clock;
+}
+
+void
+mousetry(Ureg *ur)
+{
+	int s;
+
+	if(mouse.clock && mouse.track && (ur->sr&SPL(7)) == 0 && canlock(&cursor)){
+		s = spl1();
+		mouseupdate(0);
+		splx(s);
+		unlock(&cursor);
+		wakeup(&mouse.r);
+	}
 }

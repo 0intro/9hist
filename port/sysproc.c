@@ -279,11 +279,11 @@ sysexec(ulong *arg)
 	 * Move the stack
 	 */
 	s = p->seg[ESEG];
+	p->seg[ESEG] = 0;
 	p->seg[SSEG] = s;
 	s->base = USTKTOP-USTKSIZE;
 	s->top = USTKTOP;
 	relocateseg(s, TSTKTOP-USTKTOP);
-	p->seg[ESEG] = 0;
 
 	close(tc);
 	poperror();

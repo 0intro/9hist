@@ -9,6 +9,7 @@
 
 #include	<libg.h>
 #include	<gnot.h>
+#include	"mouse.h"
 
 extern GFont	*defont;
 
@@ -67,18 +68,8 @@ void	bitcompact(void);
 void	bitfree(GBitmap*);
 extern	GBitmap	gscreen;
 
-struct{
-	/*
-	 * First four fields are known in screen.c
-	 */
-	int	dx;		/* interrupt-time delta */
-	int	dy;
-	int	track;		/* update cursor on screen */
-	Mouse;
-	int	changed;	/* mouse structure changed since last read */
-	Rendez	r;
-	int	newbuttons;	/* interrupt time access only */
-}mouse;
+Mouseinfo	mouse;
+Cursorinfo	cursor;
 
 Cursor	arrow =
 {
@@ -94,13 +85,6 @@ Cursor	arrow =
 	 0x00, 0x3E, 0x00, 0x1C, 0x00, 0x08, 0x00, 0x00,
 	}
 };
-
-struct{
-	Cursor;
-	Lock;
-	int	visible;	/* on screen */
-	Rectangle r;		/* location */
-}cursor;
 
 ulong setbits[16];
 GBitmap	set =
@@ -1211,29 +1195,36 @@ mousebuttons(int b)	/* called at higher priority */
 	mouseclock();
 }
 
+
 void
-mouseclock(void)	/* called splhi */
+mouseupdate(int dolock)
 {
 	int x, y;
-	if(mouse.track && canlock(&cursor)){
-		x = mouse.xy.x + mouse.dx;
-		if(x < gscreen.r.min.x)
-			x = gscreen.r.min.x;
-		if(x >= gscreen.r.max.x)
-			x = gscreen.r.max.x;
-		y = mouse.xy.y + mouse.dy;
-		if(y < gscreen.r.min.y)
-			y = gscreen.r.min.y;
-		if(y >= gscreen.r.max.y)
-			y = gscreen.r.max.y;
-		cursoroff(0);
-		mouse.xy = Pt(x, y);
-		cursoron(0);
-		mouse.dx = 0;
-		mouse.dy = 0;
-		mouse.track = 0;
-		mouse.buttons = mouse.newbuttons;
-		mouse.changed = 1;
+
+	if(!mouse.track || (dolock && !canlock(&cursor)))
+		return;
+
+	x = mouse.xy.x + mouse.dx;
+	if(x < gscreen.r.min.x)
+		x = gscreen.r.min.x;
+	if(x >= gscreen.r.max.x)
+		x = gscreen.r.max.x;
+	y = mouse.xy.y + mouse.dy;
+	if(y < gscreen.r.min.y)
+		y = gscreen.r.min.y;
+	if(y >= gscreen.r.max.y)
+		y = gscreen.r.max.y;
+	cursoroff(0);
+	mouse.xy = Pt(x, y);
+	cursoron(0);
+	mouse.dx = 0;
+	mouse.dy = 0;
+	mouse.clock = 0;
+	mouse.track = 0;
+	mouse.buttons = mouse.newbuttons;
+	mouse.changed = 1;
+
+	if(dolock){
 		unlock(&cursor);
 		wakeup(&mouse.r);
 	}

@@ -377,7 +377,7 @@ exit(void)
 	splhi();
 	for(i=0; i<2000000; i++)
 		;
-	duartreset();
+/*	duartreset(); /**/
 	firmware();
 }
 
