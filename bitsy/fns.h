@@ -76,6 +76,7 @@ void	outb(ulong, uchar);
 void	outs(ulong, ushort);
 void	outss(ulong, void*, int);
 void	outl(ulong, ulong);
+void	pcmciapower(int);
 void	pcmcisread(PCMslot*);
 int	pcmcistuple(int, int, int, void*, int);
 PCMmap*	pcmmap(int, ulong, int, int);

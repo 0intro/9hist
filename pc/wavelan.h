@@ -238,12 +238,17 @@ struct Stats
 	int	noise;
 };
 
+enum {
+	Attached = 0x01,
+	Power = 0x02,
+};
+
 struct Ctlr
 {
 	Lock;
 	Rendez	timer;
 
-	int	attached;
+	int	state;	// Attached | Power
 	int	slot;
 	int	iob;
  	int	createibss;

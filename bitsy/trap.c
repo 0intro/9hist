@@ -127,8 +127,6 @@ irqenable(int irq, IntrHandler *f, void* a, char *name)
 	if(irq >= nelem(vctl) || irq < 0)
 		panic("intrenable");
 
-	print("irqenable %s, handler 0x%p\n", name, f);
-
 	v = malloc(sizeof(Vctl));
 	v->f = f;
 	v->a = a;
@@ -183,8 +181,6 @@ intrenable(int type, int which, IntrHandler *f, void* a, char *name)
 		irqenable(which, f, a, name);
 		return;
 	}
-
-	print("intrenable %s, handler 0x%p\n", name, f);
 
 	/* from here down, it must be a GPIO edge interrupt */
 	irq = which;

@@ -236,6 +236,8 @@ struct PCMslot
 	uchar	occupied;	/* card in the slot */
 	uchar	configed;	/* card configured */
 
+	Dev		*dev;	/* set in ctlwrite `configure' */
+
 	/* cis info */
 	int	cisread;	/* set when the cis has been read */
 	char	verstr[512];	/* version string */

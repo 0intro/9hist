@@ -108,13 +108,15 @@ bitno(ulong x)
 /*
  * power up/down pcmcia
  */
-static void
-pcmciapower(int up)
+void
+pcmciapower(int on)
 {
+	PCMslot *sp;
+
 	/* if there's no pcmcia sleave, no interrupts */
 	if(gpioregs->level & GPIO_OPT_IND_i)
 		return;
-	if (up){
+	if (on){
 		/* set timing to the default, 300 */
 		slottiming(0, 300, 300, 300, 0);
 		slottiming(1, 300, 300, 300, 0);
@@ -123,10 +125,38 @@ pcmciapower(int up)
 		if(gpioregs->level & GPIO_OPT_IND_i)
 			return;
 
-		/* sleave there, interrupt on card removal */
-		intrenable(GPIOrising, bitno(GPIO_CARD_IND1_i), slotinfo, nil, "pcmcia slot1 status");
-		intrenable(GPIOrising, bitno(GPIO_CARD_IND0_i), slotinfo, nil, "pcmcia slot0 status");
+		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 1);
+		delay(200);
+		egpiobits(EGPIO_pcmcia_reset, 1);
+		delay(100);
+		egpiobits(EGPIO_pcmcia_reset, 0);
+		delay(500);
+
+		slotinfo(nil, nil);	// See what's there
+		for (sp = slot; sp < slot + nslot; sp++){
+			if (sp->occupied == 0)
+				continue;
+			if(sp->cisread == 0)
+				pcmcisread(sp);
+			if (sp->dev){
+print("pcmciapower: dev 0x%p", sp->dev);
+print(", power 0x%p\n", sp->dev->power);
+				if (sp->dev->power)
+					sp->dev->power(on);
+			}
+		}
 	}else{
+		for (sp = slot; sp < slot + nslot; sp++){
+			if (sp->occupied == 0)
+				continue;
+			if (sp->dev){
+print("pcmciapower: dev 0x%p", sp->dev);
+print(", power 0x%p\n", sp->dev->power);
+				if (sp->dev->power)
+					sp->dev->power(on);
+			}
+		}
+		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 0);
 	}
 }
 
@@ -140,7 +170,17 @@ pcmciareset(void)
 	slotmap(0, PHYSPCM0REGS, PYHSPCM0ATTR, PYHSPCM0MEM);
 	slotmap(1, PHYSPCM1REGS, PYHSPCM1ATTR, PYHSPCM1MEM);
 
-	pcmciapower(1);
+	/* set timing to the default, 300 */
+	slottiming(0, 300, 300, 300, 0);
+	slottiming(1, 300, 300, 300, 0);
+
+	/* if there's no pcmcia sleave, no interrupts */
+	if(gpioregs->level & GPIO_OPT_IND_i)
+		return;
+
+	/* sleave there, interrupt on card removal */
+	intrenable(GPIOrising, bitno(GPIO_CARD_IND1_i), slotinfo, nil, "pcmcia slot1 status");
+	intrenable(GPIOrising, bitno(GPIO_CARD_IND0_i), slotinfo, nil, "pcmcia slot0 status");
 }
 
 static Chan*
@@ -356,6 +396,8 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 		cf.intnum = bitno(sp == slot ? GPIO_CARD_IRQ0_i : GPIO_CARD_IRQ1_i);
 		if(devtab[dtx]->config(1, p, &cf) < 0)
 			error("couldn't configure device");
+		sp->dev = devtab[dtx];
+print("pcmctlwrite: configure %s: 0x%p\n", cmd->f[1], sp->dev);
 
 		wunlock(sp);
 		poperror();
@@ -431,6 +473,7 @@ Dev pcmciadevtab = {
 	devbwrite,
 	devremove,
 	devwstat,
+	pcmciapower,
 };
 
 /* see what's there */

@@ -471,7 +471,7 @@ w_txstart(Ether* ether)
 	Block *bp;
 	int len, off;
 
-	if((ctlr = ether->ctlr) == nil || ctlr->attached == 0 || ctlr->txbusy)
+	if((ctlr = ether->ctlr) == nil || (ctlr->state & (Attached|Power)) == 0 || ctlr->txbusy)
 		return;
 
 	if((bp = qget(ether->oq)) == nil)
@@ -558,7 +558,10 @@ w_intr(Ether *ether)
 	int rc, txid;
 	Ctlr* ctlr = (Ctlr*) ether->ctlr;
 
-	if (ctlr->attached == 0){
+	if ((ctlr->state & Power) == 0)
+		return;
+
+	if ((ctlr->state & Attached) == 0){
 		csr_ack(ctlr, 0xffff);
 		csr_outs(ctlr, WR_IntEna, 0);
 		return;
@@ -609,17 +612,13 @@ w_timer(void* arg)
 	Ether* ether = (Ether*) arg;
 	Ctlr* ctlr = (Ctlr*)ether->ctlr;
 
-	if (waserror()){
-		print("timerporc dying\n");
-		pexit("aaargh!", 0);
-	}
 	ctlr->timerproc = up;
 	for(;;){
 		tsleep(&ctlr->timer, return0, 0, 50);
 		ctlr = (Ctlr*)ether->ctlr;
 		if (ctlr == 0)
 			break;
-		if (ctlr->attached == 0)
+		if ((ctlr->state & Attached) == 0)
 			continue;
 		ctlr->ticks++;
 
@@ -660,7 +659,6 @@ w_timer(void* arg)
 		}
 		iunlock(ctlr);
 	}
-	poperror();
 	pexit("terminated", 0);
 }
 
@@ -682,12 +680,12 @@ w_attach(Ether* ether)
 
 	snprint(name, sizeof(name), "#l%dtimer", ether->ctlrno);
 	ctlr = (Ctlr*) ether->ctlr;
-	if (ctlr->attached == 0){
+	if ((ctlr->state & Attached) == 0){
 		ilock(ctlr);
 		rc = w_enable(ether);
 		iunlock(ctlr);
 		if(rc == 0){
-			ctlr->attached = 1;
+			ctlr->state |= Attached;
 			kproc(name, w_timer, ether);
 		} else
 			print("#l%d: enable failed\n",ether->ctlrno);
@@ -705,7 +703,7 @@ w_detach(Ether* ether)
 
 	snprint(name, sizeof(name), "#l%dtimer", ether->ctlrno);
 	ctlr = (Ctlr*) ether->ctlr;
-	if (ctlr->attached){
+	if (ctlr->state & Attached){
 		ilock(ctlr);
 		w_intdis(ctlr);
 		if (ctlr->timerproc){
@@ -713,9 +711,32 @@ w_detach(Ether* ether)
 				print("timerproc note not posted\n");
 			print("w_detach, killing 0x%p\n", ctlr->timerproc);
 		}
-		ctlr->attached = 0;
+		ctlr->state &= ~Attached;
 		iunlock(ctlr);
 	}
+}
+
+void
+w_power(Ether* ether, int on)
+{
+	Ctlr *ctlr;
+
+	ctlr = (Ctlr*) ether->ctlr;
+	ilock(ctlr);
+	if (on){
+		if ((ctlr->state & Power) == 0){
+			if (ctlr->state & Attached)
+				w_enable(ether);
+			ctlr->state |= Power;
+		}
+	}else{
+		if (ctlr->state & Power){
+			if (ctlr->state & Attached)
+				w_intdis(ctlr);
+			ctlr->state &= ~Power;
+		}
+	}
+	iunlock(ctlr);
 }
 
 #define PRINTSTAT(fmt,val)	l += snprint(p+l, READSTR-l, (fmt), (val))
@@ -760,8 +781,10 @@ w_ifstat(Ether* ether, void* a, long n, ulong offset)
 	PRINTSTAT("WatchDogs: %lud\n", ctlr->nwatchdogs);
 	PRINTSTAT("Ticks: %ud\n", ctlr->ticks);
 	PRINTSTAT("TickIntr: %ud\n", ctlr->tickintr);
-	k = ((ctlr->attached) ? "attached" : "not attached");
+	k = ((ctlr->state & Attached) ? "attached" : "not attached");
 	PRINTSTAT("Card %s", k);
+	k = ((ctlr->state & Power) ? "on" : "off");
+	PRINTSTAT("PCardower %s", k);
 	k = ((ctlr->txbusy)? ", txbusy" : "");
 	PRINTSTAT("%s\n", k);
 
@@ -967,7 +990,7 @@ w_ctl(Ether* ether, void* buf, long n)
 
 	if((ctlr = ether->ctlr) == nil)
 		error(Enonexist);
-	if(ctlr->attached == 0)
+	if((ctlr->state & Attached) == 0)
 		error(Eshutdown);
 
 	ilock(ctlr);
@@ -1006,7 +1029,7 @@ w_promiscuous(void* arg, int on)
 
 	if (ctlr == nil)
 		error("card not found");
-	if (ctlr->attached == 0)
+	if ((ctlr->state & Attached) == 0)
 		error("card not attached");
 	ilock(ctlr);
 	ltv_outs(ctlr, WTyp_Prom, (on?1:0));
@@ -1088,6 +1111,7 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ether->transmit = w_transmit;
 	ether->ifstat = w_ifstat;
 	ether->ctl = w_ctl;
+	ether->power = w_power;
 	ether->promiscuous = w_promiscuous;
 	ether->multicast = w_multicast;
 	ether->arg = ether;

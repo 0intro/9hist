@@ -172,6 +172,7 @@ deepsleep(void) {
 	xlink = getcallerpc(&xlink);
 
 	/* Power down */
+	pcmciapower(0);
 	irpower(0);
 	audiopower(0);
 	screenpower(0);
@@ -216,6 +217,7 @@ deepsleep(void) {
 //		audiopower(1);
 		µcpower(1);
 		screenpower(1);
+		pcmciapower(1);
 		splx(power_pl);
 		return;
 	}

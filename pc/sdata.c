@@ -476,7 +476,7 @@ atadmamode(Drive* drive)
 	dma = drive->info[Imwdma] & 0x0707;
 	drive->dma = (dma>>8) & dma;
 	if(drive->dma == 0 && (drive->info[Ivalid] & 0x04)){
-		dma = drive->info[Iudma] & 0x1F1F;
+		dma = drive->info[Iudma] & 0x3F3F;
 		drive->dma = (dma>>8) & dma;
 		if(drive->dma)
 			drive->dma |= 'U'<<16;
