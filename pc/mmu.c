@@ -165,7 +165,7 @@ mmuinit(void)
 	 *  set up the task segment
 	 */
 	memset(&tss, 0, sizeof(tss));
-	taskswitch(ktoppg.pa, BY2BG + (ulong)m);
+	taskswitch(ktoppg.pa, BY2PG + (ulong)m);
 	puttr(TSSSEL);
 }
 
@@ -218,9 +218,9 @@ mmuswitch(Proc *p)
 
 	/* tell processor about new page table (flushes cached entries) */
 	if(p->mmutop)
-		taskswitch(p->mmutop->pa, p->kstack+KSTACK);
+		taskswitch(p->mmutop->pa, (ulong)(p->kstack+KSTACK));
 	else
-		taskswitch(ktoppg.pa, p->kstack+KSTACK);
+		taskswitch(ktoppg.pa, (ulong)(p->kstack+KSTACK));
 }
 
 /*
@@ -273,7 +273,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 		memmove((void*)pg->va, (void*)ktoppg.va, BY2PG);
 		up->mmutop = pg;
 	}
-	top = (ulong*)up->mmutoup->va;
+	top = (ulong*)up->mmutop->va;
 	topoff = TOPOFF(va);
 
 	/*
@@ -305,7 +305,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 	pt[BTMOFF(va)] = pa | PTEUSER;
 
 	/* flush cached mmu entries */
-	taskswitch(up->mmutoup->pa, up->kstack);
+	taskswitch(up->mmutop->pa, (ulong)up->kstack);
 	splx(s);
 }
 

@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
+#include	"ureg.h"
 
 /*
  *  tlb entry 0 is used only by mmuswitch() to set the current tlb pid.
@@ -141,11 +142,13 @@ kunmap(KMap *k)
 }
 
 void
-kfault(ulong addr)
+kfault(Ureg *ur)
 {
 	KMap *k, *f;
 	ulong x, index, virt;
+	ulong addr;
 
+	addr = ur->badvaddr;
 	index = (addr & ~KMAPADDR) >> KMAPSHIFT;
 	if(index >= KPTESIZE)
 		panic("kmapfault: %lux", addr);

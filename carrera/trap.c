@@ -205,7 +205,7 @@ trap(Ureg *ur)
 			kernfault(ur, ecode);
 
 		if(!user && (ur->badvaddr & KMAPMASK) == KMAPADDR) {
-			kfault(ur->badvaddr);
+			kfault(ur);
 			break;
 		}
 

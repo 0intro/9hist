@@ -103,7 +103,7 @@ debugbpt(Ureg *ur)
 	/* restore pc to instruction that caused the trap */
 	ur->pc--;
 	sprint(buf, "sys: breakpoint");
-	postnote(up->p, 1, buf, NDebug);
+	postnote(up, 1, buf, NDebug);
 }
 
 /*
@@ -261,7 +261,7 @@ lastur = ur;
 		if(v <= 16){
 			if(user){
 				sprint(buf, "sys: trap: %s", excname[v]);
-				postnote(up->p, 1, buf, NDebug);
+				postnote(up, 1, buf, NDebug);
 				return;
 			} else {
 				dumpregs(ur);
@@ -308,10 +308,7 @@ dumpregs2(Ureg *ur)
 		print("registers for kernel\n");
 	print("FLAGS=%lux TRAP=%lux ECODE=%lux CS=%lux PC=%lux", ur->flags, ur->trap,
 		ur->ecode, ur->cs&0xff, ur->pc);
-	if(ur == (Ureg*)UREGADDR)
-		print(" SS=%lux USP=%lux\n", ur->ss&0xff, ur->usp);
-	else
-		print("\n");
+	print(" SS=%lux USP=%lux\n", ur->ss&0xff, ur->usp);
 	print("  AX %8.8lux  BX %8.8lux  CX %8.8lux  DX %8.8lux\n",
 		ur->ax, ur->bx, ur->cx, ur->dx);
 	print("  SI %8.8lux  DI %8.8lux  BP %8.8lux\n",
@@ -340,7 +337,7 @@ dumpstack(void)
 		return;
 
 	i = 0;
-	for(l=(ulong)&l; l<up->kstack+BY2PG; l+=4){
+	for(l=(ulong)&l; l<(ulong)(up->kstack+BY2PG); l+=4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext){
 			print("%lux ", v);
@@ -358,18 +355,24 @@ long
 execregs(ulong entry, ulong ssize, ulong nargs)
 {
 	ulong *sp;
+	Ureg *ur;
 
 	sp = (ulong*)(USTKTOP - ssize);
 	*--sp = nargs;
-	((Ureg*)UREGADDR)->usp = (ulong)sp;
-	((Ureg*)UREGADDR)->pc = entry;
+
+	ur = up->dbgreg;
+	ur->usp = (ulong)sp;
+	ur->pc = entry;
 	return USTKTOP-BY2WD;			/* address of user-level clock */
 }
 
 ulong
 userpc(void)
 {
-	return ((Ureg*)UREGADDR)->pc;
+	Ureg *ur;
+
+	ur = (Ureg*)up->dbgreg;
+	return ur->pc;
 }
 
 /*
@@ -411,7 +414,7 @@ syscall(Ureg *ur)
 	if(!waserror()){
 		if(up->scallnr >= sizeof systab/BY2WD){
 			pprint("bad sys call number %d pc %lux\n", up->scallnr, ur->pc);
-			postnote(up->p, 1, "sys: bad sys call", NDebug);
+			postnote(up, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
 
@@ -464,7 +467,7 @@ notify(Ureg *ur)
 	Note *n;
 
 	if(up->procctl)
-		procctl(up->p);
+		procctl(up);
 	if(up->nnote == 0)
 		return 0;
 

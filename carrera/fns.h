@@ -43,7 +43,7 @@ void	ioinit(int);
 int	iprint(char*, ...);
 int	kbdinit(void);
 int	kbdintr(void);
-void	kfault(ulong);
+void	kfault(Ureg*);
 KMap*	kmap(Page*);
 void	kmapinit(void);
 void	kmapinval(void);

@@ -5,6 +5,7 @@ typedef struct Label	Label;
 typedef struct Lock	Lock;
 typedef struct MMU	MMU;
 typedef struct Mach	Mach;
+typedef struct Notsave	Notsave;
 typedef struct PCArch	PCArch;
 typedef struct Page	Page;
 typedef struct PMMU	PMMU;
@@ -96,6 +97,16 @@ struct PMMU
 	Page	*mmuused;	/* used page table pages */
 };
 
+/*
+ *  things saved in the Proc structure during a notify
+ */
+struct Notsave
+{
+	ulong	svflags;
+	ulong	svcs;
+	ulong	svss;
+};
+
 #include "../port/portdat.h"
 
 /*
@@ -177,6 +188,7 @@ struct ISAConf {
 
 extern int	flipD[];		/* for flipping bitblt destination polarity */
 extern PCArch	*arch;			/* PC architecture */
+extern int	cpuflag;		/* true if this is a CPU */
 
 extern Mach	*m;
 extern Proc	*up;

@@ -11,6 +11,7 @@ typedef struct Image	Image;
 typedef struct IOQ	IOQ;
 typedef struct KIOQ	KIOQ;
 typedef struct List	List;
+typedef struct Mntcache Mntcache;
 typedef struct Mount	Mount;
 typedef struct Mntrpc	Mntrpc;
 typedef struct Mntwalk	Mntwalk;
@@ -135,6 +136,7 @@ struct Chan
 	Mount	*mnt;			/* mount point that derived Chan */
 	Mount	*xmnt;			/* Last mount point crossed */
 	ulong	mountid;
+	Mntcache *mcp;			/* Mount cache pointer */
 	union {
 		void	*aux;
 		Qid	pgrpid;		/* for #p/notepg */
@@ -597,8 +599,7 @@ struct Proc
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */
-	ulong	svstatus;
-	ulong	svr1;
+	Notsave;
 
 	/*
 	 *  machine specific MMU

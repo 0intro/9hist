@@ -99,6 +99,7 @@ newchan(void)
 	c->aux = 0;
 	c->mchan = 0;
 	c->path = 0;
+	c->mcp = 0;
 	c->mqid = (Qid){0, 0};
 	return c;
 }

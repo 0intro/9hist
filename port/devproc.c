@@ -243,7 +243,6 @@ procwstat(Chan *c, char *db)
 	if(c->qid.path&CHDIR)
 		error(Eperm);
 
-	convM2D(db, &d);
 	p = proctab(SLOT(c->qid));
 	if(p->pid != PID(c->qid))
 		error(Eprocdied);
@@ -251,13 +250,14 @@ procwstat(Chan *c, char *db)
 	if(strcmp(up->user, p->user) != 0 && strcmp(up->user, eve) != 0)
 		error(Eperm);
 
+	convM2D(db, &d);
 	p->procmode = d.mode&0777;
 }
 
 void
 procclose(Chan * c)
 {
-	if(QID(c->qid) == Qns)
+	if(QID(c->qid) == Qns && c->aux != 0)
 		free(c->aux);
 }
 

@@ -98,6 +98,7 @@ devclone(Chan *c, Chan *nc)
 	nc->aux = c->aux;
 	nc->mchan = c->mchan;
 	nc->mqid = c->mqid;
+	nc->mcp = c->mcp;
 	nc->path = c->path;
 	incref(nc->path);
 	return nc;

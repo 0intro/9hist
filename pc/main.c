@@ -95,15 +95,21 @@ machinit(void)
 ulong garbage;
 
 void
+ksetterm(char *f)
+{
+	char buf[2*NAMELEN];
+
+	sprint(buf, f, conffile);
+	ksetenv("terminal", buf);
+}
+
+void
 init0(void)
 {
 	int i;
 	char tstr[32];
 
 	up->nerrlab = 0;
-	m->proc = up->p;
-	up->state = Running;
-	up->mach = m;
 
 	spllo();
 
@@ -136,7 +142,6 @@ userinit(void)
 {
 	Proc *p;
 	Segment *s;
-	User *up;
 	KMap *k;
 	Page *pg;
 
@@ -434,12 +439,12 @@ matherror(Ureg *ur)
 		if((1<<i) & status){
 			msg = mathmsg[i];
 			sprint(note, "sys: fp: %s fppc=0x%lux", msg, up->fpsave.pc);
-			postnote(up->p, 1, note, NDebug);
+			postnote(up, 1, note, NDebug);
 			break;
 		}
 	if(msg == 0){
 		sprint(note, "sys: fp: unknown fppc=0x%lux", up->fpsave.pc);
-		postnote(up->p, 1, note, NDebug);
+		postnote(up, 1, note, NDebug);
 	}
 	if(ur->pc & KZERO)
 		panic("fp: status %lux fppc=0x%lux pc=0x%lux", status,
@@ -534,7 +539,7 @@ procrestore(Proc *p)
 void
 exit(int ispanic)
 {
-	u = 0;
+	up = 0;
 	print("exiting\n");
 	if(ispanic){
 		if(cpuflag)
