@@ -539,6 +539,8 @@ confinit(void)
 	conf.npage0 = i*1024/4;
 	conf.base0 = 0;
 	conf.npage = conf.npage0;
+	conf.npage1 = 0;
+	conf.base1 = 0;
 	conf.maxialloc = (128*1024*1024-256*1024-BY2PG);
 
 	/*

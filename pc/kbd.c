@@ -240,35 +240,64 @@ latin1(int k1, int k2)
 	return 0;
 }
 
-static void
-mousecmd(int cmd, int arg)
+/*
+ *  wait for output no longer busy
+ */
+static int
+outready(void)
+{
+	int tries;
+
+	for(tries = 0; (inb(Status) & Outbusy); tries++)
+		if(tries > 1000)
+			return -1;
+	return 0;
+}
+
+/*
+ *  wait for input
+ */
+static int
+inready(void)
+{
+	int tries;
+
+	for(tries = 0; !(inb(Status) & Inready); tries++)
+		if(tries > 1000)
+			return -1;
+	return 0;
+}
+
+/*
+ *  send a command to the mouse
+ */
+static int
+mousecmd(int cmd)
 {
 	unsigned int c;
+	int tries;
 
-	do {
-		while(inb(Status) & Outbusy)
-			;
+	for(tries=0; tries < 10; tries++){
+		if(outready() < 0)
+			return -1;
 		outb(Cmd, 0xD4);
-		while(inb(Status) & Outbusy)
-			;
+		if(outready() < 0)
+			return -1;
 		outb(Data, cmd);
-		if(arg >= 0){
-			while(inb(Status) & Outbusy)
-				;
-			outb(Data, arg);
-		}
-		while(!(inb(Status) & Inready))
-			;
+		if(inready() < 0)
+			return -1;
 		c = inb(Data);
 	} while(c == 0xFE);
 	if(c != 0xFA)
-		print("mouse command returns bad status %lux", c);
+		return -1;
+	return 0;
 }
 
 void
 kbdinit(void)
 {
 	int c, s;
+	int tries;
 
 	initq(&kbdq);
 	setvec(Kbdvec, kbdintr);
@@ -282,19 +311,17 @@ kbdinit(void)
 
 	/* enable kbd/mouse xfers and interrupts */
 	outb(Cmd, 0x60);
-	while(inb(Status) & Outbusy)
-		;
+	if(outready() < 0)
+		print("kbd init failed\n");
 	outb(Data, 0x47);
-	while(inb(Status) & Outbusy)
-		;
+	if(outready() < 0)
+		print("kbd init failed\n");
 	outb(Cmd, 0xA8);
 
-	/* make mouse streaming (and enabled) */
-	mousecmd(0xEA, -1);
-	mousecmd(0xF4, -1);
-
-	/* resolution */
-/*	mousecmd(0xE8, 0x03); /**/
+	/* make mouse streaming, enabled */
+	if(mousecmd(0xEA) < 0
+	|| mousecmd(0xF4) < 0)
+		print("can't initialize mouse\n");
 }
 
 /*

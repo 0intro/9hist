@@ -3,6 +3,7 @@ Conftab conftab[] = {
 	{"nproc", &conf.nproc },
 	{"npgrp", &conf.npgrp },
 	{"npage0", &conf.npage0 },
+	{"npage1", &conf.npage1 },
 	{"npage", &conf.npage },
 	{"nseg", &conf.nseg },
 	{"nimage", &conf.nimage },

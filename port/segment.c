@@ -438,7 +438,8 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 		ns = u->p->seg[i];
 		if(ns == 0)
 			continue;	
-		if(newtop >= ns->base && newtop < ns->top) 
+		if((newtop > ns->base && newtop <= ns->top) ||
+		   (va >= ns->base && va < ns->top))
 			errors("segments overlap");
 	}
 

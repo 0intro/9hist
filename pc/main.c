@@ -265,3 +265,120 @@ void
 lights(int val)
 {
 }
+
+
+/*
+ *  special stuff for 80c51 power management and headland system controller
+ */
+enum
+{
+	/*
+	 *  system control port
+	 */
+	Head=		0x92,		/* control port */
+	 Reset=		(1<<0),		/* reset the 386 */
+	 A20ena=	(1<<1),		/* enable address line 20 */
+
+	/*
+	 *  power management unit ports
+	 */
+	Pmudata=	0x198,
+
+	Pmucsr=		0x199,
+	 Busy=	0x1,
+};
+
+/*
+ *  enable address bit 20
+ */
+void
+a20enable(void)
+{
+	outb(Head, A20ena);
+}
+
+/*
+ *  reset the chip
+ */
+void
+exit(void)
+{
+	int i;
+
+	u = 0;
+	print("exiting\n");
+	outb(Head, Reset);
+}
+
+/*
+ *  return when pmu ready
+ */
+static int
+pmuready(void)
+{
+	int tries;
+
+	for(tries = 0; (inb(Pmucsr) & Busy); tries++)
+		if(tries > 1000)
+			return -1;
+	return 0;
+}
+
+/*
+ *  return when pmu busy
+ */
+static int
+pmubusy(void)
+{
+	int tries;
+
+	for(tries = 0; !(inb(Pmucsr) & Busy); tries++)
+		if(tries > 1000)
+			return -1;
+	return 0;
+}
+
+/*
+ *  set a bit in the PMU
+ */
+int
+pmuwrbit(int index, int bit, int pos)
+{
+	outb(Pmucsr, 0x02);		/* next is command request */
+	if(pmuready() < 0)
+		return -1;
+	outb(Pmudata, (2<<4) | index);	/* send write bit command */
+	outb(Pmucsr, 0x01);		/* send available */
+	if(pmubusy() < 0)
+		return -1;
+	outb(Pmucsr, 0x01);		/* next is data */
+	if(pmuready() < 0)
+		return -1;
+	outb(Pmudata, (bit<<3) | pos);	/* send bit to write */
+	outb(Pmucsr, 0x01);		/* send available */
+	if(pmubusy() < 0)
+		return -1;
+}
+
+/*
+ *  control power to the serial line
+ *	onoff == 0 means turn power on
+ *	onoff == 1 means off
+ */
+int
+serial(int onoff)
+{
+	return pmuwrbit(1, onoff, 6);
+}
+
+int
+owl(int onoff)
+{
+	return pmuwrbit(0, onoff, 4);
+}
+
+int
+mail(int onoff)
+{
+	return pmuwrbit(0, onoff, 1);
+}

@@ -35,7 +35,7 @@ enum
 };
 
 int	int0mask = 0xff;	/* interrupts enabled for first 8259 */
-int	int1mask = 0xff;		/* interrupts enabled for second 8259 */
+int	int1mask = 0xff;	/* interrupts enabled for second 8259 */
 
 /*
  *  trap/interrupt gates

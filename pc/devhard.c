@@ -116,6 +116,10 @@ Dirtab harddir[]={
 };
 #define NHDIR	(sizeof(harddir)/sizeof(Dirtab))
 
+static void	hardintr(Ureg*);
+static long	hardxfer(Drive*, int, void*, long, long);
+static long	hardident(Drive*);
+
 void
 hardreset(void)
 {
@@ -213,6 +217,8 @@ hardread(Chan *c, void *a, long n)
 		break;
 	case Qstruct:
 		hardident(dp);
+		dp->cap = 512 * dp->id->lcyls * dp->id->lheads *dp->id->ls2t;
+		dp->bytes = 512;
 		if (n < 2*sizeof(ulong))
 			error(Ebadarg);
 		if (c->offset >= 2*sizeof(ulong))
@@ -257,7 +263,7 @@ hardwrite(Chan *c, void *a, long n)
  *  did an interrupt happen?
  */
 static int
-interrupted(Drive *dp)
+interrupted(void *a)
 {
 	return hard.intr;
 }
@@ -265,16 +271,33 @@ interrupted(Drive *dp)
 /*
  *  get parameters from the drive
  */
+static long
 hardident(Drive *dp)
 {
+	qlock(&hard);
 	hard.intr = 0;
 	outb(Pdh, dp->dev<<4);
 	outb(Pcmd, Cident);
+	sleep(&hard.r, interrupted, 0);
+	insw(Pdata, &hard.id, 512);
+	qunlock(&hard);
 }
 
-long
+static long
 hardxfer(Drive *dp, int cmd, void *va, long off, long len)
 {
 	errors("not implemented");
+}
+
+/*
+ *  take/clear a disk interrupt
+ */
+static void
+hardintr(Ureg *ur)
+{
+	hard.status = inb(Pstatus);
+	hard.intr = 1;
+	print("hardintr\n");
+	wakeup(&hard.r);
 }
 

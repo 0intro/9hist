@@ -40,6 +40,7 @@ struct Conf
 	ulong	nproc;		/* processes */
 	ulong	npgrp;		/* process groups */
 	ulong	npage0;		/* total physical pages of memory */
+	ulong	npage1;		/* total physical pages of memory */
 	ulong	npage;		/* total physical pages of memory */
 	ulong	nseg;		/* number of segments */
 	ulong	nimage;		/* number of page cache image headers */

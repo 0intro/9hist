@@ -367,6 +367,7 @@ static void
 floppykproc(void *a)
 {
 	Drive *dp;
+	int disp = 0;
 
 	waserror();
 	for(;;){
@@ -378,7 +379,13 @@ floppykproc(void *a)
 				qunlock(dp);
 			}
 		}
+		disp++;
+		if(owl(disp&1) < 0)
+			print("owl failed\n");
+		if(mail((disp>>1)&1) < 0)
+			print("mail failed\n");
 		tsleep(&floppy.kr, return0, 0, 5*1000);
+		
 	}
 }
 

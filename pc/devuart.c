@@ -37,7 +37,7 @@ enum
 	 Loop=	(1<<4),		/*  loop bask */
 	Lstat=	5,		/* line status */
 	 Inready=(1<<0),	/*  receive buffer full */
-	 Outbusy=(1<<5),	/*  output buffer full */
+	 Outready=(1<<5),	/*  output buffer full */
 	Mstat=	6,		/* modem status */
 	Scratch=7,		/* scratchpad */
 	Dlsb=	0,		/* divisor lsb */
@@ -88,7 +88,7 @@ uartsetbaud(Uart *up, int rate)
 {
 	ulong brconst;
 
-	brconst = (UartFREQ+8*rate-1)/16*rate;
+	brconst = (UartFREQ+8*rate-1)/(16*rate);
 
 	uartwrreg(up, Format, Dra);
 	uartwrreg(up, Dmsb, (brconst>>8) & 0xff);
@@ -178,6 +178,7 @@ uartputs(IOQ *cq, char *s, int n)
 {
 	Uart *up = cq->ptr;
 	int st, ch, x;
+	int tries;
 
 	x = splhi();
 	lock(cq);
@@ -187,7 +188,8 @@ uartputs(IOQ *cq, char *s, int n)
 print("<start %2.2ux>", ch);/**/
 		if(ch >= 0){
 			up->printing = 1;
-			while(uartrdreg(up, Lstat) & Outbusy)
+			for(tries = 0; tries<10000 && !(uartrdreg(up, Lstat)&Outready);
+				tries++)
 				;
 			outb(up->port + Data, ch);
 		}
@@ -202,11 +204,13 @@ print("<start %2.2ux>", ch);/**/
 void
 uartintr(Uart *up)
 {
-	int s;
 	int ch;
 	IOQ *cq;
+	int s;
 
-	switch(uartrdreg(up, Istat)){
+	s = uartrdreg(up, Istat);
+print("uartintr %lux\n", s);
+	switch(s){
 	case 3:
 		/*
 		 *  get any input characters
@@ -227,10 +231,11 @@ uartintr(Uart *up)
 		/*
 		 *  send next output character
 		 */
-		if((s & Outbusy)==0){
+		if(uartrdreg(up, Lstat)&Outready){
 			cq = up->oq;
 			lock(cq);
 			ch = getc(cq);
+print("<cont %2.2ux>", ch);/**/
 			if(ch < 0){
 				up->printing = 0;
 				wakeup(&cq->r);
@@ -270,6 +275,7 @@ uartenable(Uart *up)
 		up->iq->ptr = up;
 		up->sticky[Iena] |= Ircv;
 	}
+	up->sticky[Iena] |= (1<<2) | (1<<3);
 
 	/*
  	 *  turn on interrupts
@@ -465,7 +471,6 @@ uartkproc(void *a)
 
 loop:
 	while ((n = cangetc(cq)) == 0){
-print("uart0 sleeping/n");
 		sleep(&cq->r, cangetc, cq);
 	}
 	qlock(up);
@@ -505,6 +510,9 @@ void
 uartreset(void)
 {
 	Uart *up;
+
+	if(serial(0) < 0)
+		print("can't turn on power\n");
 
 	uartsetup();
 	for(up = uart; up < &uart[2]; up++){
