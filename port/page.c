@@ -215,6 +215,10 @@ putpage(Page *p)
 
 	lock(&palloc);
 	lock(p);
+
+	if(p->ref == 0)
+		panic("putpage");
+
 	if(--p->ref > 0) {
 		unlock(p);
 		unlock(&palloc);
@@ -271,14 +275,8 @@ retry:
 		panic("duppage %d", retries);
 
 	/* don't dup pages with no image */
-	if(p->ref == 0 || p->image == nil)
+	if(p->ref == 0 || p->image == nil || p->image->notext)
 		return;
-
-	/* No dup for swap/cache pages but we still have to uncache */
-	if(p->image->notext){
-		uncachepage(p);
-		return;
-	}
 
 	/*
 	 *  normal lock ordering is to call
@@ -395,10 +393,14 @@ cachedel(Image *i, ulong daddr)
 	l = &pghash(daddr);
 	for(f = *l; f; f = f->hash) {
 		if(f->image == i && f->daddr == daddr) {
-			*l = f->hash;
-			putimage(f->image);
-			f->image = 0;
-			f->daddr = 0;
+			lock(f);
+			if(f->image == i && f->daddr == daddr){
+				*l = f->hash;
+				putimage(f->image);
+				f->image = 0;
+				f->daddr = 0;
+			}
+			unlock(f);
 			break;
 		}
 		l = &f->hash;

@@ -60,12 +60,12 @@ putswap(Page *p)
 	lock(&swapalloc);
 	idx = &swapalloc.swmap[((ulong)p)/BY2PG];
 	if(--(*idx) == 0) {
-		if(swapalloc.swmap[((ulong)p)/BY2PG]==255)
-			panic("putswap");
 		swapalloc.free++;
 		if(idx < swapalloc.last)
 			swapalloc.last = idx;
 	}
+	if(*idx >= 254)
+		panic("putswap %lux == %ud", p, *idx);
 	unlock(&swapalloc);
 }
 
@@ -73,9 +73,8 @@ void
 dupswap(Page *p)
 {
 	lock(&swapalloc);
-	if(swapalloc.swmap[((ulong)p)/BY2PG]==255)
+	if(++swapalloc.swmap[((ulong)p)/BY2PG] == 0)
 		panic("dupswap");
-	swapalloc.swmap[((ulong)p)/BY2PG]++;
 	unlock(&swapalloc);
 }
 
@@ -279,10 +278,10 @@ pagepte(int type, Page **pg)
 	case SG_SHARED:
 	case SG_SHDATA:
 	case SG_MAP:
-		/* if it's already on disk, we're done */
+		/* if it's already on disk, no need to do io again */
 #ifdef asdf
 		lock(outp);
-		if(outp->daddr != 0 && outp->image == &swapimage){
+		if(outp->image == &swapimage){
 			dupswap((Page*)outp->daddr);
 			*pg = (Page*)(outp->daddr|PG_ONSWAP);
 			unlock(outp);
@@ -292,22 +291,34 @@ pagepte(int type, Page **pg)
 		unlock(outp);
 #endif asdf
 
+		/*
+		 *  get a new swap address and clear any pages
+		 *  referring to it from the cache
+		 */
 		daddr = newswap();
 		cachedel(&swapimage, daddr);
+
 		lock(outp);
-		outp->ref++;
+
+		/* forget anything that it used to cache */
 		uncachepage(outp);
 
-		/* Enter swap page into cache before segment is unlocked so that
-		 * a fault will cause a cache recovery rather than a pagein on a
-		 * partially written block.
+		/*
+		 *  incr the reference count to make sure it sticks around while
+		 *  being written
+		 */
+		outp->ref++;
+
+		/*
+		 *  enter it into the cache so that a fault happening
+		 *  during the write will grab the page from the cache
 		 */
 		outp->daddr = daddr;
 		cachepage(outp, &swapimage);
 		*pg = (Page*)(daddr|PG_ONSWAP);
 		unlock(outp);
 
-		/* Add me to IO transaction list */
+		/* Add page to IO transaction list */
 		iolist[ioptr++] = outp;
 		break;
 	}

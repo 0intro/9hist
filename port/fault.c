@@ -17,7 +17,7 @@ fault(ulong addr, int read)
 
 	m->pfault++;
 	for(;;) {
-		s = seg(up, addr, 1);
+		s = seg(up, addr, 1);		/* leaves s->lk qlocked if seg != nil */
 		if(s == 0) {
 			up->psstate = sps;
 			return -1;
@@ -88,18 +88,21 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		break;
 
 	case SG_SHDATA:			/* Shared data */
+	shared:
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 
 		lkp = *pg;
 		lock(lkp);
 
-		/* uncache the current page (since we may be changing it)
-		 * and, if a text page, put a duplicate back onto
-		 * the free list
-		 */
-		if(lkp->image)
-			duppage(lkp);
+		/* uncache the current swap image (since we may be changing it) */
+		if(lkp->image){
+			if(lkp->image == &swapimage)
+				uncachepage(lkp);
+			else
+				duppage(lkp);
+		}
+
 		unlock(lkp);
 		goto done;
 
@@ -118,14 +121,15 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 			*pg = new;
 		}
-		/* NO break */
+		if(type == SG_SHARED)
+			goto shared;
 
-	case SG_DATA:			/* Demand load/pagein/copy on write */
+		goto notshared;
+
+	case SG_DATA:
+	notshared:			/* Demand load/pagein/copy on write */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
-
-		if(type == SG_SHARED)
-			goto done;
 
 		if(read && conf.copymode == 0) {
 			mmuphys = PPN((*pg)->pa)|PTERONLY|PTEVALID;
@@ -135,7 +139,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 		lkp = *pg;
 		lock(lkp);
-		if(lkp->image == &swapimage && lkp->daddr)
+		if(lkp->image == &swapimage)
 			ref = lkp->ref + swapcount(lkp->daddr);
 		else
 			ref = lkp->ref;
@@ -153,8 +157,12 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			 * and, if a text page, put a duplicate back onto
 			 * the free list
 			 */
-			if(lkp->image)
-				duppage(lkp);
+			if(lkp->image){
+				if(lkp->image == &swapimage)
+					uncachepage(lkp);
+				else
+					duppage(lkp);
+			}
 
 			unlock(lkp);
 		}
@@ -201,18 +209,18 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	Page *loadrec;
 
 	loadrec = *p;
-	if(loadrec == 0) {
-		daddr = s->fstart+soff;		/* Compute disc address */
+	if(loadrec == 0) {	/* from a text/data image */
+		daddr = s->fstart+soff;
 		new = lookpage(s->image, daddr);
 	}
-	else {
+	else {			/* from a swap image */
 		daddr = swapaddr(loadrec);
 		new = lookpage(&swapimage, daddr);
 		if(new != nil)
 			putswap(loadrec);
 	}
 
-	if(new) {				/* Page found from cache */
+	if(new != nil) {			/* Page found from cache */
 		*p = new;
 		return;
 	}
@@ -259,13 +267,27 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		c = swapimage.c;
 		qlock(&swapimage.rdlock);	/* mutex */
 
+		/*
+		 *  multiple processes could be swapping in the
+		 *  same page for the same segment
+		 */
+		if(!pagedout(*p)){
+			putpage(new);
+			qunlock(&swapimage.rdlock);
+			goto done;
+		}
+
+		/*
+		 *  multiple processes could be swapping in the
+		 *  same page for different segments
+		 */
 		new2 = lookpage(&swapimage, daddr);
 		if(new2 != nil){
 			putpage(new);
-			putswap(*p);
 			*p = new2;
+			putswap(loadrec);
 			qunlock(&swapimage.rdlock);
-			return;
+			goto done;
 		}
 
 		if(waserror()) {
@@ -286,13 +308,14 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		qlock(&s->lk);
 
 		new->daddr = daddr;
-		putswap(*p);
 		cachepage(new, &swapimage);
 		*p = new;
+		putswap(loadrec);
 
 		qunlock(&swapimage.rdlock);
 	}
 
+done:
 	if(s->flushme)
 		memset((*p)->cachectl, PG_TXTFLUSH, sizeof((*p)->cachectl));
 }
