@@ -18,6 +18,7 @@ struct Mnt
 {
 	Ref;			/* for number of chans, incl. mntpt but not msg */
 	QLock;			/* for access */
+	ulong	mntid;		/* serial # */
 	Chan	*msg;		/* for reading and writing messages */
 	Chan	*mntpt;		/* channel in user's name space */
 };
@@ -49,6 +50,12 @@ struct
 	Lock;
 	Mnthdr	*free;
 }mnthdralloc;
+
+struct
+{
+	Lock;
+	long	id;
+}mntid;
 
 Mnt	*mnt;
 void	mntxmit(Mnt*, Mnthdr*);
@@ -119,19 +126,17 @@ Mnt*
 mntdev(int dev, int noerr)
 {
 	Mnt *m;
+	int i;
 
-	if(dev<0 || conf.nmntdev<=dev){
-		if(noerr)
-			return 0;
-		panic("mntdev out of range");
-	}
-	m = &mnt[dev];
-	if(m->msg == 0){
-		if(noerr)
-			return 0;
-		error(0, Eshutdown);
-	}
-	return m;
+	for(m=mnt,i=0; i<conf.nmntdev; i++,m++)		/* use a hash table some day */
+		if(m->mntid == dev){
+			if(m->msg == 0)
+				break;
+			return m;
+		}
+	if(noerr)
+		return 0;
+	error(0, Eshutdown);
 }
 
 void
@@ -187,8 +192,11 @@ mntattach(char *spec)
     Found:
 	m->ref = 1;
 	unlock(m);
+	lock(&mntid);
+	m->mntid = ++mntid.id;
+	unlock(&mntid);
 	c = devattach('M', spec);
-	c->dev = m - mnt;
+	c->dev = m->mntid;
 	m->mntpt = c;
 	cm = bogus.chan;
 	m->msg = cm;
@@ -205,6 +213,8 @@ mntattach(char *spec)
 	strcpy(mh->thdr.aname, spec);
 	mntxmit(m, mh);
 	c->qid = mh->rhdr.qid;
+	c->mchan = m->msg;
+	c->mqid = c->qid;
 	mhfree(mh);
 	poperror();
 	return c;
@@ -243,6 +253,8 @@ mntclone(Chan *c, Chan *nc)
 	nc->flag = c->flag;
 	nc->offset = c->offset;
 	nc->mnt = c->mnt;
+	nc->mchan = c->mchan;
+	nc->mqid = c->qid;
 	if(new)
 		poperror();
 	mhfree(mh);

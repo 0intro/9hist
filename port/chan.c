@@ -78,6 +78,8 @@ loop:
 		c->offset = 0;
 		c->mnt = 0;
 		c->stream = 0;
+		c->mchan = 0;
+		c->mqid = 0;
 		return c;
 	}
 	unlock(&chanalloc);

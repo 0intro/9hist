@@ -76,6 +76,8 @@ devclone(Chan *c, Chan *nc)
 	nc->dev = c->dev;
 	nc->flag = c->flag;
 	nc->mnt = c->mnt;
+	nc->mchan = c->mchan;
+	nc->mqid = c->mqid;
 	return nc;
 }
 

@@ -77,17 +77,18 @@ audit(char *s)
 {
 	int nf, nb;
 	Page *p;
+	static int here;
 
-static int here;
-do;while(here);
-here=1;
-
+	do;while(here);
+	here=1;
 	p = palloc.head;
 	nf=nb=0;
 	while(p){
-print("%lux %lux %d\n", p->pa, p->va, p->ref);
-if(p->o) print("\t%d %lux %c\n", p->o->nproc, p->o->qid, devchar[p->o->type]);
-delay(100);
+		print("%lux %lux %d\n", p->pa, p->va, p->ref);
+		if(p->o){
+			print("\t%d %lux %c\n", p->o->nproc, p->o->qid, devchar[p->o->type]);
+			delay(100);	/* let it drain; there's a lot here */
+		}
 		nf++;
 		p = p->next;
 	}
@@ -98,7 +99,7 @@ delay(100);
 	}
 	print("%s: nf: %d nb: %d\n", s, nf, nb);
 	delay(1000);
-here=0;
+	here=0;
 }
 
 void
@@ -187,7 +188,6 @@ loop:
 		}
 #endif
 	}
-	audit("newpage");
 	print("no physical memory\n");
 	unlock(&palloc);
 	if(u == 0)
@@ -257,7 +257,7 @@ lookorig(ulong va, ulong npte, int flag, Chan *c)
 			lock(o);
 			if(o->npage && o->qid==c->qid)
 			if(o->va==va && o->npte==npte && o->flag==flag)
-			if(o->type==c->type && o->dev==c->dev){
+			if(o->mchan==c->mchan && o->mqid==c->mqid && o->type==c->type){
 				if(o->chan == 0){
 					o->chan = c;
 					incref(c);
@@ -289,13 +289,15 @@ loop:
 		o->chan = c;
 		if(c){
 			o->type = c->type;
-			o->dev = c->dev;
 			o->qid = c->qid;
+			o->mchan = c->mchan;
+			o->mqid = c->mqid;
 			incref(c);
 		}else{
 			o->type = -1;
-			o->dev = -1;
 			o->qid = -1;
+			o->mqid = -1;
+			o->mchan = 0;
 		}
 		growpte(o, npte);
 		unlock(&origalloc);

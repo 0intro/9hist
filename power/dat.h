@@ -94,6 +94,8 @@ struct Chan
 	ulong	mountid;
 	int	fid;			/* for devmnt */
 	Stream	*stream;		/* for stream channels */
+	Chan	*mchan;			/* channel to mounted server */
+	ulong	mqid;			/* qid of root of mount point */
 };
 
 struct	FPsave
@@ -226,8 +228,9 @@ struct Orig
 	PTE	*pte;
 	Chan	*chan;			/* channel deriving segment (if open) */
 	ushort	type;			/* of channel (which could be non-open) */
-	ushort	dev;
 	ulong	qid;
+	Chan	*mchan;
+	ulong	mqid;
 	ulong	minca;			/* base of region in chan */
 	ulong	maxca;			/* end of region in chan */
 };

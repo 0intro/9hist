@@ -78,17 +78,3 @@ struct INTVEC {
 #define	MPBERR0		IO2(ulong, 0xF48000)
 #define	MPBERR1		IO2(ulong, 0xF4C000)
 #define SBEADDR		((ulong *)(UNCACHED|0x1f080000))
-
-/*
- *  hsvme datakit board
- */
-struct hsvme {
-	ushort	version;
-	ushort	pad0x02;
-	ushort	vector;
-	ushort	pad0x06;
-	ushort	csr;
-	ushort	pad0x0A;
-	ushort	data;
-};
-#define HSVME		VMEA24SUP(struct hsvme, 0xF90000)
