@@ -787,17 +787,3 @@ sysfwstat(ulong *arg)
 	cclose(c);
 	return 0;
 }
-
-long
-sysexportfs(ulong*)
-{
-	error("exportfs not implemented");
-	return -1;
-}
-
-long
-systunnel(ulong*)
-{
-	error("tunnel not implemented");
-	return -1;
-}
