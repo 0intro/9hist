@@ -507,7 +507,6 @@ enum{
 	Qconsctl,
 	Qcputime,
 	Qdrivers,
-	Qkey,
 	Qkprint,
 	Qhostdomain,
 	Qhostowner,
@@ -540,7 +539,6 @@ static Dirtab consdir[]={
 	"drivers",	{Qdrivers},	0,		0644,
 	"hostdomain",	{Qhostdomain},	DOMLEN,		0664,
 	"hostowner",	{Qhostowner},	0,	0664,
-	"key",		{Qkey},		DESKEYLEN,	0622,
 	"kprint",		{Qkprint, 0, QTEXCL},	0,	DMEXCL|0440,
 	"null",		{Qnull},	0,		0666,
 	"osversion",	{Qosversion},	0,		0444,
@@ -770,9 +768,6 @@ consread(Chan *c, void *buf, long n, vlong off)
 	case Qbintime:
 		return readbintime(buf, n);
 
-	case Qkey:
-		return keyread(buf, n, offset);
-
 	case Qhostowner:
 		return readstr((ulong)offset, buf, n, eve);
 
@@ -922,9 +917,6 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		if(!iseve())
 			error(Eperm);
 		return writebintime(a, n);
-
-	case Qkey:
-		return keywrite(a, n);
 
 	case Qhostowner:
 		return hostownerwrite(a, n);

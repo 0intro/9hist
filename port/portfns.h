@@ -135,7 +135,6 @@ int		kbdcr2nl(Queue*, int);
 int		kbdputc(Queue*, int);
 void		kbdrepeat(int);
 long		keyread(char*, int, long);
-long		keywrite(char*, int);
 void		kickpager(void);
 void		killbig(void);
 int		kprint(char*, ...);

@@ -94,31 +94,6 @@ sysfauth(ulong *arg)
 }
 
 /*
- *  called by devcons() for key device
- */
-long
-keyread(char *a, int n, long offset)
-{
-	if(n<DESKEYLEN || offset != 0)
-		error(Ebadarg);
-	if(!cpuserver || !iseve())
-		error(Eperm);
-	memmove(a, evekey, DESKEYLEN);
-	return DESKEYLEN;
-}
-
-long
-keywrite(char *a, int n)
-{
-	if(n != DESKEYLEN)
-		error(Ebadarg);
-	if(!iseve())
-		error(Eperm);
-	memmove(evekey, a, DESKEYLEN);
-	return DESKEYLEN;
-}
-
-/*
  *  called by devcons() for user device
  *
  *  anyone can become none
