@@ -27,8 +27,8 @@
 /*
  *  R4000 instructions
  */
-#define	LD(offset, base, rt)		WORD	$((067<<26)|((base)<<21)|((rt)<<16)|((offset)&0xFFFF))
-#define	STD(rt, offset, base)		WORD	$((077<<26)|((base)<<21)|((rt)<<16)|((offset)&0xFFFF))
+#define	LD(offset, base, rt)	WORD	$((067<<26)|((base)<<21)|((rt)<<16)|((offset)&0xFFFF))
+#define	STD(rt, offset, base)	WORD	$((077<<26)|((base)<<21)|((rt)<<16)|((offset)&0xFFFF))
 #define	DSLL(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|070)
 #define	DSRA(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|073)
 #define	LL(base, rt)		WORD	$((060<<26)|((base)<<21)|((rt)<<16))
@@ -91,7 +91,6 @@ clrbss:
  * Take first processor into user mode
  * 	- argument is stack pointer to user
  */
-
 TEXT	touser(SB), $-4
 
 	MOVW	$(UTZERO+32), R2	/* header appears in text */
@@ -108,13 +107,11 @@ TEXT	touser(SB), $-4
 	ERET
 
 TEXT	firmware(SB), $0
-
 	SLL	$3, R1
 	MOVW	$(PROM+0x774), R1
 	JMP	(R1)
 
 TEXT	splhi(SB), $0
-
 	MOVW	R31, 12(R(MACH))	/* save PC in m->splpc */
 	MOVW	M(STATUS), R1
 	WAIT
@@ -124,7 +121,6 @@ TEXT	splhi(SB), $0
 	RET
 
 TEXT	splx(SB), $0
-
 	MOVW	R31, 12(R(MACH))	/* save PC in m->splpc */
 	MOVW	M(STATUS), R2
 	WAIT
@@ -136,7 +132,6 @@ TEXT	splx(SB), $0
 	RET
 
 TEXT	spllo(SB), $0
-
 	MOVW	M(STATUS), R1
 	WAIT
 	OR	$IE, R1, R2
@@ -144,36 +139,25 @@ TEXT	spllo(SB), $0
 	WAIT
 	RET
 
-TEXT	machstatus(SB), $0
-
-	MOVW	M(STATUS), R1
-	WAIT
-	RET
-
 TEXT	spldone(SB), $0
-
 	RET
 
 TEXT	wbflush(SB), $-4
-
 	RET
 
 TEXT	setlabel(SB), $-4
-
 	MOVW	R29, 0(R1)
 	MOVW	R31, 4(R1)
 	MOVW	$0, R1
 	RET
 
 TEXT	gotolabel(SB), $-4
-
 	MOVW	0(R1), R29
 	MOVW	4(R1), R31
 	MOVW	$1, R1
 	RET
 
 TEXT	gotopc(SB), $8
-
 	MOVW	R1, 0(FP)		/* save arguments for later */
 	MOVW	$(64*1024), R7
 	MOVW	R7, 8(SP)
@@ -186,7 +170,6 @@ TEXT	gotopc(SB), $8
 	JMP	(R7)
 
 TEXT	puttlb(SB), $0
-
 	MOVW	R1, M(TLBVIRT)
 	MOVW	4(FP), R2		/* phys0 */
 	MOVW	8(FP), R3		/* phys1 */
@@ -225,7 +208,6 @@ TEXT	getrandom(SB),$0
 	RET
 
 TEXT	puttlbx(SB), $0
-
 	MOVW	4(FP), R2
 	MOVW	8(FP), R3
 	MOVW	12(FP), R4
@@ -245,14 +227,12 @@ TEXT	puttlbx(SB), $0
 	RET
 
 TEXT	tlbvirt(SB), $0
-
 	NOOP
 	MOVW	M(TLBVIRT), R1
 	NOOP
 	RET
 
 TEXT	gettlbx(SB), $0
-
 	MOVW	4(FP), R5
 	MOVW	M(TLBVIRT), R10
 	NOOP4
@@ -272,7 +252,6 @@ TEXT	gettlbx(SB), $0
 	RET
 
 TEXT	gettlbp(SB), $0
-
 	MOVW	4(FP), R5
 	MOVW	R1, M(TLBVIRT)
 	NOOP
@@ -301,7 +280,6 @@ gettlbp1:
 	RET
 
 TEXT	gettlbvirt(SB), $0
-
 	MOVW	R1, M(INDEX)
 	NOOP
 	NOOP
@@ -314,7 +292,6 @@ TEXT	gettlbvirt(SB), $0
 	RET
 
 TEXT	vector0(SB), $-4
-
 	NOOP4
 	NOOP4
 	RDBGSV
@@ -394,7 +371,6 @@ stlbm:
 	JMP	(R26)
 
 TEXT	vector100(SB), $-4
-
 	NOOP4
 	NOOP4
 	RDBGSV
@@ -402,7 +378,6 @@ TEXT	vector100(SB), $-4
 	JMP	(R26)
 
 TEXT	vector180(SB), $-4
-
 	NOOP4
 	NOOP4
 	RDBGSV
@@ -415,7 +390,6 @@ TEXT	exception(SB), $-4
 	WAIT
 	AND	$KUSER, R26
 	BEQ	R26, waskernel
-
 wasuser:
 	CONST	(MACHADDR, R27)		/* R27 = m-> */
 	MOVW	8(R27), R26		/* R26 = m->proc */
@@ -660,7 +634,6 @@ TEXT	savefpregs(SB), $0
 	RET
 
 TEXT	restfpregs(SB), $0
-
 	MOVW	M(STATUS), R3
 	WAIT
 	OR	$CU1, R3
@@ -693,19 +666,11 @@ TEXT	restfpregs(SB), $0
 	RET
 
 TEXT	fcr31(SB), $0
-
 	MOVW	FCR31, R1		/* 3 delays before using R1 */
 	MOVW	M(STATUS), R3
 	WAIT
 	AND	$~CU1, R3
 	MOVW	R3, M(STATUS)
-	WAIT
-
-	RET
-
-TEXT	prid(SB), $0
-
-	MOVW	M(PRID), R1
 	WAIT
 	RET
 
@@ -779,7 +744,6 @@ icflush1:			/* primary cache line size is 16 bytes */
 	RET
 
 TEXT	dcflush(SB), $-4			/* dcflush(virtaddr, count) */
-
 	MOVW	M(STATUS), R10
 	WAIT
 	MOVW	4(FP), R9
@@ -791,7 +755,7 @@ TEXT	dcflush(SB), $-4			/* dcflush(virtaddr, count) */
 	ADDU	$0x3f, R9
 	AND	$(~0x3f), R9		/* round last address up */
 	SUBU	R8, R9			/* R9 = revised count */
-dcflush1:			/* primary cache line size is 16 bytes */
+dcflush1:				/* primary cache line is 16 bytes */
 	CACHE	PI+HI, 0x00(R8)
 	CACHE	PI+HI, 0x10(R8)
 	CACHE	PI+HI, 0x20(R8)
@@ -832,30 +796,18 @@ TEXT	getcallerpc(SB), $0
 	RET
 
 TEXT	rdcount(SB), $0
-
 	MOVW	M(COUNT), R1
 	NOOP
 	RET
 
 TEXT	wrcompare(SB), $0
-
 	MOVW	R1, M(COMPARE)
 	RET
 
-TEXT	busprobe(SB), $-4
-
-	NOOP
-	MOVW	(R1), R2
-	MOVW	$0, R1
-	NOOP
-	RET
-
 TEXT	uvmove(SB), $-4
-
 	AND	$7, R1, R2
 	MOVW	4(FP), R3
 	BNE	R2, uvgetuna
-
 	/* aligned load */
 	LD	(0,(1), 2)
 	WAIT
@@ -867,7 +819,6 @@ TEXT	uvmove(SB), $-4
 uvput:
 	AND	$7, R3, R4
 	BNE	R4, uvputuna
-
 	/* aligned store */
 	STD	(2, 0,(3))
 	NOP
@@ -888,10 +839,4 @@ uvputuna:
 	DSRA	(16,2,2)
 	MOVW	R2, 0(R3)
 	MOVW	R1, 4(R3)
-	RET
-
-TEXT	hack(SB), $-4
-
-	MOVW	M(CONFIG), R1
-	NOP
 	RET
