@@ -147,6 +147,9 @@ wrenattach(char *param)
 	c->dev = dev;
 	d = &wren[dev];
 	d->blocksize = BGLONG(&buf[4]);
+
+print("Block size %lux capacity %lux\n", d->blocksize, BGLONG(&buf[0]));
+
 	plen = BGLONG(&buf[0]);
 	d->p[Npart].firstblock = 0;
 	d->p[Npart].maxblock = plen;
