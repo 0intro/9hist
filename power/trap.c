@@ -80,6 +80,7 @@ trap(Ureg *ur)
 	ulong x;
 	char buf[ERRLEN];
 
+	SET(x);
 	ecode = EXCCODE(ur->cause);
 	user = ur->status&KUP;
 	if(u)
@@ -200,6 +201,7 @@ intr(ulong cause, ulong pc)
 			print("MP bus error %lux %lux\n", *MPBERR0, *MPBERR1);
 			*MPBERR0 = 0;
 			i = *SBEADDR;
+			USED(i);
 		}
 
 		/*
@@ -223,6 +225,7 @@ intr(ulong cause, ulong pc)
 		 *  4. clear pending register
 		 */
 		i = SBCCREG->flevel;
+		USED(i);
 
 		/*
 		 *  5a. process lance, scsi

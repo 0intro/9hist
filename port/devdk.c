@@ -1075,25 +1075,20 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 		strcat(dialstr, machine);
 		strcat(dialstr, "\n");
 		break;
-	}
-
-	/*
-	 *  close temporary channels on error
-	 */
-	dc = 0;
-	csc = 0;
-	if(waserror()){
-		if(csc)
-			close(csc);
-		if(dc)
-			close(dc);
-		nexterror();
+	default:
+		t_val = 0;
+		d_val = 0;
+		panic("bad dial type");
 	}
 
 	/*
 	 *  open the data file
 	 */
 	dc = dkopenline(dp, line);
+	if(waserror()){
+		close(dc);
+		nexterror();
+	}
 	lp->calltolive = 4;
 	lp->state = Ldialing;
 
@@ -1102,9 +1097,13 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 */
 	DPRINT("dialout\n");
 	csc = dkopenline(dp, dp->ncsc);
+	if(waserror()){
+		close(csc);
+		nexterror();
+	}
 	dkmesg(csc, t_val, d_val, line, W_WINDOW(dp->urpwindow,dp->urpwindow,2));
+	poperror();
 	close(csc);
-	csc = 0;
 
 	/*
 	 *  if redial, wait for a dial tone (otherwise we might send
@@ -1639,6 +1638,7 @@ dktimer(void *a)
 	Line *lp;
 	Chan *c;
 
+	dp = (Dk *)a;
 	c = 0;
 	if(waserror()){
 		/*
@@ -1664,7 +1664,6 @@ dktimer(void *a)
 	/*
 	 *  open csc
 	 */
-	dp = (Dk *)a;
 	c = dkopenline(dp, dp->ncsc);
 
 	for(;;){

@@ -62,7 +62,7 @@ noetherconnect(Noconv *cp, char *ea)
 	eh = (Etherhdr *)cp->media->rptr;
 	etherparse(eh->d, ea);
 	eh->type[0] = ETHER_TYPE>>8;
-	eh->type[1] = ETHER_TYPE;
+	eh->type[1] = ETHER_TYPE & 0xff;
 }
 
 /*

@@ -55,6 +55,7 @@ rtcpattern(void)
 	 *  read the pattern sequence pointer to reset it
 	 */
 	ch = *nv;
+	USED(ch);
 
 	/*
 	 *  stuff the pattern recognition codes one bit at

@@ -109,6 +109,7 @@ newqinfo(Qinfo *qi)
 /*
  *  upgrade a block 0 block to another class (called with bcp qlocked)
  */
+int
 newblock(Bclass *bcp)
 {
 	Page *page;
@@ -117,7 +118,7 @@ newblock(Bclass *bcp)
 	uchar *cp;
 
 	if(bcp->made > bcp->lim)
-		return;
+		return -1;
 
 	if(bcp == bclass){
 		/*
@@ -171,7 +172,7 @@ newblock(Bclass *bcp)
 			bcp->last = bp;
 		}
 	}
-	return;
+	return 0;
 }
 
 /*
@@ -421,7 +422,6 @@ putq(Queue *q, Block *bp)
 {
 	int delim;
 
-	delim = 0;
 	lock(q);
 	if(q->first)
 		q->last->next = bp;
@@ -447,7 +447,6 @@ putb(Blist *q, Block *bp)
 {
 	int delim;
 
-	delim = 0;
 	if(q->first)
 		q->last->next = bp;
 	else
@@ -914,7 +913,7 @@ streamclose(Chan *c)
 	 *  if no stream, ignore it
 	 */
 	if(!c->stream)
-		return;
+		return 0;
 	return streamclose1(c->stream);
 }
 
@@ -933,7 +932,6 @@ stputq(Queue *q, Block *bp)
 		wakeup(q->other->rp);
 		delim = 1;
 	} else {
-		delim = 0;
 		lock(q);
 		if(q->first)
 			q->last->next = bp;

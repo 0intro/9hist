@@ -45,15 +45,8 @@ struct FFrame
 void
 fault68020(Ureg *ur, FFrame *f)
 {
-	ulong addr, mmuvirt, mmuphys, n, badvaddr;
-	Seg *s;
-	PTE *opte, *pte, *npte;
-	Orig *o;
-	char *l;
-	Page *pg;
-	KMap *k, *k1;
-	int zeroed = 0, head = 1;
-	int i, user, read, insyscall;
+	ulong addr, badvaddr;
+	int user, read, insyscall;
 
 	if(u == 0){
 		dumpregs(ur);

@@ -598,6 +598,7 @@ confinit(void)
  	 *  clear MP bus error caused by sizing memory
 	 */
 	i = *SBEADDR;
+	USED(i);
 
 	/*
 	 *  set minimal default values

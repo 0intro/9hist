@@ -199,3 +199,5 @@ Chan	*walk(Chan*, char*, int);
 #define	poperror()	u->nerrlab--
 
 #define	evenaddr(x)	/* 68020 doesn't care */
+
+#define USED(x) if(x)

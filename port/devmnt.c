@@ -768,6 +768,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	if(q->reader == 0){		/* i will read */
 		q->reader = u->p;
     Read:
+		USED(qlocked);
 		qunlock(q);
 		qlocked = 0;
 		if(waserror()){		/* 3 */
@@ -785,6 +786,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		/*
 		 * Response might not be mine
 		 */
+		USED(qlocked);
 		qlock(q);
 		qlocked = 1;
 		tag = mh->rhdr.tag;
@@ -797,6 +799,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 				wakeup(&w->r);
 			}
 			mh->active = 0;
+			USED(qlocked);
 			qunlock(q);
 			qlocked = 0;
 			goto Respond;
@@ -834,11 +837,13 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		}
 		sleep(&mh->r, mntreadreply, mh);
 		poperror();
+		USED(qlocked);
 		qlock(q);
 		qlocked = 1;
 		if(q->reader == u->p)	/* i got promoted */
 			goto Read;
 		mh->active = 0;
+		USED(qlocked);
 		qunlock(q);
 		qlocked = 0;
 		goto Respond;
@@ -865,6 +870,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	}
 	mbfree(mh->mbr);
 	mbfree(mbw);
+	USED(qlocked);
 	poperror();		/* 1 */
 }
 

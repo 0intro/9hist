@@ -541,6 +541,7 @@ urpctloput(Urp *up, Queue *q, Block *bp)
 			case 1:
 				outwin = strtoul(fields[0], 0, 0);
 			}
+			USED(inwin);
 /*			initinput(up, inwin); */
 			initoutput(up, outwin);
 			freeb(bp);

@@ -14,8 +14,7 @@ typedef struct Device	Device;
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
 
-static int SpEcIaL;
-#define MICROSECOND SpEcIaL = 0
+#define MICROSECOND USED(NOW)
 
 #define DPRINT if(0)
 
@@ -643,7 +642,7 @@ inconkproc(void *arg)
 {
 	Incon *ip;
 	Block *bp, *nbp;
-	int i, n;
+	int i;
 	int locked;
 
 	ip = (Incon *)arg;
@@ -675,12 +674,14 @@ inconkproc(void *arg)
 		/*
 		 *  die if the device is closed
 		 */
-		locked = 1;
+		USED(locked);
 		qlock(ip);
+		locked = 1;
 		if(ip->rq == 0){
 			qunlock(ip);
 			ip->kstarted = 0;
 			wakeup(&ip->r);
+			poperror();
 			return;
 		}
 
@@ -690,12 +691,12 @@ inconkproc(void *arg)
 		 */
 		while(ip->ri != ip->wi){
 			bp = ip->inb[ip->ri];
-			n = BLEN(bp);
 			PUTNEXT(ip->rq, bp);
 			bp = ip->inb[ip->ri] = allocb(Bsize);
 			bp->wptr += 3;
 			ip->ri = (ip->ri+1)%Nin;
 		}
+		USED(locked);
 		qunlock(ip);
 		locked = 0;
 	}

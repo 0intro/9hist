@@ -31,14 +31,16 @@ lockinit(void)
 	unlock(&semalloc.lock);
 }
 
+#define PCOFF -9
+
 /*
  * If l->sbsem is zero, allocate a hardware semaphore first.
  * There is no way to free a semaphore.
  */
 void
-lock(Lock *l)
+lock(Lock *ll)
 {
-int addr;
+	Lock *l = ll;
 	int i;
 	ulong *sbsem;
 
@@ -61,17 +63,17 @@ int addr;
 	/*
 	 * Try the fast grab first
 	 */
-    	if((*sbsem&1) == 0){
-		l->pc = ((ulong*)&addr)[-7];
+	if((*sbsem&1) == 0){
+		l->pc = ((ulong*)&ll)[PCOFF];
 		return;
 	}
 	for(i=0; i<10000000; i++)
     		if((*sbsem&1) == 0){
-			l->pc = ((ulong*)&addr)[-7];
+			l->pc = ((ulong*)&ll)[PCOFF];
 			return;
 	}
 	*sbsem = 0;
-	print("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&addr)[-7], l->pc);
+	print("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&ll)[PCOFF], l->pc);
 dumpstack();
 }
 

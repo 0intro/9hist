@@ -341,7 +341,7 @@ loop:
 			o->mqid = c->mqid;
 			incref(c);
 		}else{
-			o->type = ~0;
+			o->type = 0xFFFF;
 			o->qid = (Qid){~0, ~0};
 			o->mqid = (Qid){~0, ~0};
 			o->mchan = 0;

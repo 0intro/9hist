@@ -72,7 +72,9 @@ clockinit(void)
 	t->cnt0 = TIME0;
 	t->cnt0 = (TIME0>>8)&0xFF;
 	i = *CLRTIM0;
+	USED(i);
 	i = *CLRTIM1;
+	USED(i);
 	m->ticks = 0;
 }
 
@@ -86,6 +88,7 @@ clock(ulong n, ulong pc)
 
 	if(n&INTR2){
 		i = *CLRTIM0;
+		USED(i);
 		m->ticks++;
 		if(m->machno == 0){
 			p = m->proc;
@@ -114,6 +117,7 @@ clock(ulong n, ulong pc)
 		extern ulong start;
 
 		i = *CLRTIM1;
+		USED(i);
 #ifdef	PROFILING
 		pc -= (ulong)&start;
 		pc /= sizeof(ulong);

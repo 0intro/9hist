@@ -460,7 +460,6 @@ hsvmekproc(void *arg)
 	Hsvme *hp;
 	Device *addr;
 	unsigned int c;
-	int miss;
 	int locked;
 
 	hp = (Hsvme *)arg;
@@ -481,12 +480,14 @@ hsvmekproc(void *arg)
 		/*
 		 *  die if the device is closed
 		 */
+		USED(locked);		/* so locked = 0 and locked = 1 stay */
 		qlock(hp);
 		locked = 1;
 		if(hp->rq == 0){
 			qunlock(hp);
 			hp->kstarted = 0;
 			wakeup(&hp->r);
+			poperror();
 			return;
 		}
 
@@ -495,7 +496,6 @@ hsvmekproc(void *arg)
 		 */
 		while ((c = addr->data) != 0xFFFF) {
 			hp->in++;
-			miss = 0;
 			if(c & CHNO){
 				c &= 0x1FF;
 				if(hp->chan == c)
@@ -520,6 +520,7 @@ hsvmekproc(void *arg)
 					upstream(hp, 0);
 			}
 		}
+		USED(locked);
 		qunlock(hp);
 		locked = 0;
 

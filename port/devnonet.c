@@ -236,7 +236,6 @@ Chan*
 nonetopen(Chan *c, int omode)
 {
 	Stream *s;
-	Noconv *cp;
 	Noifc *ifc;
 	int line;
 
@@ -252,7 +251,7 @@ nonetopen(Chan *c, int omode)
 		 *  get an unused device and open it's control file
 		 */
 		ifc = &noifc[c->dev];
-		cp = nonetopenclone(c, ifc);
+		nonetopenclone(c, ifc);
 		break;
 	case Nlistenqid:
 		/*
@@ -866,9 +865,7 @@ static void
 queueack(Noconv *cp, int mid)
 {
 	int next;
-	ulong now;
 
-	now = NOW;
 	next = (cp->anext + 1)&Nmask;
 	if(next != cp->afirst){
 		cp->ack[cp->anext] = mid;
@@ -959,6 +956,7 @@ sendmsg(Noconv *cp, Nomsg *mp)
 		msgrem = mp->len;
 		pktrem = msgrem > ifc->maxtu ? ifc->maxtu : msgrem;
 		bp = mp->first;
+		SET(rptr);
 		if(bp)
 			rptr = bp->rptr;
 		last = pkt = mkhdr(cp, msgrem);
@@ -1189,7 +1187,6 @@ nonetfreeifc(Noifc *ifc)
 int
 nonetcksum(Block *bp, int offset)
 {
-	Block *nbp = bp;
 	uchar *ep, *p;
 	int n;
 	ulong s;

@@ -217,3 +217,6 @@ void	wbflush(void);
 #define procsetup(x)
 #define procsave(x,y)
 #define procrestore(x,y)
+
+#define USED(x) if(x)
+#define SET(x) x = 0
