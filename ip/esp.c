@@ -23,7 +23,7 @@ enum
 {
 	IP_ESPPROTO	= 50,
 	EsphdrSize	= 28,	// includes IP header
-	IphdrSize	= 20,	// options have been stripped
+	IphdrSize	= 20,	// options have been striped
 	EsptailSize	= 2,	// does not include pad or auth data
 	UserhdrSize	= 4,	// user visable header size - if enabled
 };
@@ -285,6 +285,7 @@ espkick(Conv *c)
 	auth = bp->rp + EsphdrSize + payload + pad + EsptailSize;
 
 	// fill in head
+	eh->vihl = IP_VER4;
 	hnputl(eh->espspi, ecb->spi);
 	hnputl(eh->espseq, ++ecb->seq);
 	v6tov4(eh->espsrc, c->laddr);
@@ -296,8 +297,8 @@ espkick(Conv *c)
 	ecb->auth(ecb, bp->rp+IphdrSize, (EsphdrSize-IphdrSize)+payload+pad+EsptailSize, auth);
 
 	qunlock(c);
-//print("esp: pass down: %uld\n", BLEN(bp));
-	ipoput(c->p->f, bp, 0, c->ttl, c->tos);
+	//print("esp: pass down: %uld\n", BLEN(bp));
+	ipoput4(c->p->f, bp, 0, c->ttl, c->tos);
 }
 
 void

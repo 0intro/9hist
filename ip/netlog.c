@@ -207,7 +207,7 @@ netlogctl(Fs *f, char* s, int n)
 		cmderror(cb, "unknown ip control message");
 	}
 
-	for(i = 1; i < cb->nf; i++){
+	for(i = 1; i < n; i++){
 		for(fp = flags; fp->name; fp++)
 			if(strcmp(fp->name, cb->f[i]) == 0)
 				break;

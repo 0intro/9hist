@@ -321,7 +321,7 @@ doipoput(Conv *c, Fs *f, Block *bp, int x, int ttl, int tos)
 	if(ucb->randdrop && nrand(100) < ucb->randdrop)
 		freeblist(bp);
 	else
-		ipoput(f, bp, x, ttl, tos);
+		ipoput4(f, bp, x, ttl, tos);
 }
 
 int
@@ -402,6 +402,7 @@ rudpkick(Conv *c)
 		return;
 
 	uh = (Udphdr *)(bp->rp);
+	uh->vihl = IP_VER4;
 
 	rh = (Rudphdr*)uh;
 
@@ -987,6 +988,7 @@ relsendack(Conv *c, Reliable *r, int hangup)
 	bp->wp += UDP_IPHDR + UDP_RHDRSIZE;
 	f = c->p->f;
 	uh = (Udphdr *)(bp->rp);
+	uh->vihl = IP_VER4;
 	rh = (Rudphdr*)uh;
 
 	ptcllen = (UDP_RHDRSIZE-UDP_PHDRSIZE);

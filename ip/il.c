@@ -367,6 +367,7 @@ ilkick(Conv *c)
 	/* Make space to fit il & ip */
 	bp = padblock(bp, IL_IPSIZE+IL_HDRSIZE);
 	ih = (Ilhdr *)(bp->rp);
+	ih->vihl = IP_VER4;
 
 	/* Ip fields */
 	ih->frag[0] = 0;
@@ -408,7 +409,7 @@ ilkick(Conv *c)
 
 	if(later(msec, ic->timeout, nil))
 		ilsettimeout(ic);
-	ipoput(f, bp, 0, c->ttl, c->tos);
+	ipoput4(f, bp, 0, c->ttl, c->tos);
 	priv->stats[OutMsgs]++;
 }
 
@@ -803,6 +804,7 @@ ilrexmit(Ilcb *ic)
 		return;
 
 	h = (Ilhdr*)nb->rp;
+	h->vihl = IP_VER4;
 
 	h->iltype = Ildataquery;
 	hnputl(h->ilack, ic->recvd);
@@ -819,7 +821,7 @@ ilrexmit(Ilcb *ic)
 
 	ilbackoff(ic);
 
-	ipoput(c->p->f, nb, 0, ic->conv->ttl, ic->conv->tos);
+	ipoput4(c->p->f, nb, 0, ic->conv->ttl, ic->conv->tos);
 
 	/* statistics */
 	ic->rxtot++;
@@ -979,6 +981,7 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 	bp->wp += IL_IPSIZE+IL_HDRSIZE;
 
 	ih = (Ilhdr *)(bp->rp);
+	ih->vihl = IP_VER4;
 
 	/* Ip fields */
 	ih->proto = IP_ILPROTO;
@@ -1015,6 +1018,7 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 
 	if(ilcksum)
 		hnputs(ih->ilsum, ptclcsum(bp, IL_IPSIZE, IL_HDRSIZE));
+
 if(ipc==nil)
 	panic("ipc is nil caller is %.8lux", getcallerpc(&ipc));
 if(ipc->p==nil)
@@ -1024,7 +1028,7 @@ if(ipc->p==nil)
 		iltype[ih->iltype], nhgetl(ih->ilid), nhgetl(ih->ilack), 
 		nhgets(ih->ilsrc), nhgets(ih->ildst));
 
-	ipoput(ipc->p->f, bp, 0, ttl, tos);
+	ipoput4(ipc->p->f, bp, 0, ttl, tos);
 }
 
 void
@@ -1037,6 +1041,7 @@ ilreject(Fs *f, Ilhdr *inih)
 	bp->wp += IL_IPSIZE+IL_HDRSIZE;
 
 	ih = (Ilhdr *)(bp->rp);
+	ih->vihl = IP_VER4;
 
 	/* Ip fields */
 	ih->proto = IP_ILPROTO;
@@ -1057,7 +1062,7 @@ ilreject(Fs *f, Ilhdr *inih)
 	if(ilcksum)
 		hnputs(ih->ilsum, ptclcsum(bp, IL_IPSIZE, IL_HDRSIZE));
 
-	ipoput(f, bp, 0, MAXTTL, DFLTTOS);
+	ipoput4(f, bp, 0, MAXTTL, DFLTTOS);
 }
 
 void

@@ -32,8 +32,6 @@ enum{
 	Qdir,
 	Qcursor,
 	Qmousepoint,
-	Qmousein,
-	Qmousectl,
 };
 
 static Dirtab mousedir[]={

@@ -140,6 +140,7 @@ grekick(Conv *c)
 		return;
 
 	ghp = (GREhdr *)(bp->rp);
+	ghp->vihl = IP_VER4;
 
 	v4tov6(raddr, ghp->dst);
 	if(ipcmp(raddr, v4prefix) == 0)
@@ -156,7 +157,7 @@ grekick(Conv *c)
 	ghp->frag[0] = 0;
 	ghp->frag[1] = 0;
 
-	ipoput(c->p->f, bp, 0, c->ttl, c->tos);
+	ipoput4(c->p->f, bp, 0, c->ttl, c->tos);
 }
 
 static void

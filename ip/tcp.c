@@ -11,13 +11,21 @@ enum
 {
 	QMAX		= 64*1024-1,
 	IP_TCPPROTO	= 6,
-	TCP_IPLEN	= 8,
-	TCP_PHDRSIZE	= 12,
-	TCP_HDRSIZE	= 20,
-	TCP_TCBPHDRSZ	= 40,
-	TCP_PKT		= TCP_IPLEN+TCP_PHDRSIZE,
+
+	TCP4_IPLEN	= 8,
+	TCP4_PHDRSIZE	= 12,
+	TCP4_HDRSIZE	= 20,
+	TCP4_TCBPHDRSZ	= 40,
+	TCP4_PKT	= TCP4_IPLEN+TCP4_PHDRSIZE,
+
+	TCP6_IPLEN	= 0,
+	TCP6_PHDRSIZE	= 40,
+	TCP6_HDRSIZE	= 20,
+	TCP6_TCBPHDRSZ	= 60,
+	TCP6_PKT	= TCP6_IPLEN+TCP6_PHDRSIZE,
+
 	TcptimerOFF	= 0,
-	TcptimerON		= 1,
+	TcptimerON	= 1,
 	TcptimerDONE	= 2,
 	MAX_TIME 	= (1<<20),	/* Forever */
 	TCP_ACK		= 200,		/* Timed ack sequence in ms */
@@ -37,6 +45,7 @@ enum
 	MSL2		= 10,
 	MSPTICK		= 50,		/* Milliseconds per timer tick */
 	DEF_MSS		= 1460,		/* Default mean segment */
+	DEF_MSS6	= 1280,		/* Default mean segment (min) for v6 */
 	DEF_RTT		= 500,		/* Default round trip */
 	DEF_KAT		= 30000,	/* Default time ms) between keep alives */
 	TCP_LISTEN	= 0,		/* Listen connection */
@@ -86,8 +95,8 @@ struct Tcptimer
 	void	*arg;
 };
 
-typedef struct Tcphdr Tcphdr;
-struct Tcphdr
+typedef struct Tcp4hdr Tcp4hdr;
+struct Tcp4hdr
 {
 	uchar	vihl;		/* Version and header length */
 	uchar	tos;		/* Type of service */
@@ -112,6 +121,29 @@ struct Tcphdr
 	uchar	tcpmss[2];
 };
 
+typedef struct Tcp6hdr Tcp6hdr;
+struct Tcp6hdr
+{
+	uchar	vcf[4];
+	uchar	ploadlen[2];
+	uchar	proto;
+	uchar	ttl;
+	uchar	tcpsrc[IPaddrlen];
+	uchar	tcpdst[IPaddrlen];
+	uchar	tcpsport[2];
+	uchar	tcpdport[2];
+	uchar	tcpseq[4];
+	uchar	tcpack[4];
+	uchar	tcpflag[2];
+	uchar	tcpwin[2];
+	uchar	tcpcksum[2];
+	uchar	tcpurg[2];
+	/* Options segment */
+	uchar	tcpopt[2];
+	uchar	tcpmss[2];
+};
+
+
 typedef struct Tcp Tcp;
 struct	Tcp
 {
@@ -123,13 +155,13 @@ struct	Tcp
 	ushort	wnd;
 	ushort	urg;
 	ushort	mss;
-        ushort  len;	/* size of data */
+	ushort	len;	/* size of data */
 };
 
 typedef struct Reseq Reseq;
 struct Reseq
 {
-	Reseq 	*next;
+	Reseq	*next;
 	Tcp	seg;
 	Block	*bp;
 	ushort	length;
@@ -148,14 +180,13 @@ struct Tcpctl
 		ulong	una;		/* Unacked data pointer */
 		ulong	nxt;		/* Next sequence expected */
 		ulong	ptr;		/* Data pointer */
-		ushort	wnd;		/* Tcp send window */
+		ushort wnd;		/* Tcp send window */
 		ulong	urg;		/* Urgent data pointer */
 		ulong	wl2;
-
-                /* to implement tahoe and reno TCP */
-                ulong dupacks;          /* number of duplicate acks rcvd */
-	        int   recovery;         /* loss recovery flag */
-	        ulong rxt;              /* right window marker for recovery */
+		/* to implement tahoe and reno TCP */
+		ulong dupacks;    /* number of duplicate acks rcvd */
+		int   recovery;   /* loss recovery flag */
+		ulong rxt;              /* right window marker for recovery */
 	} snd;
 	struct {
 		ulong	nxt;		/* Receive pointer to next uchar slot */
@@ -190,7 +221,10 @@ struct Tcpctl
 	int	nochecksum;		/* non-zero means don't send checksums */
 	int	flgcnt;			/* 1 when we're waiting for a SYN/FIN ACK */
 
-	Tcphdr	protohdr;		/* prototype header */
+	union {
+		Tcp4hdr	tcp4hdr;
+		Tcp6hdr	tcp6hdr;
+	} protohdr;		/* prototype header */
 };
 
 int	tcp_irtt = DEF_RTT;	/* Initial guess at round trip time */
@@ -241,7 +275,7 @@ static char *statnames[] =
 typedef struct Tcppriv Tcppriv;
 struct Tcppriv
 {
-	Tcptimer 	*timers;		/* List of active timers */
+	Tcptimer 	*timers;	/* List of active timers */
 	QLock 	tl;			/* Protect timer list */
 	Rendez	tcpr;			/* used by tcpackproc */
 
@@ -642,22 +676,28 @@ tcpmtu(Conv *s)
 {
 	Ipifc *ifc;
 	int mtu;
+	int version = (isv4(s->raddr) && isv4(s->laddr)) ? 4 : 6;
 
 	mtu = 0;
 	ifc = findipifc(s->p->f, s->raddr, 0);
-	if(ifc != nil)
-		mtu = ifc->maxmtu - ifc->m->hsize - (TCP_PKT + TCP_HDRSIZE);
-	if(mtu < 4)
-		mtu = DEF_MSS;
-	return restrict_mtu(s->raddr, mtu);
+	if(ifc != nil) {
+		if(version == 4)
+			mtu = ifc->maxmtu - ifc->m->hsize - (TCP4_PKT + TCP4_HDRSIZE);
+		else
+			mtu = ifc->maxmtu - ifc->m->hsize - (TCP6_PKT + TCP6_HDRSIZE);
+	}
+
+	if(mtu < 32) {
+		mtu = 1280;
+	}
+
+	return mtu;
 }
 
 void
 inittcpctl(Conv *s, int mode)
 {
 	Tcpctl *tcb;
-	Tcphdr *h;
-
 	tcb = (Tcpctl*)s->ptcl;
 
 	memset(tcb, 0, sizeof(Tcpctl));
@@ -682,13 +722,26 @@ inittcpctl(Conv *s, int mode)
 	if(mode != TCP_LISTEN)
 	if(ipcmp(s->laddr, IPnoaddr) == 0)
 		findlocalip(s->p->f, s->laddr, s->raddr);
-	h = &tcb->protohdr;
-	memset(h, 0, sizeof(*h));
-	h->proto = IP_TCPPROTO;
-	hnputs(h->tcpsport, s->lport);
-	hnputs(h->tcpdport, s->rport);
-	v6tov4(h->tcpsrc, s->laddr);
-	v6tov4(h->tcpdst, s->raddr);
+
+//	if(isv4(s->raddr)) {
+	if(memcmp(s->raddr, v4prefix, IPv4off) == 0 &&
+		memcmp(s->laddr, v4prefix, IPv4off) == 0) {
+		Tcp4hdr* h4 = &tcb->protohdr.tcp4hdr;
+		memset(h4, 0, sizeof(*h4));
+		h4->proto = IP_TCPPROTO;
+		hnputs(h4->tcpsport, s->lport);
+		hnputs(h4->tcpdport, s->rport);
+		v6tov4(h4->tcpsrc, s->laddr);
+		v6tov4(h4->tcpdst, s->raddr);
+	} else {
+		Tcp6hdr* h6 = &tcb->protohdr.tcp6hdr;
+		memset(h6, 0, sizeof(*h6));
+		h6->proto = IP_TCPPROTO;
+		hnputs(h6->tcpsport, s->lport);
+		hnputs(h6->tcpdport, s->rport);
+		ipmove(h6->tcpsrc, s->laddr);
+		ipmove(h6->tcpdst, s->raddr);
+	}
 
 	tcb->mss = tcb->cwind = tcpmtu(s);
 }
@@ -763,34 +816,97 @@ tcpflag(ushort flag)
 }
 
 Block *
-htontcp(Tcp *tcph, Block *data, Tcphdr *ph, Tcpctl *tcb)
+htontcp6(Tcp *tcph, Block *data, Tcp6hdr *ph, Tcpctl *tcb)
 {
 	int dlen;
-	Tcphdr *h;
+	Tcp6hdr *h;
 	ushort csum;
 	ushort hdrlen;
 
-	hdrlen = TCP_HDRSIZE;
+	hdrlen = TCP6_HDRSIZE;
 	if(tcph->mss)
 		hdrlen += MSS_LENGTH;
 
 	if(data) {
 		dlen = blocklen(data);
-		data = padblock(data, hdrlen + TCP_PKT);
+		data = padblock(data, hdrlen + TCP6_PKT);
 		if(data == nil)
 			return nil;
 	}
 	else {
 		dlen = 0;
-		data = allocb(hdrlen + TCP_PKT + 64);	/* the 64 pad is to meet mintu's */
+		data = allocb(hdrlen + TCP6_PKT + 64);	/* the 64 pad is to meet mintu's */
 		if(data == nil)
 			return nil;
-		data->wp += hdrlen + TCP_PKT;
+		data->wp += hdrlen + TCP6_PKT;
 	}
 
 	/* copy in pseudo ip header plus port numbers */
-	h = (Tcphdr *)(data->rp);
-	memmove(h, ph, TCP_TCBPHDRSZ);
+	h = (Tcp6hdr *)(data->rp);
+	memmove(h, ph, TCP6_TCBPHDRSZ);
+
+	/* compose pseudo tcp header, do cksum calculation */
+	hnputl(h->vcf, hdrlen + dlen);
+	h->ploadlen[0] = h->ploadlen[1] = h->proto = 0;
+	h->ttl = ph->proto;
+
+	/* copy in variable bits */
+	hnputl(h->tcpseq, tcph->seq);
+	hnputl(h->tcpack, tcph->ack);
+	hnputs(h->tcpflag, (hdrlen<<10) | tcph->flags);
+	hnputs(h->tcpwin, tcph->wnd);
+	hnputs(h->tcpurg, tcph->urg);
+
+	if(tcph->mss != 0){
+		h->tcpopt[0] = MSSOPT;
+		h->tcpopt[1] = MSS_LENGTH;
+		hnputs(h->tcpmss, tcph->mss);
+	}
+	if(tcb != nil && tcb->nochecksum){
+		h->tcpcksum[0] = h->tcpcksum[1] = 0;
+	} else {
+		csum = ptclcsum(data, TCP6_IPLEN, hdrlen+dlen+TCP6_PHDRSIZE);
+		hnputs(h->tcpcksum, csum);
+	}
+
+	/* move from pseudo header back to normal ip header */
+	memset(h->vcf, 0, 4);
+	h->vcf[0] = IP_VER6;
+	hnputs(h->ploadlen, hdrlen+dlen);
+	h->proto = ph->proto;
+
+	return data;
+}
+
+Block *
+htontcp4(Tcp *tcph, Block *data, Tcp4hdr *ph, Tcpctl *tcb)
+{
+	int dlen;
+	Tcp4hdr *h;
+	ushort csum;
+	ushort hdrlen;
+
+	hdrlen = TCP4_HDRSIZE;
+	if(tcph->mss)
+		hdrlen += MSS_LENGTH;
+
+	if(data) {
+		dlen = blocklen(data);
+		data = padblock(data, hdrlen + TCP4_PKT);
+		if(data == nil)
+			return nil;
+	}
+	else {
+		dlen = 0;
+		data = allocb(hdrlen + TCP4_PKT + 64);	/* the 64 pad is to meet mintu's */
+		if(data == nil)
+			return nil;
+		data->wp += hdrlen + TCP4_PKT;
+	}
+
+	/* copy in pseudo ip header plus port numbers */
+	h = (Tcp4hdr *)(data->rp);
+	memmove(h, ph, TCP4_TCBPHDRSZ);
 
 	/* copy in variable bits */
 	hnputs(h->tcplen, hdrlen + dlen);
@@ -808,39 +924,33 @@ htontcp(Tcp *tcph, Block *data, Tcphdr *ph, Tcpctl *tcb)
 	if(tcb != nil && tcb->nochecksum){
 		h->tcpcksum[0] = h->tcpcksum[1] = 0;
 	} else {
-		csum = ptclcsum(data, TCP_IPLEN, hdrlen+dlen+TCP_PHDRSIZE);
+		csum = ptclcsum(data, TCP4_IPLEN, hdrlen+dlen+TCP4_PHDRSIZE);
 		hnputs(h->tcpcksum, csum);
 	}
-
-/*	netlog(f, Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
-		tcph->source, tcph->dest,
-		tcph->seq, tcph->ack, tcpflag((hdrlen<<10)|tcph->flags),
-		tcph->wnd, dlen); */
 
 	return data;
 }
 
 int
-ntohtcp(Tcp *tcph, Block **bpp)
+ntohtcp6(Tcp *tcph, Block **bpp)
 {
-	Tcphdr *h;
+	Tcp6hdr *h;
 	uchar *optr;
 	ushort hdrlen;
 	ushort optlen;
 	int n;
 
-	*bpp = pullupblock(*bpp, TCP_PKT+TCP_HDRSIZE);
+	*bpp = pullupblock(*bpp, TCP6_PKT+TCP6_HDRSIZE);
 	if(*bpp == nil)
 		return -1;
 
-	h = (Tcphdr *)((*bpp)->rp);
+	h = (Tcp6hdr *)((*bpp)->rp);
 	tcph->source = nhgets(h->tcpsport);
 	tcph->dest = nhgets(h->tcpdport);
 	tcph->seq = nhgetl(h->tcpseq);
 	tcph->ack = nhgetl(h->tcpack);
-
 	hdrlen = (h->tcpflag[0] & 0xf0)>>2;
-	if(hdrlen < TCP_HDRSIZE) {
+	if(hdrlen < TCP6_HDRSIZE) {
 		freeblist(*bpp);
 		return -1;
 	}
@@ -849,19 +959,14 @@ ntohtcp(Tcp *tcph, Block **bpp)
 	tcph->wnd = nhgets(h->tcpwin);
 	tcph->urg = nhgets(h->tcpurg);
 	tcph->mss = 0;
-	tcph->len = nhgets(h->length) - (hdrlen + TCP_PKT);
+	tcph->len = nhgets(h->ploadlen) - hdrlen;
 
-	*bpp = pullupblock(*bpp, hdrlen+TCP_PKT);
+	*bpp = pullupblock(*bpp, hdrlen+TCP6_PKT);
 	if(*bpp == nil)
 		return -1;
 
-/*	netlog(Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
-		tcph->source, tcph->dest,
-		tcph->seq, tcph->ack, tcpflag((hdrlen<<10)|tcph->flags),
-		tcph->wnd, nhgets(h->length)-hdrlen-TCP_PKT); */
-
 	optr = h->tcpopt;
-	n = hdrlen - TCP_HDRSIZE;
+	n = hdrlen - TCP6_HDRSIZE;
 	while(n > 0 && *optr != EOLOPT) {
 		if(*optr == NOOPOPT) {
 			n--;
@@ -871,7 +976,64 @@ ntohtcp(Tcp *tcph, Block **bpp)
 		optlen = optr[1];
 		if(optlen < 2 || optlen > n)
 			break;
-if(0) print("tcpopt %d %d\n", *optr, optlen);
+		switch(*optr) {
+		case MSSOPT:
+			if(optlen == MSS_LENGTH)
+				tcph->mss = nhgets(optr+2);
+			break;
+		}
+		n -= optlen;
+		optr += optlen;
+	}
+	return hdrlen;
+}
+
+int
+ntohtcp4(Tcp *tcph, Block **bpp)
+{
+	Tcp4hdr *h;
+	uchar *optr;
+	ushort hdrlen;
+	ushort optlen;
+	int n;
+
+	*bpp = pullupblock(*bpp, TCP4_PKT+TCP4_HDRSIZE);
+	if(*bpp == nil)
+		return -1;
+
+	h = (Tcp4hdr *)((*bpp)->rp);
+	tcph->source = nhgets(h->tcpsport);
+	tcph->dest = nhgets(h->tcpdport);
+	tcph->seq = nhgetl(h->tcpseq);
+	tcph->ack = nhgetl(h->tcpack);
+
+	hdrlen = (h->tcpflag[0] & 0xf0)>>2;
+	if(hdrlen < TCP4_HDRSIZE) {
+		freeblist(*bpp);
+		return -1;
+	}
+
+	tcph->flags = h->tcpflag[1];
+	tcph->wnd = nhgets(h->tcpwin);
+	tcph->urg = nhgets(h->tcpurg);
+	tcph->mss = 0;
+	tcph->len = nhgets(h->length) - (hdrlen + TCP4_PKT);
+
+	*bpp = pullupblock(*bpp, hdrlen+TCP4_PKT);
+	if(*bpp == nil)
+		return -1;
+
+	optr = h->tcpopt;
+	n = hdrlen - TCP4_HDRSIZE;
+	while(n > 0 && *optr != EOLOPT) {
+		if(*optr == NOOPOPT) {
+			n--;
+			optr++;
+			continue;
+		}
+		optlen = optr[1];
+		if(optlen < 2 || optlen > n)
+			break;
 		switch(*optr) {
 		case MSSOPT:
 			if(optlen == MSS_LENGTH)
@@ -899,17 +1061,14 @@ tcpsndsyn(Tcpctl *tcb)
 	tcb->sndsyntime = msec;
 }
 
-
-/*
- *  called with v4 (4 byte) addresses
- */
 void
-sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg)
+sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg, int version)
 {
-	Tcphdr ph;
 	Block *hbp;
 	uchar rflags;
 	Tcppriv *tpriv;
+	Tcp4hdr ph4;
+	Tcp6hdr ph6;
 
 	tpriv = tcp->priv;
 
@@ -917,13 +1076,26 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg)
 		return;
 
 	/* make pseudo header */
-	memset(&ph, 0, sizeof(ph));
-	v6tov4(ph.tcpsrc, dest);
-	v6tov4(ph.tcpdst, source);
-	ph.proto = IP_TCPPROTO;
-	hnputs(ph.tcplen, TCP_HDRSIZE);
-	hnputs(ph.tcpsport, seg->dest);
-	hnputs(ph.tcpdport, seg->source);
+	if(version == 4) {
+		memset(&ph4, 0, sizeof(ph4));
+		ph4.vihl = IP_VER4;
+		v6tov4(ph4.tcpsrc, dest);
+		v6tov4(ph4.tcpdst, source);
+		ph4.proto = IP_TCPPROTO;
+		hnputs(ph4.tcplen, TCP4_HDRSIZE);
+		hnputs(ph4.tcpsport, seg->dest);
+		hnputs(ph4.tcpdport, seg->source);
+	}
+	else {
+		memset(&ph6, 0, sizeof(ph6));
+		ph6.vcf[0] = IP_VER6;
+		ipmove(ph6.tcpsrc, dest);
+		ipmove(ph6.tcpdst, source);
+		ph6.proto = IP_TCPPROTO;
+		hnputs(ph6.ploadlen, TCP6_HDRSIZE);
+		hnputs(ph6.tcpsport, seg->dest);
+		hnputs(ph6.tcpdport, seg->source);
+	}
 
 	tpriv->stats[OutRsts]++;
 	rflags = RST;
@@ -947,11 +1119,18 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg)
 	seg->wnd = 0;
 	seg->urg = 0;
 	seg->mss = 0;
-	hbp = htontcp(seg, nil, &ph, nil);
-	if(hbp == nil)
-		return;
-
-	ipoput(tcp->f, hbp, 0, MAXTTL, DFLTTOS);
+	if(version == 4) {
+		hbp = htontcp4(seg, nil, &ph4, nil);
+		if(hbp == nil)
+			return;
+		ipoput4(tcp->f, hbp, 0, MAXTTL, DFLTTOS);
+	}
+	else {
+		hbp = htontcp6(seg, nil, &ph6, nil);
+		if(hbp == nil)
+			return;
+		ipoput6(tcp->f, hbp, 0, MAXTTL, DFLTTOS);
+	}
 }
 
 /*
@@ -963,13 +1142,13 @@ tcphangup(Conv *s)
 {
 	Tcp seg;
 	Tcpctl *tcb;
-	Tcphdr ph;
 	Block *hbp;
 
 	tcb = (Tcpctl*)s->ptcl;
 	if(waserror())
 		return commonerror();
 	if(s->raddr != 0) {
+		int version = isv4(s->raddr) ? 4 : 6;
 		seg.flags = RST | ACK;
 		seg.ack = tcb->rcv.nxt;
 		seg.seq = tcb->snd.ptr;
@@ -977,9 +1156,16 @@ tcphangup(Conv *s)
 		seg.urg = 0;
 		seg.mss = 0;
 		tcb->last_ack = tcb->rcv.nxt;
-		hnputs(ph.tcplen, TCP_HDRSIZE);
-		hbp = htontcp(&seg, nil, &tcb->protohdr, tcb);
-		ipoput(s->p->f, hbp, 0, s->ttl, s->tos);
+		if(version == 4) {
+			tcb->protohdr.tcp4hdr.vihl = IP_VER4;
+			hbp = htontcp4(&seg, nil, &tcb->protohdr.tcp4hdr, tcb);
+			ipoput4(s->p->f, hbp, 0, s->ttl, s->tos);
+		}
+		else {
+			tcb->protohdr.tcp6hdr.vcf[0] = IP_VER6;
+			hbp = htontcp6(&seg, nil, &tcb->protohdr.tcp6hdr, tcb);
+			ipoput6(s->p->f, hbp, 0, s->ttl, s->tos);
+		}
 	}
 	localclose(s, nil);
 	poperror();
@@ -991,7 +1177,6 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst)
 {
 	Conv *new;
 	Tcpctl *tcb;
-	Tcphdr *h;
 	Tcppriv *tpriv;
 
 	new = Fsnewcall(s, src, segp->source, dst, segp->dest);
@@ -1010,13 +1195,24 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst)
 	tcb->rtt_timer.arg = new;
 	tcb->rtt_timer.state = TcptimerOFF;
 
-	h = &tcb->protohdr;
-	memset(h, 0, sizeof(*h));
-	h->proto = IP_TCPPROTO;
-	hnputs(h->tcpsport, new->lport);
-	hnputs(h->tcpdport, new->rport);
-	v6tov4(h->tcpsrc, dst);
-	v6tov4(h->tcpdst, src);
+	if(isv4(src)) {
+		Tcp4hdr *h = &tcb->protohdr.tcp4hdr;
+		memset(h, 0, sizeof(*h));
+		h->proto = IP_TCPPROTO;
+		hnputs(h->tcpsport, new->lport);
+		hnputs(h->tcpdport, new->rport);
+		v6tov4(h->tcpsrc, dst);
+		v6tov4(h->tcpdst, src);
+	}
+	else {
+		Tcp6hdr *h = &tcb->protohdr.tcp6hdr;
+		memset(h, 0, sizeof(*h));
+		h->proto = IP_TCPPROTO;
+		hnputs(h->tcpsport, new->lport);
+		hnputs(h->tcpdport, new->rport);
+		ipmove(h->tcpsrc, dst);
+		ipmove(h->tcpdst, src);
+	}
 
 	tpriv = new->p->priv;
 	iphtadd(&tpriv->ht, new);
@@ -1195,7 +1391,7 @@ update(Conv *s, Tcp *seg)
 			if(rtt == 0)
 				rtt = 1;	/* otherwise all close systems will rexmit in 0 time */
 			rtt *= MSPTICK;
-			if (tcb->srtt == 0) {
+			if(tcb->srtt == 0) {
 				tcb->srtt = rtt << LOGAGAIN;
 				tcb->mdev = rtt << LOGDGAIN;
 			} else {
@@ -1237,7 +1433,8 @@ void
 tcpiput(Proto *tcp, Ipifc*, Block *bp)
 {
 	Tcp seg;
-	Tcphdr *h;
+	Tcp4hdr *h4;
+	Tcp6hdr *h6;
 	int hdrlen;
 	Tcpctl *tcb;
 	ushort length;
@@ -1245,45 +1442,92 @@ tcpiput(Proto *tcp, Ipifc*, Block *bp)
 	Conv *s;
 	Fs *f;
 	Tcppriv *tpriv;
+	int version;
 
 	f = tcp->f;
 	tpriv = tcp->priv;
 	
 	tpriv->stats[InSegs]++;
 
-	h = (Tcphdr*)(bp->rp);
+	h4 = (Tcp4hdr*)(bp->rp);
+	h6 = (Tcp6hdr*)(bp->rp);
 
-	length = nhgets(h->length);
-	v4tov6(dest, h->tcpdst);
-	v4tov6(source, h->tcpsrc);
+	if((h4->vihl&0xF0)==IP_VER4) {
+		version = 4;
+		length = nhgets(h4->length);
+		v4tov6(dest, h4->tcpdst);
+		v4tov6(source, h4->tcpsrc);
 
-	h->Unused = 0;
-	hnputs(h->tcplen, length-TCP_PKT);
-	if((h->tcpcksum[0] || h->tcpcksum[1]) && 
-	    ptclcsum(bp, TCP_IPLEN, length-TCP_IPLEN)) {
-		tpriv->stats[CsumErrs]++;
-		tpriv->stats[InErrs]++;
-		netlog(f, Logtcp, "bad tcp proto cksum\n");
-		freeblist(bp);
-		return;
+		h4->Unused = 0;
+		hnputs(h4->tcplen, length-TCP4_PKT);
+		if((h4->tcpcksum[0] || h4->tcpcksum[1]) && 
+			ptclcsum(bp, TCP4_IPLEN, length-TCP4_IPLEN)) {
+			tpriv->stats[CsumErrs]++;
+			tpriv->stats[InErrs]++;
+			netlog(f, Logtcp, "bad tcp proto cksum\n");
+			freeblist(bp);
+			return;
+		}
+
+		hdrlen = ntohtcp4(&seg, &bp);
+		if(hdrlen < 0){
+			tpriv->stats[HlenErrs]++;
+			tpriv->stats[InErrs]++;
+			netlog(f, Logtcp, "bad tcp hdr len\n");
+			return;
+		}
+
+		/* trim the packet to the size claimed by the datagram */
+		length -= hdrlen+TCP4_PKT;
+		bp = trimblock(bp, hdrlen+TCP4_PKT, length);
+		if(bp == nil){
+			tpriv->stats[LenErrs]++;
+			tpriv->stats[InErrs]++;
+			netlog(f, Logtcp, "tcp len < 0 after trim\n");
+			return;
+		}
 	}
+	else {
+		int ttl = h6->ttl;
+		int proto = h6->proto;
 
-	hdrlen = ntohtcp(&seg, &bp);
-	if(hdrlen < 0){
-		tpriv->stats[HlenErrs]++;
-		tpriv->stats[InErrs]++;
-		netlog(f, Logtcp, "bad tcp hdr len\n");
-		return;
-	}
+		version = 6;
+		length = nhgets(h6->ploadlen);
+		ipmove(dest, h6->tcpdst);
+		ipmove(source, h6->tcpsrc);
 
-	/* trim the packet to the size claimed by the datagram */
-	length -= hdrlen+TCP_PKT;
-	bp = trimblock(bp, hdrlen+TCP_PKT, length);
-	if(bp == nil){
-		tpriv->stats[LenErrs]++;
-		tpriv->stats[InErrs]++;
-		netlog(f, Logtcp, "tcp len < 0 after trim\n");
-		return;
+		h6->ploadlen[0] = h6->ploadlen[1] = h6->proto = 0;
+		h6->ttl = proto;
+		hnputl(h6->vcf, length);
+		if((h6->tcpcksum[0] || h6->tcpcksum[1]) && 
+			ptclcsum(bp, TCP6_IPLEN, length+TCP6_PHDRSIZE)) {
+			tpriv->stats[CsumErrs]++;
+			tpriv->stats[InErrs]++;
+			netlog(f, Logtcp, "bad tcp proto cksum\n");
+			freeblist(bp);
+			return;
+		}
+		h6->ttl = ttl;
+		h6->proto = proto;
+		hnputs(h6->ploadlen, length);
+
+		hdrlen = ntohtcp6(&seg, &bp);
+		if(hdrlen < 0){
+			tpriv->stats[HlenErrs]++;
+			tpriv->stats[InErrs]++;
+			netlog(f, Logtcp, "bad tcp hdr len\n");
+			return;
+		}
+
+		/* trim the packet to the size claimed by the datagram */
+		length -= hdrlen;
+		bp = trimblock(bp, hdrlen+TCP6_PKT, length);
+		if(bp == nil){
+			tpriv->stats[LenErrs]++;
+			tpriv->stats[InErrs]++;
+			netlog(f, Logtcp, "tcp len < 0 after trim\n");
+			return;
+		}
 	}
 
 	/* lock protocol while searching for a conversation */
@@ -1294,7 +1538,7 @@ tcpiput(Proto *tcp, Ipifc*, Block *bp)
 	if(s == nil){
 reset:
 		qunlock(tcp);
-		sndrst(tcp, source, dest, length, &seg);
+		sndrst(tcp, source, dest, length, &seg, version);
 		freeblist(bp);
 		return;
 	}
@@ -1334,7 +1578,7 @@ reset:
 
 	switch(tcb->state) {
 	case Closed:
-		sndrst(tcp, source, dest, length, &seg);
+		sndrst(tcp, source, dest, length, &seg, version);
 		goto raise;
 	case Listen:
 		if(seg.flags & SYN) {
@@ -1349,7 +1593,7 @@ reset:
 	case Syn_sent:
 		if(seg.flags & ACK) {
 			if(!seq_within(seg.ack, tcb->iss+1, tcb->snd.nxt)) {
-				sndrst(tcp, source, dest, length, &seg);
+				sndrst(tcp, source, dest, length, &seg, version);
 				goto raise;
 			}
 		}
@@ -1413,7 +1657,7 @@ reset:
 
 	/* Cannot accept so answer with a rst */
 	if(length && tcb->state == Closed) {
-		sndrst(tcp, source, dest, length, &seg);
+		sndrst(tcp, source, dest, length, &seg, version);
 		goto raise;
 	}
 
@@ -1448,7 +1692,7 @@ reset:
 		switch(tcb->state) {
 		case Syn_received:
 			if(!seq_within(seg.ack, tcb->snd.una+1, tcb->snd.nxt)){
-				sndrst(tcp, source, dest, length, &seg);
+				sndrst(tcp, source, dest, length, &seg, version);
 				goto raise;
 			}
 			update(s, &seg);
@@ -1556,7 +1800,7 @@ reset:
 				/* no process to read the data, send a reset */
 				if(bp != nil)
 					freeblist(bp);
-				sndrst(tcp, source, dest, length, &seg);
+				sndrst(tcp, source, dest, length, &seg, version);
 				qunlock(s);
 				poperror();
 				return;
@@ -1649,6 +1893,15 @@ tcpoutput(Conv *s)
 	ulong ssize, dsize, usable, sent;
 	Fs *f;
 	Tcppriv *tpriv;
+	//int version = isv4(s->raddr) ? 4 : 6;
+	int version;
+
+	if( (memcmp(s->raddr, v4prefix, IPv4off) == 0 &&
+		memcmp(s->laddr, v4prefix, IPv4off) == 0)
+		|| ipcmp(s->raddr, IPnoaddr) == 0)
+		version = 4;
+	else
+		version = 6;
 
 	f = s->p->f;
 	tpriv = s->p->priv;
@@ -1681,7 +1934,7 @@ tcpoutput(Conv *s)
 		 */
 		if(tcb->snd.wnd == 0){
 			if(sent != 0) {
-				if ((tcb->flags&FORCE) == 0)
+				if((tcb->flags&FORCE) == 0)
 					break;
 				tcb->snd.ptr = tcb->snd.una;
 			}
@@ -1755,8 +2008,6 @@ tcpoutput(Conv *s)
 				seg.flags |= FIN;
 				dsize--;
 			}
-/*			netlog(f, Logtcp, "qcopy: dlen %d blen %d sndcnt %d qlen %d sent %d rp[0] %d\n",
-				dsize, BLEN(bp), sndcnt, qlen(s->wq), sent, bp->rp[0]); */
 		}
 
 		if(sent+dsize == sndcnt)
@@ -1782,10 +2033,21 @@ tcpoutput(Conv *s)
 			tcb->snd.nxt = tcb->snd.ptr;
 
 		/* Build header, link data and compute cksum */
-		hbp = htontcp(&seg, bp, &tcb->protohdr, tcb);
-		if(hbp == nil) {
-			freeblist(bp);
-			return;
+		if(version == 4) {
+			tcb->protohdr.tcp4hdr.vihl = IP_VER4;
+			hbp = htontcp4(&seg, bp, &tcb->protohdr.tcp4hdr, tcb);
+			if(hbp == nil) {
+				freeblist(bp);
+				return;
+			}
+		}
+		else {
+			tcb->protohdr.tcp6hdr.vcf[0] = IP_VER6;
+			hbp = htontcp6(&seg, bp, &tcb->protohdr.tcp6hdr, tcb);
+			if(hbp == nil) {
+				freeblist(bp);
+				return;
+			}
 		}
 
 		/* Start the transmission timers if there is new data and we
@@ -1814,7 +2076,10 @@ tcpoutput(Conv *s)
 			qlock(s);
 			nexterror();
 		}
-		ipoput(f, hbp, 0, s->ttl, s->tos);
+		if(version == 4)
+			ipoput4(f, hbp, 0, s->ttl, s->tos);
+		else
+			ipoput6(f, hbp, 0, s->ttl, s->tos);
 		qlock(s);
 		poperror();
 	}
@@ -1831,7 +2096,6 @@ tcpsendka(Conv *s)
 	Block *hbp,*dbp;
 
 	tcb = (Tcpctl*)s->ptcl;
-
 
 	dbp = nil;
 	seg.urg = 0;
@@ -1850,14 +2114,26 @@ tcpsendka(Conv *s)
 		dbp->wp++;
 	}
 
-	/* Build header, link data and compute cksum */
-	hbp = htontcp(&seg, dbp, &tcb->protohdr, tcb);
-	if(hbp == nil) {
-		freeblist(dbp);
-		return;
+	if(isv4(s->raddr)) {
+		/* Build header, link data and compute cksum */
+		tcb->protohdr.tcp4hdr.vihl = IP_VER4;
+		hbp = htontcp4(&seg, dbp, &tcb->protohdr.tcp4hdr, tcb);
+		if(hbp == nil) {
+			freeblist(dbp);
+			return;
+		}
+		ipoput4(s->p->f, hbp, 0, s->ttl, s->tos);
 	}
-
-	ipoput(s->p->f, hbp, 0, s->ttl, s->tos);
+	else {
+		/* Build header, link data and compute cksum */
+		tcb->protohdr.tcp6hdr.vcf[0] = IP_VER6;
+		hbp = htontcp6(&seg, dbp, &tcb->protohdr.tcp6hdr, tcb);
+		if(hbp == nil) {
+			freeblist(dbp);
+			return;
+		}
+		ipoput6(s->p->f, hbp, 0, s->ttl, s->tos);
+	}
 }
 
 /*
@@ -2133,7 +2409,7 @@ tcptrim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 			seg->flags &= ~SYN;
 			seg->seq++;
 
-			if (seg->urg > 1)
+			if(seg->urg > 1)
 				seg->urg--;
 			else
 				seg->flags &= ~URG;
@@ -2144,7 +2420,7 @@ tcptrim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 			seg->seq += dupcnt;
 			*length -= dupcnt;
 
-			if (seg->urg > dupcnt)
+			if(seg->urg > dupcnt)
 				seg->urg -= dupcnt;
 			else {
 				seg->flags &= ~URG;
@@ -2167,61 +2443,50 @@ tcptrim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 void
 tcpadvise(Proto *tcp, Block *bp, char *msg)
 {
-	Tcphdr *h;
+	Tcp4hdr *h4;
+	Tcp6hdr *h6;
 	Tcpctl *tcb;
 	uchar source[IPaddrlen];
 	uchar dest[IPaddrlen];
 	ushort psource, pdest;
 	Conv *s, **p;
 
-	h = (Tcphdr*)(bp->rp);
+	h4 = (Tcp4hdr*)(bp->rp);
+	h6 = (Tcp6hdr*)(bp->rp);
 
-	v4tov6(dest, h->tcpdst);
-	v4tov6(source, h->tcpsrc);
-	psource = nhgets(h->tcpsport);
-	pdest = nhgets(h->tcpdport);
+	if((h4->vihl&0xF0)==IP_VER4) {
+		v4tov6(dest, h4->tcpdst);
+		v4tov6(source, h4->tcpsrc);
+		psource = nhgets(h4->tcpsport);
+		pdest = nhgets(h4->tcpdport);
+	} 
+	else {
+		ipmove(dest, h6->tcpdst);
+		ipmove(source, h6->tcpsrc);
+		psource = nhgets(h6->tcpsport);
+		pdest = nhgets(h6->tcpdport);
+	}
 
 	/* Look for a connection */
 	qlock(tcp);
-	if(strcmp(msg, "unfragmentable") == 0){
-		for(p = tcp->conv; *p; p++) {
-			s = *p;
-			tcb = (Tcpctl*)s->ptcl;
-			if(tcb->state != Closed)
-			if(ipcmp(s->raddr, dest) == 0)
-			if(ipcmp(s->laddr, source) == 0){
-				qlock(s);
-				qunlock(tcp);
-				switch(tcb->state){
-				case Syn_sent:
-					localclose(s, msg);
-					break;
-				}
-				qunlock(s);
-				freeblist(bp);
-				return;
+	for(p = tcp->conv; *p; p++) {
+		s = *p;
+		tcb = (Tcpctl*)s->ptcl;
+		if(s->rport == pdest)
+		if(s->lport == psource)
+		if(tcb->state != Closed)
+		if(ipcmp(s->raddr, dest) == 0)
+		if(ipcmp(s->laddr, source) == 0){
+			qlock(s);
+			qunlock(tcp);
+			switch(tcb->state){
+			case Syn_sent:
+				localclose(s, msg);
+				break;
 			}
-		}
-	} else {
-		for(p = tcp->conv; *p; p++) {
-			s = *p;
-			tcb = (Tcpctl*)s->ptcl;
-			if(s->rport == pdest)
-			if(s->lport == psource)
-			if(tcb->state != Closed)
-			if(ipcmp(s->raddr, dest) == 0)
-			if(ipcmp(s->laddr, source) == 0){
-				qlock(s);
-				qunlock(tcp);
-				switch(tcb->state){
-				case Syn_sent:
-					localclose(s, msg);
-					break;
-				}
-				qunlock(s);
-				freeblist(bp);
-				return;
-			}
+			qunlock(s);
+			freeblist(bp);
+			return;
 		}
 	}
 	qunlock(tcp);
