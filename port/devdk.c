@@ -421,7 +421,7 @@ dkoput(Queue *q, Block *bp)
 	bp->rptr[1] = line>>8;
 
 	if(QFULL(dp->wq->next)){
-		print("dk wq full\n");
+/*		print("dk wq full\n");/**/
 		freeb(bp);
 	} else
 		PUTNEXT(dp->wq, bp);

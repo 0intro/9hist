@@ -784,15 +784,20 @@ streamclose1(Stream *s)
 	 */
 	lock(s);
 	if(s->opens == 1){
-		/*
-		 *  descend the stream closing the queues
-		 */
-		for(q = s->procq; q; q = q->next){
-			if(q->info->close)
-				(*q->info->close)(q->other);
-			/* this may be 2 streams joined device end to device end */
-			if(q == s->devq->other)
-				break;
+		if(!waserror()){
+			/*
+			 *  descend the stream closing the queues
+			 */
+			for(q = s->procq; q; q = q->next){
+				if(q->info->close)
+					(*q->info->close)(q->other);
+				/*
+				 *  this may be 2 streams joined device end to device end
+				 */
+				if(q == s->devq->other)
+					break;
+			}
+			poperror();
 		}
 	
 		/*

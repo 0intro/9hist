@@ -470,7 +470,7 @@ long
 bitwrite(Chan *c, void *va, long n)
 {
 	uchar *p, *q;
-	long m, v, miny, maxy, t, x, y;
+	long m, v, miny, maxy, minx, maxx, t, x, y, tw, th;
 	ulong l, nw, ws;
 	int off, isoff, i;
 	Point pt, pt1, pt2;
@@ -880,20 +880,66 @@ bitwrite(Chan *c, void *va, long n)
 			src = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || src->ldepth<0)
 				error(0, Ebadbitmap);
-			if(src->r.min.x!=0 || src->r.min.y!=0 || src->r.max.x!=16 || src->r.max.y!=16)
-				error(0, Ebadblt);
 			v = GSHORT(p+21);
-			{
-				int i;
+			x = src->r.min.x;
+			y = src->r.min.y;
+			tw = src->r.max.x - x;
+			th = src->r.max.y - y;
+			if(x==0 && y==0 && 16%tw == 0 && 16%th == 0){
 				GTexture t;
 
-				for(i=0; i<16; i++)
-					t.bits[i] = src->base[i]>>16;
+				if(tw==16 && th==16)
+					for(y=0; y<16; y++)
+						t.bits[y] = src->base[y]>>16;
+				else
+					for(y=0; y<16; y++){
+						l = src->base[y%(16/th)] >> (32-tw);
+						for(i=16/tw, ws=l; i > 1; i--)
+							ws = (ws<<tw) | l;
+						t.bits[y] = ws;
+					}
 				if(off && !isoff){
 					cursoroff(1);
 					isoff = 1;
 				}
 				gtexture(dst, rect, &t, v);
+			}else{
+				GBitmap d;
+
+				d = *dst;
+				rect = rcanon(rect);
+				if(rectclip(&d.r, rect)==0)
+					return;
+				/*
+				 * Find x, maxx such that
+				 * x <= rect.min.x < x+tw,
+				 * maxx-tw < rect.max.x <= maxx
+				 * and x, maxx are integral multiples of tw
+				 * away from src->r.min.x
+				 * Similarly for y, maxy
+				 */
+				if(x > rect.min.x)
+					x -= ((x-rect.min.x+tw-1)/tw)*tw;
+				else if(x+tw <= rect.min.x)
+					x += ((rect.min.x-x)/tw)*tw;
+				if(y > rect.min.y)
+					y -= ((y-rect.min.y+th-1)/th)*th;
+				else if(y+tw <= rect.min.y)
+					y += ((rect.min.y-y)/th)*th;
+				maxx = x+tw;
+				if(maxx < rect.max.x)
+					maxx += ((rect.max.x-maxx+tw-1)/tw)*tw;
+				maxy = y+th;
+				if(maxy < rect.max.y)
+					maxy += ((rect.max.y-maxy+th-1)/th)*th;
+				minx = x;
+				if(off && !isoff){
+					cursoroff(1);
+					isoff = 1;
+				}
+				for( ; y<maxy; y+=th)
+					for(x=minx; x<maxx; x+=tw)
+						gbitblt(&d, Pt(x,y), src, src->r, v);
 			}
 			m -= 23;
 			p += 23;

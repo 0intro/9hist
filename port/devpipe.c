@@ -201,8 +201,9 @@ pipewstat(Chan *c, char *db)
 void
 pipeexit(Pipe *p)
 {
-	decref(p);
-	if(p->ref <= 0){
+	if(decref(p) < 0)
+		panic("pipeexit");
+	if(p->ref == 0){
 		lock(&pipealloc);
 		p->next = pipealloc.free;
 		pipealloc.free = p;
@@ -220,18 +221,12 @@ pipeclose(Chan *c)
 	p = &pipealloc.pipe[STREAMID(c->qid)/2];
 
 	/*
-	 *  take care of assosiated streams
+	 *  take care of associated streams
 	 */
 	if(local = c->stream){
 		remote = (Stream *)c->stream->devq->ptr;
-		if(waserror()){
-			streamexit(remote, 0);
-			pipeexit(p);
-			nexterror();
-		}
 		streamclose(c);		/* close this stream */
 		streamexit(remote, 0);	/* release stream for other half of pipe */
-		poperror();
 	}
 	pipeexit(p);
 }
