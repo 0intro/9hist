@@ -22,7 +22,7 @@
  */
 enum {
 	Data		= 0x10,		/* offset from I/O base of data port */
-	Reset		= 0x18,		/* offset from I/O base of reset port */
+	Reset		= 0x1F,		/* offset from I/O base of reset port */
 };
 
 static int
@@ -67,6 +67,7 @@ reset(Ether *ether)
 	buf[0] = inb(port+Reset);
 	delay(2);
 	outb(port+Reset, buf[0]);
+	delay(2);
 	
 	/*
 	 * Init the (possible) chip, then use the (possible)
