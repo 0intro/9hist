@@ -125,8 +125,16 @@ ushort	nhgets(void*);
 void	ifwrite(void*, Block*);
 void*	ifinit(int);
 void	ifjab(void);
-void	fiberint(int);
 ulong	ifaddr(void*);
+void	filiput(Block*);
+void	fiberint(int);
 void	audiosbintr(void);
 void	audiodmaintr(void);
 ulong	fwblock(void*, void*, ulong);
+ulong	frblock(void*, void*, ulong);
+void	ifree(void*);
+Block*	iallocb(int);
+void*	ifroute(ulong);
+ulong	ifunroute(ulong);
+void	parseip(char*, char*);
+

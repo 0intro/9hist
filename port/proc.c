@@ -44,6 +44,10 @@ char *statename[] =
 void
 schedinit(void)		/* never returns */
 {
+	m->cbin = m->calls;
+	m->cbout = m->calls;
+	m->cbend = &m->calls[NCALLBACK];
+
 	setlabel(&m->sched);
 	if(up) {
 		m->proc = 0;
@@ -87,6 +91,7 @@ sched(void)
 		procsave(up);
 		if(setlabel(&up->sched)) {
 			procrestore(up);
+			callbacks();
 			spllo();
 			return;
 		}
@@ -98,6 +103,27 @@ sched(void)
 	m->proc = up;
 	mmuswitch(up);
 	gotolabel(&up->sched);
+}
+
+void
+newcallback(void (*func)(void))
+{
+	*m->cbin = func;
+	if(++m->cbin >= m->cbend)
+		m->cbin = m->calls;
+}
+
+void
+callbacks(void)
+{
+	void (*func)(void);
+
+	while(m->cbin != m->cbout) {
+		func = *m->cbout;
+		if(++m->cbout >= m->cbend)
+			m->cbout = m->calls;
+		func();
+	}
 }
 
 int

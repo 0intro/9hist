@@ -402,7 +402,10 @@ kernfault(Ureg *ur, int code)
 	print("kfault %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
 	print("UP=0x%lux SR=0x%lux PC=0x%lux R31=%lux SP=0x%lux\n",
 				up, ur->status, ur->pc, ur->r31, ur->sp);
-	kpteprint(ur);
+
+	dumpregs(ur);
+	splhi();
+	for(;;);
 	panic("kfault");
 }
 

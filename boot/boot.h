@@ -22,6 +22,8 @@ extern char	terminal[];
 extern char	username[NAMELEN];
 extern char	bootfile[];
 extern char	conffile[];
+extern int	bargc;
+extern char	*bargv[];
 extern int	afd;
 
 /* libc equivalent */

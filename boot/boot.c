@@ -13,6 +13,7 @@ char	sys[2*NAMELEN];
 char	username[NAMELEN];
 char	bootfile[3*NAMELEN];
 char	conffile[NAMELEN];
+char 	reply[64];
 int	printcol;
 int	mflag;
 int	fflag;
@@ -23,6 +24,8 @@ int	afd = -1;
 static void	swapproc(void);
 static void	recover(Method*);
 static Method	*rootserver(char*);
+char	*bargv[6];
+int	bargc;
 
 void
 boot(int argc, char *argv[])
@@ -38,6 +41,7 @@ boot(int argc, char *argv[])
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
+	bind("#c", "/dev", MAFTER);
 #ifdef DEBUG
 	print("argc=%d\n", argc);
 	for(fd = 0; fd < argc; fd++)
@@ -149,6 +153,29 @@ boot(int argc, char *argv[])
 	fatal(cmd);
 }
 
+Method*
+findmethod(char *a)
+{
+	Method *mp;
+	int i, j;
+	char *cp;
+
+	i = strlen(a);
+	cp = strchr(a, '!');
+	if(cp)
+		i = cp - a;
+	for(mp = method; mp->name; mp++){
+		j = strlen(mp->name);
+		if(j > i)
+			j = i;
+		if(strncmp(a, mp->name, j) == 0)
+			break;
+	}
+	if(mp->name)
+		return mp;
+	return 0;
+}
+
 /*
  *  ask user from whence cometh the root file system
  */
@@ -156,45 +183,51 @@ Method*
 rootserver(char *arg)
 {
 	char prompt[256];
-	char reply[64];
 	Method *mp;
 	char *cp;
-	int n, j;
+	int n;
 	int notfirst;
 
+	/* make list of methods */
 	mp = method;
 	n = sprint(prompt, "root is from (%s", mp->name);
 	for(mp++; mp->name; mp++)
 		n += sprint(prompt+n, ", %s", mp->name);
 	sprint(prompt+n, ")");
 
-	strcpy(reply, method->name);
-	if(arg){
-		j = strlen(arg);
-		for(mp = method; mp->name; mp++)
-			if(strncmp(arg, mp->name, j) == 0)
-				break;
-		if(mp->name)
-			strcpy(reply, arg);
+	/* create default reply */
+	readfile("#e/bootargs", reply, sizeof(reply));
+	if(reply[0] == 0 && arg != 0)
+		strcpy(reply, arg);
+	if(reply[0]){
+		mp = findmethod(reply);
+		if(mp == 0)
+			reply[0] = 0;
 	}
+	if(reply[0] == 0)
+		strcpy(reply, method->name);
 
+	/* parse replies */
 	for(notfirst = 0;; notfirst = 1){
 		if(pflag || notfirst)
 			outin(prompt, reply, sizeof(reply));
-		cp = strchr(reply, '!');
-		if(cp)
-			j = cp - reply;
-		else
-			j = strlen(reply);
-		for(mp = method; mp->name; mp++)
-			if(strncmp(reply, mp->name, j) == 0){
-				if(cp)
-					strcpy(sys, cp+1);
-				return mp;
+		mp = findmethod(reply);
+		if(mp){
+			for(cp = reply; *cp; cp++){
+				while(*cp && *cp != ' ')
+					cp++;
+				while(*cp == ' ')
+					*cp++ = 0;
+				if(*cp)
+					bargv[bargc++] = cp;
 			}
-		if(mp->name == 0)
-			continue;
+			cp = strchr(reply, '!');
+			if(cp)
+				strcpy(sys, cp+1);
+			return mp;
+		}
 	}
+
 	return 0;		/* not reached */
 }
 

@@ -85,6 +85,8 @@ struct Notsave
 
 #include "../port/portdat.h"
 
+#define NCALLBACK	32
+
 /* First FOUR members offsets known by l.s */
 struct Mach
 {
@@ -111,6 +113,11 @@ struct Mach
 	ulong	delayloop;		/* for the delay() routine */
 	Schedq	hiq;
 	Schedq	loq;
+
+	void	(**cbin)(void);
+	void	(**cbout)(void);
+	void	(**cbend)(void);
+	void	(*calls[NCALLBACK])(void);
 
 	int	pfault;
 	int	cs;

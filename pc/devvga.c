@@ -146,11 +146,12 @@ enum
 	Trident,	/* Trident 8900 */
 	Tseng,		/* tseng labs te4000 */
 	Cirrus,		/* Cirrus CLGD542X */
+	S3,
 	Generic,
 };
 
 static void	nopage(int), tsengpage(int), tridentpage(int), parapage(int);
-static void	atipage(int), cirruspage(int);
+static void	atipage(int), cirruspage(int), s3page(int);
 
 Vgacard vgachips[] =
 {
@@ -159,6 +160,7 @@ Vgacard vgachips[] =
 [Trident]	{ "trident", tridentpage, },
 [Tseng]		{ "tseng", tsengpage, },
 [Cirrus]	{ "cirrus", cirruspage, },
+[S3]		{ "s3", s3page, },
 [Generic]	{ "generic", nopage, },
 		{ 0, 0, },
 };
@@ -962,6 +964,35 @@ static void
 parapage(int page)
 {
 	grout(0x9, page<<4);
+}
+static void
+s3page(int page)
+{
+#ifdef notdef
+	uchar crt51;
+
+	/*
+	 * The S3 registers need to be unlocked for this.
+	 * Let's hope they are already:
+	 *	crout(0x38, 0x48);
+	 *	crout(0x39, 0xA0);
+	 *
+	 * The page is 6 bits, the lower 4 bits in Crt35<3:0>,
+	 * the upper 2 in Crt51<3:2>.
+	 */
+	crout(0x35, page & 0x0F);
+	outb(CRX, 0x51);
+	crt51 = (0xF3 & inb(CR))|((page & 0x30)>>2);
+	outb(CR, crt51);
+{
+uchar crt35;
+outb(CRX, 0x35);
+crt35 = inb(CR);
+print("page #%ux, crt51=#%ux, crt35=#%ux\n", page, crt51, crt35);
+}
+#else
+	crout(0x35, (page<<2) & 0x0f);
+#endif /* notdef
 }
 
 void

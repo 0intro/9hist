@@ -369,6 +369,73 @@ checkb(b, "qconsume 2");
 }
 
 int
+qpass(Queue *q, Block *b)
+{
+	int s, i, len;
+	int dowakeup;
+
+	s = splhi();
+
+	len = BLEN(b);
+
+	/* sync with qread */
+	dowakeup = 0;
+	lock(q);
+
+	if(q->syncbuf){
+		/* synchronous communications, just copy into buffer */
+		if(len < q->synclen)
+			q->synclen = len;
+		i = q->synclen;
+		memmove(q->syncbuf, b->rp, i);
+		q->syncbuf = 0;		/* tell reader buffer is full */
+		len -= i;
+		if(len <= 0 || (q->state & Qmsg)){
+			unlock(q);
+			wakeup(&q->rr);
+			ifree(b);
+			splx(s);
+			return i;
+		}
+
+		/* queue anything that's left */
+		dowakeup = 1;
+		b->rp += i;
+	}
+
+	/* no waiting receivers, room in buffer? */
+	if(q->len >= q->limit){
+		unlock(q);
+		splx(s);
+		return -1;
+	}
+
+	/* save in buffer */
+	if(q->bfirst)
+		q->blast->next = b;
+	else
+		q->bfirst = b;
+	q->blast = b;
+	q->len += len;
+checkb(b, "qproduce");
+
+	if(q->state & Qstarve){
+		q->state &= ~Qstarve;
+		dowakeup = 1;
+	}
+	unlock(q);
+
+	if(dowakeup){
+		if(q->kick)
+			(*q->kick)(q->arg);
+		wakeup(&q->rr);
+	}
+	splx(s);
+
+	return len;
+}
+
+int
 qproduce(Queue *q, void *vp, int len)
 {
 	Block *b;
