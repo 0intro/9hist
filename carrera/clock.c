@@ -146,14 +146,23 @@ clock(Ureg *ur)
 		sched();
 }
 
+ulong timewarp;
+
 vlong
 fastticks(uvlong *hz)
 {
 	uvlong cyclecount;
+	ulong cnt, d;
 	int x;
 
 	x = splhi();
-	cyclecount = updatefastclock(rdcount());
+	cnt = rdcount();
+	cyclecount = updatefastclock(cnt);
+	d = lastcmp - cnt + 100;
+	if(d > incr+100){
+		wrcompare(lastcmp = cnt+incr);
+		timewarp++;
+	}
 	splx(x);
 
 	if(hz)
@@ -162,11 +171,10 @@ fastticks(uvlong *hz)
 	return (vlong)cyclecount;
 }
 
-ulong timewarp;
-
 void
 idlehands(void)
 {
+#ifdef adsfasdf
 	ulong cnt, cmp, d;
 	int x;
 
@@ -181,4 +189,5 @@ idlehands(void)
 //		print("%lud %lud %d %lux\n", cnt, cmp, cnt-cmp, d);
 	}
 	splx(x);
+#endif
 }
