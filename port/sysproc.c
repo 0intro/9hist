@@ -13,7 +13,7 @@ int	shargs(char*, int, char**);
 long
 sysr1(ulong *arg)
 {
-	print("[%d] r1 = %d\n", u->p->pid, arg[0]);
+	print("[%s %s %d] r1 = %d\n", u->p->pgrp->user, u->p->text, u->p->pid, arg[0]);
 	return 0;
 }
 

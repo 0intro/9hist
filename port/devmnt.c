@@ -47,7 +47,9 @@ struct
 
 struct Mnthdr
 {
-	Mnthdr	*next;	/* in free list or writers list */
+	Mnthdr	*next;		/* in free list or writers list */
+	Mnthdr	*prev;		/* in writers list only */
+	int	writing;	/* flag: in writers list */
 	Fcall	thdr;
 	Fcall	rhdr;
 	Rendez	r;
@@ -59,6 +61,7 @@ struct Mnthdr
 struct
 {
 	Lock;
+	Mnthdr	*arena;
 	Mnthdr	*free;
 }mnthdralloc;
 
@@ -219,6 +222,7 @@ mntreset(void)
 	}
 	mh[i].next = 0;
 	mh[i].thdr.tag = i;
+	mnthdralloc.arena = mh;
 	mnthdralloc.free = mh;
 
 	mq = ialloc(conf.nmntdev*sizeof(MntQ), 0);
@@ -586,7 +590,22 @@ mntwstat(Chan *c, char *dp)
 }
 
 void
-mnterrdequeue(MntQ *q, Mnthdr *mh)		/* queue is unlocked */
+mntwunlink(MntQ *q, Mnthdr *w)		/* queue is locked and w is a writer */
+{
+	if(w->next)
+		w->next->prev = w->prev;
+	if(w->prev)
+		w->prev->next = w->next;
+	else{
+		q->writer = w->next;
+		if(q->writer)
+			q->writer->prev = 0;
+	}
+	w->writing = 0;
+}
+
+void
+mnterrdequeue(MntQ *q, Mnthdr *mh)	/* queue is unlocked */
 {
 	Mnthdr *w;
 
@@ -597,25 +616,14 @@ mnterrdequeue(MntQ *q, Mnthdr *mh)		/* queue is unlocked */
 		if(w){
 			q->reader = w->p;
 			q->writer = w->next;
+			q->writer->prev = 0;
 			wakeup(&w->r);
 		}else{
 			q->reader = 0;
 			q->writer = 0;
 		}
-	}else{
-		w = q->writer;
-		if(w == mh)
-			q->writer = w->next;
-		else{
-			while(w){
-				if(w->next == mh){
-					w->next = mh->next;
-					break;
-				}
-				w = w->next;
-			}
-		}
-	}
+	}else
+		mntwunlink(q, mh);
 	qunlock(q);
 
 }
@@ -630,10 +638,10 @@ void
 mntxmit(Mnt *m, Mnthdr *mh)
 {
 	ulong n;
-	Mntbuf *mbw;
+	Mntbuf *mbw, *t;
 	Mnthdr *w, *ow;
 	MntQ *q;
-	int qlocked;
+	int qlocked, tag;
 
 	mh->mbr = mballoc();
 	mbw = mballoc();
@@ -743,11 +751,14 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		 */
 		qlock(q);
 		qlocked = 1;
-		if(mh->rhdr.tag == mh->thdr.tag){	/* it's mine */
+		tag = mh->rhdr.tag;
+		if(tag == mh->thdr.tag){	/* it's mine */
 			q->reader = 0;
 			if(w = q->writer){	/* advance a writer to reader */
 				q->reader = w->p;
 				q->writer = w->next;
+				if(q->writer)
+					q->writer->prev = 0;
 				w->readreply = 1;
 				wakeup(&w->r);
 			}
@@ -758,27 +769,31 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		/*
 		 * Hand response to correct recipient
 		 */
-		for(ow=0,w=q->writer; w; ow=w,w=w->next)
-			if(mh->rhdr.tag == w->thdr.tag){
-				Mntbuf *t;
-				t = mh->mbr;
-				mh->mbr = w->mbr;
-				w->mbr = t;
-				memcpy(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);
-				/* take recipient from queue */
-				if(ow == 0)
-					q->writer = w->next;
-				else
-					ow->next = w->next;
-				w->readreply = 1;
-				wakeup(&w->r);
-				goto Read;
-			}
+		if(tag<0 || tag>=conf.nmnthdr){
+			print("unknown tag %d\n", tag);
+			goto Read;
+		}
+		w = &mnthdralloc.arena[tag];
+		if(!w->writing){
+			print("reply not writing\n");
+			goto Read;
+		}
+		t = mh->mbr;
+		mh->mbr = w->mbr;
+		w->mbr = t;
+		memcpy(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);
+		mntwunlink(q, w);
+		w->readreply = 1;
+		wakeup(&w->r);
 		goto Read;
 	}else{
 		mh->p = u->p;
 		/* put self in queue */
 		mh->next = q->writer;
+		mh->prev = 0;
+		mh->writing = 1;
+		if(q->writer)
+			q->writer->prev = mh;
 		q->writer = mh;
 		qunlock(q);
 		qlocked = 0;

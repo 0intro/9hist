@@ -145,14 +145,12 @@ bit3read(Chan *c, void *buf, long n)
 			 */
 			bp = &((User*)(u->p->upage->pa|KZERO))->kbit3;
 			bp->rcount = 0;
-qlock(&bit3.buflock); /* BUG */
 			qlock(&bit3);
 			bit3send(bp, READ, buf, n);
 			qunlock(&bit3);
 			do
 				n = bp->rcount;
 			while(n == 0);
-qunlock(&bit3.buflock); /* BUG */
 		}else{
 			/*
 			 *  use bit3 buffer.  lock the buffer till the reply
