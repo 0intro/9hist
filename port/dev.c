@@ -143,11 +143,6 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 	for(i=0;; i++)
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:
-		/*
-		 *  given a channel, we cannot derive the directory name
-		 *  that the channel was generated from since it was lost
-		 *  by namec.
-		 */
 			if(c->qid.path & CHDIR){
 				devdir(c, c->qid, c->path->elem, i*DIRLEN, eve, CHDIR|0555, &dir);
 				convD2M(&dir, db);

@@ -97,7 +97,7 @@ netifgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 		break;
 	case 2:
 		q.path = NETQID(NETID(c->qid.path), Nstatqid);
-		devdir(c, q, "stat", 0, eve, 0444, dp);
+		devdir(c, q, "stats", 0, eve, 0444, dp);
 		break;
 	case 3:
 		q.path = NETQID(NETID(c->qid.path), Ntypeqid);
@@ -158,8 +158,8 @@ netifopen(Netif *nif, Chan *c, int omode)
 long
 netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 {
+	int i, j;
 	Netfile *f;
-	int i;
 	char buf[256];
 
 	if(c->qid.path&CHDIR)
@@ -172,17 +172,17 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 	case Nctlqid:
 		return readnum(offset, a, n, NETID(c->qid.path), NUMSIZE);
 	case Nstatqid:
-		n = sprint(buf, "in: %d\n", nif->inpackets);
-		n += sprint(buf+n, "out: %d\n", nif->outpackets);
-		n += sprint(buf+n, "crc errs: %d\n", nif->crcs);
-		n += sprint(buf+n, "overflows: %d\n", nif->overflows);
-		n += sprint(buf+n, "framing errs: %d\n", nif->frames);
-		n += sprint(buf+n, "buffer errs: %d\n", nif->buffs);
-		n += sprint(buf+n, "output errs: %d\n", nif->oerrs);
-		n += sprint(buf+n, "addr:", nif->oerrs);
+		j = sprint(buf, "in: %d\n", nif->inpackets);
+		j += sprint(buf+j, "out: %d\n", nif->outpackets);
+		j += sprint(buf+j, "crc errs: %d\n", nif->crcs);
+		j += sprint(buf+j, "overflows: %d\n", nif->overflows);
+		j += sprint(buf+j, "framing errs: %d\n", nif->frames);
+		j += sprint(buf+j, "buffer errs: %d\n", nif->buffs);
+		j += sprint(buf+j, "output errs: %d\n", nif->oerrs);
+		j += sprint(buf+j, "addr: ");
 		for(i = 0; i < nif->alen; i++)
-			n += sprint(buf+n, "%2.2ux", nif->addr[i]);
-		n += sprint(buf+n, "\n");
+			j += sprint(buf+j, "%2.2ux", nif->addr[i]);
+		sprint(buf+j, "\n");
 		return readstr(offset, a, n, buf);
 	case Ntypeqid:
 		f = nif->f[NETID(c->qid.path)];

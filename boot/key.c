@@ -46,10 +46,13 @@ key(int islocal, Method *mp)
 		warning("bad authentication id");
 	if(getsafe(safe.authdom, DOMLEN, &safe.authdomsum, "#e/authdom", 0) < 0)
 		warning("bad authentication domain");
+
 	if(kflag){
+
 		do
 			getpasswd(password, sizeof password);
 		while(!passtokey(safe.machkey, password));
+
 		outin("authid", safe.authid, sizeof(safe.authid));
 		outin("authdom", safe.authdom, sizeof(safe.authdom));
 		safe.machsum = nvcsum(safe.machkey, DESKEYLEN);

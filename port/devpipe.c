@@ -297,15 +297,26 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 
 	USED(offset);
 
+	if(waserror()) {
+		postnote(up, 1, "sys: write on closed pipe", NUser);
+		error(Ehungup);
+	}
+
 	p = c->aux;
 
 	switch(NETTYPE(c->qid.path)){
 	case Qdata0:
-		return qwrite(p->q[1], va, n, 0);
+		n = qwrite(p->q[1], va, n, 0);
+		break;
+
 	case Qdata1:
-		return qwrite(p->q[0], va, n, 0);
+		n = qwrite(p->q[0], va, n, 0);
+		break;
+
 	default:
 		panic("piperead");
 	}
+
+	poperror();
 	return n;
 }

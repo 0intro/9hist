@@ -446,12 +446,12 @@ consclose(Chan *c)
 long
 consread(Chan *c, void *buf, long n, ulong offset)
 {
-	int ch, i, k, id;
 	ulong l;
-	char *cbuf = buf;
-	char *b, *bp;
-	char tmp[128];	/* must be >= 6*NUMSIZE */
 	Mach *mp;
+	char *b, *bp;
+	char tmp[128];		/* must be >= 6*NUMSIZE */
+	char *cbuf = buf;
+	int ch, i, k, id, eol;
 
 	if(n <= 0)
 		return n;
@@ -474,6 +474,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 				splx(i);
 				continue;
 			}
+			eol = 0;
 			switch(ch){
 			case '\b':
 				if(kbd.x)
@@ -482,18 +483,23 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			case 0x15:
 				kbd.x = 0;
 				break;
+			case '\n':
+			case 0x04:
+				eol = 1;
 			default:
 				kbd.line[kbd.x++] = ch;
 				break;
 			}
-			if(kbd.x == sizeof(kbd.line) || ch == '\n' || ch == 0x04){
+			if(kbd.x == sizeof(kbd.line) || eol){
 				if(ch == 0x04)
 					kbd.x--;
 				qwrite(lineq, kbd.line, kbd.x, 1);
+				kbd.x = 0;
 			}
 		}
 		n = qread(lineq, buf, n);
 		qunlock(&kbd);
+		poperror();
 		return n;
 
 	case Qcputime:
@@ -697,6 +703,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 				qunlock(&kbd);
 			} else if(strncmp(a, "rawoff", 6) == 0){
 				kbd.raw = 0;
+				kbd.x = 0;
 			}
 			if(a = strchr(a, ' '))
 				a++;

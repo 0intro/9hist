@@ -178,7 +178,7 @@ iallocinit(void)
 	}
 
 	/* start garbage collector */
-	kproc("iallockproc", iallockproc, 0);
+	kproc("ialloc", iallockproc, 0);
 }
 
 Block*
@@ -407,6 +407,7 @@ qread(Queue *q, void *vp, int len)
 		if(q->state & Qclosed){
 			unlock(q);
 			splx(x);
+print("Qclosed %lux\n", q);
 			return 0;
 		}
 
@@ -439,7 +440,7 @@ qread(Queue *q, void *vp, int len)
 	memmove(p, b->rp, n);
 	b->rp += n;
 
-	/* free it or put it what's left on the queue */
+	/* free it or put what's left on the queue */
 	if(b->rp >= b->wp || (q->state&Qmsg))
 		free(b);
 	else {

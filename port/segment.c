@@ -5,7 +5,8 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-Page *snewpage(ulong addr);
+Page *lkpage(Segment*, ulong);
+void lkpgfree(Page*);
 void imagereclaim(void);
 
 /* System specific segattach devices */
@@ -61,33 +62,38 @@ putseg(Segment *s)
 		return;
 
 	i = s->image;
-	if(i && i->s == s && s->ref == 1) {
+	if(i != 0) {
 		lock(i);
-		if(s->ref == 1)
+		lock(s);
+		if(i->s == s && s->ref == 1)
 			i->s = 0;
 		unlock(i);
 	}
+	else
+		lock(s);
 
-	if(decref(s) == 0) {
-		qlock(&s->lk);
-		if(i)
-			putimage(i);
-
-		emap = &s->map[SEGMAPSIZE];
-		for(pp = s->map; pp < emap; pp++)
-			if(*pp)
-				freepte(s, *pp);
-
-		qunlock(&s->lk);
-
-		free(s);
+	s->ref--;
+	if(s->ref != 0) {
+		unlock(s);
+		return;
 	}
+
+	qlock(&s->lk);
+	if(i)
+		putimage(i);
+
+	emap = &s->map[SEGMAPSIZE];
+	for(pp = s->map; pp < emap; pp++)
+		if(*pp)
+			freepte(s, *pp);
+
+	qunlock(&s->lk);
+	free(s);
 }
 
 void
 relocateseg(Segment *s, ulong offset)
 {
-	int i;
 	Pte **p, **endpte;
 	Page **pg, **endpages;
 
@@ -96,11 +102,8 @@ relocateseg(Segment *s, ulong offset)
 		if(*p) {
 			endpages = &((*p)->pages[PTEPERTAB]);
 			for(pg = (*p)->pages; pg < endpages; pg++)
-				if(*pg){
+				if(*pg)
 					(*pg)->va += offset;
-					for(i = 0; i < MAXMACH; i++)
-						(*pg)->cachectl[i] |= PG_DATINVALID;
-				}
 		}
 	}
 }
@@ -243,8 +246,14 @@ found:
 	unlock(&imagealloc);
 
 	if(i->s == 0) {
+		/* Disaster after commit in exec */
+		if(waserror()) {
+			unlock(i);
+			pexit(Enovmem, 1);
+		}
 		i->s = newseg(type, base, len);
 		i->s->image = i;
+		poperror();
 	}
 	else
 		incref(i->s);
@@ -404,7 +413,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	int i, sno;
 
 	USED(p);
-	if((va&KZERO) == KZERO)				/* BUG: Only ok for now */
+	if((va&KZERO) == KZERO)			/* BUG: Only ok for now */
 		error(Ebadarg);
 
 	validaddr((ulong)name, 1, 0);
@@ -438,14 +447,12 @@ found:
 	if(len > ps->size)
 		error(Enovmem);
 
-	attr &= ~SG_TYPE;			/* Turn off what we are not allowed */
-	attr |= ps->attr;			/* Copy in defaults */
+	attr &= ~SG_TYPE;		/* Turn off what we are not allowed */
+	attr |= ps->attr;		/* Copy in defaults */
 
 	s = newseg(attr, va, len/BY2PG);
 	s->pseg = ps;
 	up->seg[sno] = s;
-
-	/* Need some code build mapped devices here */
 
 	return 0;
 }
@@ -454,7 +461,7 @@ long
 syssegflush(ulong *arg)
 {
 	Segment *s;
-	int i, j, pages;
+	int i, j, len;
 	ulong soff;
 	Page *pg;
 
@@ -466,33 +473,24 @@ syssegflush(ulong *arg)
 
 	soff = arg[0]-s->base;
 	j = (soff&(PTEMAPMEM-1))/BY2PG;
-	pages = ((arg[0]+arg[1]+(BY2PG-1))&~(BY2PG-1))-(arg[0]&~(BY2PG-1));
+	len = arg[1]+BY2PG;
 
-	for(i = soff/PTEMAPMEM; i < SEGMAPSIZE; i++) {
-		if(pages <= 0) 
-			goto done;
-		if(s->map[i]) {
-			while(j < PTEPERTAB) {
-				if(pg = s->map[i]->pages[j]) 
-					for(i = 0; i < MAXMACH; i++)
-						pg->cachectl[i] |= PG_TXTFLUSH;
-				if(--pages == 0)
-					goto done;
-				j++;
-			}
-			j = 0;
+	for(i = soff/PTEMAPMEM; len > 0 && i < SEGMAPSIZE; i++) {
+		if(s->map[i] == 0) {
+			len -= PTEMAPMEM;
+			continue;
 		}
-		else
-			pages -= PTEMAPMEM/BY2PG;
+		while(len > 0 && j < PTEPERTAB) {
+			pg = s->map[i]->pages[j];
+			if(pg != 0) 
+				memset(pg->cachectl, PG_TXTFLUSH, sizeof pg->cachectl);
+			j++;
+			len -= BY2PG;
+		}
+		j = 0;
 	}
-done:
+
 	qunlock(&s->lk);
 	flushmmu();
 	return 0;
-}
-
-Page*
-snewpage(ulong addr)
-{
-	return newpage(1, 0, addr);
 }
