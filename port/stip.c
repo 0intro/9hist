@@ -322,12 +322,11 @@ ipetheriput(Queue *q, Block *bp)
  	 * Look for an ip interface attached to this protocol
 	 */
 	ep = &ipifc[conf.ipif];
-	for(ifp = ipifc; ifp < ep; ifp++) {
+	for(ifp = ipifc; ifp < ep; ifp++)
 		if(ifp->protocol == h->proto) {
 			(*ifp->iprcv)(ifp->connections, bp);
 			return;
 		}
-	}
 			
 drop:
 	freeb(bp);

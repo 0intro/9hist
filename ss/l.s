@@ -119,7 +119,7 @@ TEXT	spldone(SB), $0
 
 	RETURN
 
-TEXT	touser(SB), $-4
+TEXT	touser(SB), $0
 	MOVW	$(SYSPSR&~PSREF), R8
 	MOVW	R8, PSR
 	OR	R0, R0
@@ -187,10 +187,10 @@ trap1:
 	MOVD	R28, (4*28)(R1)
 	MOVD	R30, (4*30)(R1)
 	/* SP and SB and u and m are already set; away we go */
-	MOVW	R1, -4(R1)		/* pointer to Ureg */
+	MOVW	R1, R7		/* pointer to Ureg */
 	SUB	$8, R1
-	MOVW	$SYSPSR, R7
-	MOVW	R7, PSR
+	MOVW	$SYSPSR, R8
+	MOVW	R8, PSR
 	OR	R0, R0
 	OR	R0, R0
 	OR	R0, R0
@@ -272,10 +272,10 @@ TEXT	syslink(SB), $-4
 	/* now our registers R8-R31 are same as before trap */
 	MOVW	R15, (4*15)(R1)
 	/* SP and SB and u and m are already set; away we go */
-	MOVW	R1, -4(R1)		/* pointer to Ureg */
+	MOVW	R1, R7			/* pointer to Ureg */
 	SUB	$8, R1
-	MOVW	$SYSPSR, R7
-	MOVW	R7, PSR
+	MOVW	$SYSPSR, R8
+	MOVW	R8, PSR
 	JMPL	syscall(SB)
 	/* R7 contains return value from syscall */
 

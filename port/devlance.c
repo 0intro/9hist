@@ -109,6 +109,8 @@ typedef struct {
 	int	debug;
 	int	kstarted;
 
+	Queue	self;	/* packets turned around at the interface */
+
 	/* sadistics */
 
 	int	inpackets;
@@ -185,6 +187,7 @@ static SoftLance l;
 static void lancekproc(void *);
 static void lancestart(int, int);
 static void lancedump(void);
+static void lanceup(Etherpkt*, int);
 
 /*
  *  lance stream module definition
@@ -241,6 +244,45 @@ lancestclose(Queue *q)
 }
 
 /*
+ *  expand a block list to be one byte, len bytes long
+ */
+static Block*
+expandb(Block *bp, int len)
+{
+	Block *nbp, *new;
+	int i;
+
+	new = allocb(len);
+	if(new == 0){
+		freeb(bp);
+		return 0;
+	}
+
+	/*
+	 *  copy bytes into new block
+	 */
+	for(nbp = bp; len>0 && nbp; nbp = nbp->next){
+		i = BLEN(bp);
+		if(i > len) {
+			memmove(new->wptr, nbp->rptr, len);
+			new->wptr += len;
+			break;
+		} else {
+			memmove(new->wptr, nbp->rptr, i);
+			new->wptr += i;
+			len -= i;
+		}
+	}
+	if(len){
+		memset(new->wptr, 0, len);
+		new->wptr += len;
+	}
+	freeb(bp);
+	return new;
+
+}
+
+/*
  *  the ``connect'' control message specifyies the type
  */
 Proc *lanceout;
@@ -275,6 +317,27 @@ lanceoput(Queue *q, Block *bp )
 	}
 
 	/*
+	 *  give packet a local address, return upstream if destined for
+	 *  this machine.
+	 */
+	if(BLEN(bp) < ETHERHDRSIZE){
+		bp = pullup(bp, ETHERHDRSIZE);
+		if(bp == 0)
+			return;
+	}
+	p = (Etherpkt *)bp->rptr;
+	memmove(p->s, l.ea, sizeof(l.ea));
+	if(memcmp(l.ea, p->d, sizeof(l.ea)) == 0){
+		len = blen(bp);
+		bp = expandb(bp, len >= 60 ? len : 60);
+		if(bp){
+			putq(&l.self, bp);
+			wakeup(&l.rr);
+		}
+		return;
+	}
+
+	/*
 	 *  only one transmitter at a time
 	 */
 	qlock(&l.tlock);
@@ -303,11 +366,6 @@ lanceoput(Queue *q, Block *bp )
 		if(bp->flags & S_DELIM)
 			break;
 	}
-
-	/*
-	 *  give packet a local address
-	 */
-	memmove(p->s, l.ea, sizeof(l.ea));
 
 	/*
 	 *  pad the packet (zero the pad)
@@ -671,27 +729,47 @@ lanceintr(void)
 /*
  *  send a packet upstream
  */
-void
-lanceup(Ethertype *e, Etherpkt *p, int len)
+static void
+lanceup(Etherpkt *p, int len)
 {
 	Block *bp;
+	Ethertype *e;
+	int t;
 
-	/*
-	 *  only a trace channel gets packets destined for other machines
-	 */
-	if(e->type != -1 && p->d[0]!=0xff && memcmp(p->d, l.ea, sizeof(p->d))!=0)
-		return;
+	t = (p->type[0]<<8) | p->type[1];
+	for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
+		/*
+		 *  check before locking just to save a lock
+		 */
+		if(e->q==0 || (t!=e->type && e->type!=-1))
+			continue;
 
-	if(waserror())
-		return;
-	if(e->q && e->q->next->len<=Streamhi){
-		bp = allocb(len);
-		memmove(bp->rptr, (uchar *)p, len);
-		bp->wptr += len;
-		bp->flags |= S_DELIM;
-		PUTNEXT(e->q, bp);
+		/*
+		 *  only a trace channel gets packets destined for other machines
+		 */
+		if(e->type!=-1 && p->d[0]!=0xff && memcmp(p->d, l.ea, sizeof(p->d))!=0)
+			continue;
+
+		/*
+		 *  check after locking to make sure things didn't
+		 *  change under foot
+		 */
+		if(!canqlock(e))
+			continue;
+		if(e->q==0 || e->q->next->len>Streamhi || (t!=e->type && e->type!=-1)){
+			qunlock(e);
+			continue;
+		}
+		if(!waserror()){
+			bp = allocb(len);
+			memmove(bp->rptr, (uchar *)p, len);
+			bp->wptr += len;
+			bp->flags |= S_DELIM;
+			PUTNEXT(e->q, bp);
+		}
+		poperror();
+		qunlock(e);
 	}
-	poperror();
 }
 
 /*
@@ -701,7 +779,7 @@ static int
 isinput(void *arg)
 {
 	Lancemem *lm = LANCEMEM;
-	return l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0;
+	return l.self.first || (l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0);
 }
 
 static void
@@ -713,9 +791,14 @@ lancekproc(void *arg)
 	int t;
 	Lancemem *lm = LANCEMEM;
 	Msg *m;
+	Block *bp;
 
 	for(;;){
 		qlock(&l.rlock);
+		while(bp = getq(&l.self)){
+			lanceup((Etherpkt*)bp->rptr, BLEN(bp));
+			freeb(bp);
+		}
 		for(; l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0 ; l.rl=RSUCC(l.rl)){
 			l.inpackets++;
 			m = &(lm->rmr[l.rl]);
@@ -736,15 +819,8 @@ lancekproc(void *arg)
 			 *  stuff packet up each queue that wants it
 			 */
 			p = &l.rp[l.rl];
-			t = (p->type[0]<<8) | p->type[1];
 			len = MPus(m->cntflags) - 4;
-			for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
-				if(e->q!=0 && (t==e->type||e->type==-1) && canqlock(e)){
-					if(t==e->type||e->type==-1)
-						lanceup(e, p, len);
-					qunlock(e);
-				}
-			}
+			lanceup(p, len);
 
 stage:
 			/*

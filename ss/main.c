@@ -279,7 +279,6 @@ lancesetup(Lance *lp)
 	pa = (ulong)ialloc(BY2PG, 1)&~KZERO;	/* one whole page */
 	/* map at LANCESEGM */
 	k = kmappa(pa, PTEMAINMEM);
-print("init block va %lux\n", k->va);
 	lp->lanceram = (ushort*)k->va;
 	lp->lm = (Lancemem*)k->va;
 
@@ -290,7 +289,6 @@ print("init block va %lux\n", k->va);
 	 */
 	i = (lp->nrrb+lp->ntrb)*sizeof(Etherpkt);
 	i = (i+(BY2PG-1))/BY2PG;
-print("%d lance buffers\n", i);
 	pa = (ulong)ialloc(i*BY2PG, 1)&~KZERO;
 	va = 0;
 	for(j=i-1; j>=0; j--){

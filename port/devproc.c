@@ -111,8 +111,7 @@ procclone(Chan *c, Chan *nc)
 int
 procwalk(Chan *c, char *name)
 {
-	if(name[0] == '.' && name[1] == '.' &&
-	   name[2] == '\0') {
+	if(strcmp(name, "..") == 0) {
 		c->qid.path = Qdir|CHDIR;
 		return 1;
 	}

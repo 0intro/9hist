@@ -26,6 +26,7 @@ KMap*	kmap(Page*);
 void	kmapinit(void);
 KMap*	kmappa(ulong, ulong);
 int	kprint(char*, ...);
+void	kproftimer(ulong);
 void	kunmap(KMap*);
 void	lanceintr(void);
 void	lancesetup(Lance*);

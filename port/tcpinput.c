@@ -52,13 +52,6 @@ tcp_input(Ipconv *ipc, Block *bp)
 	tos = h->tos;
 	length = nhgets(h->length);
 
-	if (dest == source) {
-		if (!(bp = copyb(bp, blen(bp)))) {
-			print("tcpin: allocb failure.");
-			return;
-		}
-	}
-
 	h->Unused = 0;
 	hnputs(h->tcplen, length - (TCP_IPLEN+TCP_PHDRSIZE));
 	if(ptcl_csum(bp, TCP_EHSIZE+TCP_IPLEN, length - TCP_IPLEN)) {

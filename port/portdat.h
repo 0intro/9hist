@@ -10,12 +10,14 @@ typedef struct Env	Env;
 typedef struct Envval	Envval;
 typedef struct Etherpkt	Etherpkt;
 typedef struct Fgrp	Fgrp;
+typedef struct Ifile	Ifile;
 typedef struct Image	Image;
 typedef struct IOQ	IOQ;
 typedef struct KIOQ	KIOQ;
 typedef struct List	List;
 typedef struct Mount	Mount;
 typedef struct Mhead	Mhead;
+typedef struct Network	Network;
 typedef struct Note	Note;
 typedef struct Page	Page;
 typedef struct Palloc	Palloc;
@@ -610,6 +612,32 @@ enum {
 	Streamhi= (9*1024),		/* byte count high water mark */
 	Streambhi= 32,			/* block count high water mark */
 };
+
+/*
+ *  a multiplexed network
+ */
+struct Ifile
+{
+	char	*name;
+	void	(*fill)(Chan*, char*, int);
+};
+struct Network
+{
+	char	*name;
+	int	nif;			/* max # of interfaces */
+	int	nconv;			/* max # of conversations */
+	Qinfo	*devp;			/* device end line disc */
+	Qinfo	*protop;		/* protocol line disc */
+	int	(*listen)(Chan*);
+	int	(*clone)(Chan*);
+	void	(*connect)(Chan*, char*);
+	void	(*announce)(Chan*, char*);
+	int	ninfo;
+	Ifile	info[5];
+};
+#define MAJOR(q) ((q) >> 8)
+#define MINOR(q) ((q) & 0xff)
+#define DEVICE(a,i) (((a)<<8) | (i))
 
 #define MAXSYSARG	6		/* for mount(fd, mpt, flag, arg, srv) */
 #define	PRINTSIZE	256

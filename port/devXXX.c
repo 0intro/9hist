@@ -91,7 +91,7 @@ XXXclose(Chan *c)
 }
 
 long
-XXXread(Chan *c, void *a, long n)
+XXXread(Chan *c, void *a, long n, ulong offset)
 {
 	switch((int)(c->qid.path&~CHDIR)){
 	case XXXdirqid:
@@ -106,7 +106,7 @@ XXXread(Chan *c, void *a, long n)
 }
 
 long
-XXXwrite(Chan *c, char *a, long n)
+XXXwrite(Chan *c, char *a, long n, ulong offset)
 {
 	switch((int)(c->qid.path&~CHDIR)){
 	case XXXdataqid:
