@@ -49,7 +49,7 @@ struct Uart
 {
 	QLock;
 	int	port;
-	ushort	sticky[16];	/* sticky write register values */
+	uchar	sticky[8];	/* sticky write register values */
 	int	printing;	/* true if printing */
 
 	/* console interface */
@@ -70,8 +70,8 @@ Uart uart[2];
 
 #define UartFREQ 1846200
 
-#define uartwrreg(u,r,v)	outb(u->port + r, u->sticky[r] | v)
-#define uartrdreg(u,r)		inb(u->port + r)
+#define uartwrreg(u,r,v)	outb((u)->port + r, (u)->sticky[r] | (v))
+#define uartrdreg(u,r)		inb((u)->port + r)
 
 void	uartintr(Uart*);
 void	uartintr0(Ureg*);
@@ -91,8 +91,8 @@ uartsetbaud(Uart *up, int rate)
 	brconst = (UartFREQ+8*rate-1)/(16*rate);
 
 	uartwrreg(up, Format, Dra);
-	uartwrreg(up, Dmsb, (brconst>>8) & 0xff);
-	uartwrreg(up, Dlsb, brconst & 0xff);
+	outb(up->port+Dmsb, (brconst>>8) & 0xff);
+	outb(up->port+Dlsb, brconst & 0xff);
 	uartwrreg(up, Format, 0);
 }
 
@@ -148,7 +148,7 @@ uartsetup(void)
 	already = 1;
 
 	/*
-	 *  get port addresses
+	 *  set port addresses
 	 */
 	uart[0].port = 0x3F8;
 	uart[1].port = 0x2F8;
