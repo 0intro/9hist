@@ -127,7 +127,8 @@ sysfsession(ulong *arg)
 	while(!canlock(&s->send))
 		sched();
 
-	if(s->valid == 0){
+	if(s->valid == 0 && (c->flag & CMSG) == 0){
+
 		/*
 		 *  Exchange a session message with the server.
 		 *  If an error occurs reading or writing,
