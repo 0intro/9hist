@@ -950,12 +950,13 @@ randomclock(void)
 
 	rb.bits = (rb.bits<<2) ^ randomcount;
 	randomcount = 0;
+
 	rb.next += 2;
 	if(rb.next != 8)
 		return;
 
 	rb.next = 0;
-	*rb.wp ^= rb.bits;
+	*rb.wp ^= rb.bits ^ *rb.rp;
 	p = rb.wp+1;
 	if(p == rb.ep)
 		p = rb.buf;
