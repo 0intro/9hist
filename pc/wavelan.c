@@ -1075,6 +1075,10 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ctlr->signal = 1;
 	ctlr->noise = 1;
 
+	// free old Ctlr struct if resetting after suspend
+	if (ether->ctlr)
+		free(ether->ctlr);
+
 	// link to ether
 	ether->ctlr = ctlr;
 	ether->mbps = 10;
