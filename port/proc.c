@@ -142,6 +142,7 @@ ready(Proc *p)
 	pri = p->basepri - (((p->art + p->rt)>>1)/Squantum);
 	if(pri < 0)
 		pri = 0;
+	p->priority = pri;
 	rq = &runq[p->priority];
 
 	lock(runq);
@@ -153,7 +154,7 @@ ready(Proc *p)
 	rq->tail = p;
 	rq->n++;
 	nrdy++;
-	p->readyticks = m->ticks;
+	p->readytime = m->ticks;
 	p->state = Ready;
 	if(p->priority > lastreadied)
 		lastreadied = p->priority;
@@ -164,8 +165,10 @@ ready(Proc *p)
 Proc*
 runproc(void)
 {
+	int i;
 	Schedq *rq;
 	Proc *p, *l;
+	static ulong lastfair;
 
 loop:
 
@@ -175,6 +178,32 @@ loop:
 	 */
 	spllo();
 	for(;;){
+		/*
+		 *  Once a second we look for a long waiting process
+		 *  in the lowest priority queue to make sure nothing
+		 *  gets starved out by a malfunctioning high priority
+		 *  process.
+		 */
+		if(m->machno == 0 && m->ticks - lastfair > HZ){
+			lastfair = m->ticks;
+			for(rq = runq; rq < &runq[Nrq]; rq++){
+				p = rq->head;
+				if(p){
+					i = m->ticks - p->readytime;
+					if(i > HZ){
+						p->art = 0;
+						p->movetime = 0;
+						goto found;
+					}
+					break;
+				}
+			}
+		}
+
+		/*
+		 *  get highest priority process that this
+		 *  processor can run given affinity constraints
+		 */
 		for(rq = &runq[Nrq-1]; rq >= runq; rq--){
 			if(rq->head == 0)
 				continue;
@@ -750,7 +779,7 @@ procdump(void)
 			continue;
 		print("rq%d:", rq-runq);
 		for(p = rq->head; p; p = p->rnext)
-			print(" %d(%d)", p->pid, m->ticks - p->readyticks);
+			print(" %d(%d)", p->pid, m->ticks - p->readytime);
 		print("\n");
 	}
 	print("nrdy %d\n", nrdy);

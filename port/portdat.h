@@ -588,7 +588,7 @@ struct Proc
 	ulong	rt;		/* # ticks used since last blocked */
 	ulong	art;		/* avg # ticks used since last blocked */
 	ulong	movetime;	/* last time process switched processors */
-	ulong	readyticks;	/* time process went ready */
+	ulong	readytime;	/* time process went ready */
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */
