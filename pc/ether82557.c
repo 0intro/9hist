@@ -261,10 +261,40 @@ static uchar configdata[24] = {
 #define csr16w(c, r, w)	(outs((c)->port+(r), (ushort)(w)))
 #define csr32w(c, r, l)	(outl((c)->port+(r), (ulong)(l)))
 
+int
+waitfordone(Ctlr *ctlr)
+{
+	int loops;
+
+	/* fast wait, we usually get lucky */
+	for(loops = 0; loops < 100; loops++){
+		if(csr8r(ctlr, CommandR) == 0)
+			return 0;
+	}
+
+	/* slow wait */
+	for(loops = 0; loops < 1000; loops++){
+		if(csr8r(ctlr, CommandR) == 0)
+			return 0;
+		microdelay(1);
+	}
+	return -1;
+}
+
 static void
 command(Ctlr* ctlr, int c, int v)
 {
 	ilock(&ctlr->rlock);
+
+	/*
+	 *  on a 10 Mbs half-duplex connection, we seem to
+	 *  hang unless we do a nop before each command.
+	 *  This comes from a fix for a chip errata that jmk
+	 *  saw in a Linux driver.
+	 */
+	if(waitfordone(ctlr) < 0)
+		print("82557: lastcmd %x, cmd nop \n", ctlr->command);
+	csr8w(ctlr, CommandR, CUnop);
 
 	/*
 	 * Only back-to-back CUresume can be done
@@ -279,8 +309,8 @@ command(Ctlr* ctlr, int c, int v)
 	}
 	 */
 
-	while(csr8r(ctlr, CommandR))
-		;
+	if(waitfordone(ctlr) < 0)
+		print("82557: lastcmd %x, cmd %x(%x) \n", ctlr->command, c, v);
 
 	switch(c){
 
