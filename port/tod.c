@@ -31,11 +31,11 @@
 //  constraints:
 //
 //	1) log2(1000000000<<s1) <= 63
-//	   or s1 <= 33
-//	2) accomodate 15 minutes of ticks without overflow
-//	   or log2(((1000000000<<s1)/f)*((15*60*f)>>s2)) <= 63
-//	   or log2(mult) + 12 + log2(f) - s2 <= 63
-//	   or log2(mult) + log2(f) - 51 <= s2
+//	   or s1 <= 32
+//	2) accomodate 1 minute of ticks without overflow
+//	   or log2(((1000000000<<s1)/f)*((60*f)>>s2)) <= 63
+//	   or log2(mult) + 6 + log2(f) - s2 <= 63
+//	   or log2(mult) + log2(f) - 57 <= s2
 //
 //  by definition
 //
@@ -50,9 +50,9 @@
 //
 //  Combining 2) and 4) we get
 //
-//	5) log2(f) - s2 + log2(f) - 51 <= s2
-//	   or 2*log2(f) - 51 <= 2*s2
-//	   or log2(f) - 25 <= s2
+//	5) log2(f) - s2 + log2(f) - 57 <= s2
+//	   or 2*log2(f) - 57 <= 2*s2
+//	   or log2(f) - 28 <= s2
 //
 //  Combining 3) and 4)
 //
@@ -74,18 +74,18 @@
 //
 //	for f = 267000000, log2(f) = 28
 //
-//		s2 = 3
-//		s1 = 23
+//		s2 = 0
+//		s1 = 26
 //
 //	for f = 2000000000, log2(f) = 31
 //
-//		s2 = 6
-//		s1 = 26
+//		s2 = 3
+//		s1 = 29
 //
 //	for f = 8000000000, log2(f) = 33
 //
-//		s2 = 8
-//		s1 = 28
+//		s2 = 5
+//		s1 = 31
 
 // frequency of the tod clock
 #define TODFREQ	1000000000LL
@@ -97,7 +97,6 @@ struct {
 	int	s1;		// time = ((ticks>>s2)*multiplier)>>(s1-s2)
 	vlong	multiplier;	// ...
 	int	s2;		// ...
-	vlong	maxdiff;	// max diff between ticks and last to avoid overflow
 	vlong	hz;		// frequency of fast clock
 	vlong	last;		// last reading of fast clock
 	vlong	off;		// offset from epoch to last
@@ -148,16 +147,15 @@ todsetfreq(vlong f)
 	ilock(&tod);
 	tod.hz = f;
 	lf = log2(f);
-	tod.s2 = lf - 25;
+	tod.s2 = lf - 28;
 	if(tod.s2 < 0)
 		tod.s2 = 0;
 	tod.s1 = 2*lf - tod.s2 - 30;
 	if(tod.s1 < 0)
 		tod.s1 = 0;
-	if(tod.s1 > 33)
-		tod.s1 = 33;
+	if(tod.s1 > 32)
+		tod.s1 = 32;
 	tod.multiplier = (TODFREQ<<tod.s1)/f;
-	tod.maxdiff = 1LL<<(10 + lf);
 	iunlock(&tod);
 }
 
@@ -219,11 +217,9 @@ todget(void)
 	x = ((diff>>tod.s2)*tod.multiplier)>>(tod.s1-tod.s2);
 	x += tod.off;
 
-	// protect against overflows
-	if(diff > tod.maxdiff){
-		tod.last = ticks;
-		tod.off = x;
-	}
+	// protect against overflows (gettod is called at least once a second)
+	tod.last = ticks;
+	tod.off = x;
 
 	/* time can't go backwards */
 	if(x < tod.lasttime)
