@@ -585,7 +585,7 @@ devpccardlink(void)
 			engine(cb, CardPowered);
 
 		/* Ack and enable interrupts on all events */
-		cb->cb_regs[SocketEvent] = cb->cb_regs[SocketEvent];
+		// cb->cb_regs[SocketEvent] = cb->cb_regs[SocketEvent];
 		cb->cb_regs[SocketMask] |= 0xF;	
 		wrreg(cb, Rcscic, 0xC);
 	}
