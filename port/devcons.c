@@ -199,22 +199,7 @@ echo(Rune r, char *buf, int n)
 	/*
 	 * ^t hack BUG
 	 */
-	switch(ctrlt) {
-	case 0:
-		if(r == 0x14){
-			ctrlt = 1;
-			return;
-		}
-		break;
-	case 1:
-		if(r > '0' && r <= '9') {
-			ctrlt = 3;
-			pid = r-'0';
-			return;
-		}
-		ctrlt = 2;
-		return;
-	case 2:
+	if(ctrlt == 2){
 		ctrlt = 0;
 		switch(r){
 		case 0x14:
@@ -222,6 +207,9 @@ echo(Rune r, char *buf, int n)
 		case 'x':
 			xsummary();
 			ixsummary();
+			break;
+		case 'b':
+			bitdebug();
 			break;
 		case 'd':
 			consdebug();
@@ -232,35 +220,11 @@ echo(Rune r, char *buf, int n)
 		case 'r':
 			exit(0);
 			break;
-case 'q':
-print("%lux\n", *(ulong*)0xe0000004);
-print("%lux\n", *(ulong*)0x80000420);
-print("%lux\n", *(ulong*)0x80000424);
-for(pid = 0; pid < 30; pid++)
-print(":%lux\n", ((ulong*)0xbfc00000)[pid]);
 		}
-		break;
-	case 3:
-		if(r > '0' && r <= '9') {
-			pid = (pid*10)+(r-'0');
-			return;
-		}
-		print("PID %d\n", pid);
-		p = proctab(0);
-		ep = p+conf.nproc;
-		for(; p < ep; p++) {
-			if(p->pid == pid) {
-				top = (ulong)p->kstack + KSTACK;
-				for(l=(ulong)p->sched.sp; l < top; l += BY2WD) {
-					v = *(ulong*)l;
-					if(KTZERO < v && v < (ulong)&etext) {
-						print("%lux=%lux\n", l, v);
-						delay(100);
-					}
-				}
-			}
-		}
-		break;
+	}
+	else if(r == 0x14){
+		ctrlt++;
+		return;
 	}
 	ctrlt = 0;
 	if(kbd.raw)
