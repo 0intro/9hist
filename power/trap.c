@@ -364,7 +364,7 @@ dumpregs(Ureg *ur)
 /*
  * Call user, if necessary, with note
  */
-void
+int
 notify(Ureg *ur)
 {
 	int l;
@@ -374,7 +374,7 @@ notify(Ureg *ur)
 	if(u->p->procctl)
 		procctl(u->p);
 	if(u->nnote == 0)
-		return;
+		return 0;
 
 	s = spllo();
 	qlock(&u->p->debug);
@@ -424,6 +424,7 @@ notify(Ureg *ur)
 	}
 	qunlock(&u->p->debug);
 	splx(s);
+	return 1;
 }
 
 /*
@@ -544,8 +545,8 @@ syscall(Ureg *aur)
 	splhi();
 	if(r1!=FORK && (u->p->procctl || u->nnote)){
 		u->svr1 = ret;
-		notify(ur);
-		return ur->r1;
+		if(notify(ur))
+			return ur->r1;
 	}
 
 	return ret;

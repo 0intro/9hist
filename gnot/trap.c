@@ -7,7 +7,6 @@
 #include	"io.h"
 #include	"errno.h"
 
-void	notify(Ureg*);
 void	noted(Ureg*, ulong);
 void	rfnote(Ureg*);
 
@@ -156,7 +155,7 @@ dumpregs(Ureg *ur)
 /*
  * Call user, if necessary, with note
  */
-void
+int
 notify(Ureg *ur)
 {
 	int l;
@@ -165,8 +164,8 @@ notify(Ureg *ur)
 
 	if(u->p->procctl)
 		procctl(u->p);
-	if(u->nnote==0)
-		return;
+	if(u->nnote == 0)
+		return 0;
 
 	s = spllo();
 	qlock(&u->p->debug);
@@ -218,6 +217,7 @@ notify(Ureg *ur)
 	}
 	qunlock(&u->p->debug);
 	splx(s);
+	return 1;
 }
 
 /*

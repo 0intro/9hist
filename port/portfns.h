@@ -143,7 +143,7 @@ Segment*	newseg(int, ulong, ulong);
 Waitq*	newwaitq(void);
 char*	nextelem(char*, char*);
 void	nexterror(void);
-void	notify(Ureg*);
+int	notify(Ureg*);
 int	nrand(int);
 void	nullput(Queue*, Block*);
 int	openmode(ulong);

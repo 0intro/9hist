@@ -7,7 +7,6 @@
 #include	"io.h"
 #include	"errno.h"
 
-void	notify(Ureg*);
 void	noted(Ureg**, ulong);
 void	rfnote(Ureg**);
 
@@ -226,7 +225,7 @@ dumpregs(Ureg *ur)
 	dumpstack();
 }
 
-void
+int
 notify(Ureg *ur)
 {
 	int l;
@@ -235,8 +234,8 @@ notify(Ureg *ur)
 
 	if(u->p->procctl)
 		procctl(u->p);
-	if(u->nnote==0)
-		return;
+	if(u->nnote == 0)
+		return 0;
 
 	s = spllo();
 	qlock(&u->p->debug);
@@ -288,6 +287,7 @@ notify(Ureg *ur)
 	}
 	qunlock(&u->p->debug);
 	splx(s);
+	return 1;
 }
 
 /*
@@ -408,8 +408,8 @@ syscall(Ureg *aur)
 	splhi();
 	if(r7!=FORK && (u->p->procctl || u->nnote)){
 		u->svr7 = ret;
-		notify(ur);
-		return ur->r7;
+		if(notify(ur))
+			return ur->r7;
 	}
 	return ret;
 }

@@ -8,7 +8,6 @@
 #include	"errno.h"
 
 void	noted(Ureg*, ulong);
-void	notify(Ureg*);
 
 void	intr0(void), intr1(void), intr2(void), intr3(void);
 void	intr4(void), intr5(void), intr6(void), intr7(void);
@@ -242,7 +241,7 @@ trap(Ureg *ur)
 	(*ivec[v])(ur);
 
 	/*
-	 *  check user since syscall does it's own notifying
+	 *  check user since syscall does its own notifying
 	 */
 	if(user && (u->p->procctl || u->nnote))
 		notify(ur);
@@ -352,7 +351,7 @@ syscall(Ureg *ur)
  *  Call user, if necessary, with note.
  *  Pass user the Ureg struct and the note on his stack.
  */
-void
+int
 notify(Ureg *ur)
 {
 	int l;
@@ -361,8 +360,8 @@ notify(Ureg *ur)
 
 	if(u->p->procctl)
 		procctl(u->p);
-	if(u->nnote==0)
-		return;
+	if(u->nnote == 0)
+		return 0;
 
 	s = spllo();
 	qlock(&u->p->debug);
@@ -414,6 +413,7 @@ notify(Ureg *ur)
 	}
 	qunlock(&u->p->debug);
 	splx(s);
+	return 1;
 }
 
 /*
