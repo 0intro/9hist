@@ -466,7 +466,7 @@ syssleep(ulong *arg)
 
 	n = arg[0];
 	if(n <= 0) {
-		p->priority = 0;
+		up->priority = 0;
 		sched();
 		return 0;
 	} 
