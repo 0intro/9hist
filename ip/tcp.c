@@ -36,18 +36,19 @@ enum
 	MSS_LENGTH	= 4,		/* Mean segment size */
 	MSL2		= 10,
 	MSPTICK		= 50,		/* Milliseconds per timer tick */
-	DEF_MSS		= 1024,		/* Default mean segment */
-	DEF_RTT		= 150,		/* Default round trip */
+	DEF_MSS		= 1460,		/* Default mean segment */
+	DEF_RTT		= 1000,		/* Default round trip */
 	DEF_KAT		= 10000,	/* Default keep alive trip in ms */
 	TCP_LISTEN	= 0,		/* Listen connection */
 	TCP_CONNECT	= 1,		/* Outgoing connection */
+
+	TCPREXMTTHRESH  = 3,            /* dupack threshhold for rxt */
 
 	FORCE		= 1,
 	CLONE		= 2,
 	RETRAN		= 4,
 	ACTIVE		= 8,
 	SYNACK		= 16,
-	ACKED		= 32,
 
 	LOGAGAIN	= 3,
 	LOGDGAIN	= 2,
@@ -122,6 +123,7 @@ struct	Tcp
 	ushort	wnd;
 	ushort	urg;
 	ushort	mss;
+        ushort  len;  /* size of data */
 };
 
 typedef struct Reseq Reseq;
@@ -150,6 +152,11 @@ struct Tcpctl
 		ulong	urg;		/* Urgent data pointer */
 		ulong	wl1;
 		ulong	wl2;
+
+                /* to implement tahoe and reno TCP */
+                ulong dupacks;          /* number of duplicate acks rcvd */
+	        int   recovery;         /* loss recovery flag */
+	        ulong rxt;              /* right window marker for recovery */
 	} snd;
 	struct {
 		ulong	nxt;		/* Receive pointer to next uchar slot */
@@ -203,6 +210,7 @@ struct Tcpstats
 	ulong	tcpInSegs;
 	ulong	tcpOutSegs;
 	ulong	tcpRetransSegs;
+        ulong   tcpRetransTimeouts;
 	ulong	InErrs;
 	ulong	OutRsts;
 };
@@ -241,6 +249,7 @@ void	tcpsndsyn(Tcpctl*);
 void	tcprcvwin(Conv*);
 void	tcpacktimer(void*);
 void	tcpkeepalive(void*);
+void    tcprxmit(Conv*, int);
 
 void
 tcpsetstate(Conv *s, uchar newstate)
@@ -575,45 +584,6 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 	tcpsetstate(s, Closed);
 }
 
-void
-inittcpctl(Conv *s)
-{
-	Tcpctl *tcb;
-	Tcphdr *h;
-
-	tcb = (Tcpctl*)s->ptcl;
-
-	memset(tcb, 0, sizeof(Tcpctl));
-
-	tcb->cwind = tcp_mss;
-	tcb->mss = tcp_mss;
-	tcb->ssthresh = 65535;
-	tcb->srtt = 0;
-
-	tcb->timer.start = tcp_irtt / MSPTICK;
-	tcb->timer.func = tcptimeout;
-	tcb->timer.arg = s;
-	tcb->rtt_timer.start = MAX_TIME;
-	tcb->acktimer.start = TCP_ACK / MSPTICK;
-	tcb->acktimer.func = tcpacktimer;
-	tcb->acktimer.arg = s;
-	tcb->kacounter = 0;
-	tcb->katimer.start = DEF_KAT / MSPTICK;
-	tcb->katimer.func = tcpkeepalive;
-	tcb->katimer.arg = s;
-
-	/* create a prototype(pseudo) header */
-	if(ipcmp(s->laddr, IPnoaddr) == 0)
-		findlocalip(s->p->f, s->laddr, s->raddr);
-	h = &tcb->protohdr;
-	memset(h, 0, sizeof(*h));
-	h->proto = IP_TCPPROTO;
-	hnputs(h->tcpsport, s->lport);
-	hnputs(h->tcpdport, s->rport);
-	v6tov4(h->tcpsrc, s->laddr);
-	v6tov4(h->tcpdst, s->raddr);
-}
-
 /* mtu (- TCP + IP hdr len) of 1st hop */
 int
 tcpmtu(Conv *s)
@@ -628,6 +598,43 @@ tcpmtu(Conv *s)
 	if(mtu < 4)
 		mtu = DEF_MSS;
 	return mtu;
+}
+
+void
+inittcpctl(Conv *s)
+{
+	Tcpctl *tcb;
+	Tcphdr *h;
+
+	tcb = (Tcpctl*)s->ptcl;
+
+	memset(tcb, 0, sizeof(Tcpctl));
+
+	tcb->ssthresh = 65535;
+
+	tcb->timer.start = tcp_irtt / MSPTICK;
+	tcb->timer.func = tcptimeout;
+	tcb->timer.arg = s;
+	tcb->rtt_timer.start = MAX_TIME;
+	tcb->acktimer.start = TCP_ACK / MSPTICK;
+	tcb->acktimer.func = tcpacktimer;
+	tcb->acktimer.arg = s;
+	tcb->katimer.start = DEF_KAT / MSPTICK;
+	tcb->katimer.func = tcpkeepalive;
+	tcb->katimer.arg = s;
+
+	/* create a prototype(pseudo) header */
+	if(ipcmp(s->laddr, IPnoaddr) == 0)
+		findlocalip(s->p->f, s->laddr, s->raddr);
+	h = &tcb->protohdr;
+	memset(h, 0, sizeof(*h));
+	h->proto = IP_TCPPROTO;
+	hnputs(h->tcpsport, s->lport);
+	hnputs(h->tcpdport, s->rport);
+	v6tov4(h->tcpsrc, s->laddr);
+	v6tov4(h->tcpdst, s->raddr);
+
+	tcb->mss = tcb->cwind = tcpmtu(s);
 }
 
 void
@@ -779,6 +786,7 @@ ntohtcp(Tcp *tcph, Block **bpp)
 	tcph->wnd = nhgets(h->tcpwin);
 	tcph->urg = nhgets(h->tcpurg);
 	tcph->mss = 0;
+	tcph->len = nhgets(h->length) - (hdrlen + TCP_PKT);
 
 	*bpp = pullupblock(*bpp, hdrlen+TCP_PKT);
 	if(*bpp == nil)
@@ -964,25 +972,25 @@ seq_within(ulong x, ulong low, ulong high)
 int
 seq_lt(ulong x, ulong y)
 {
-	return x < y;
+	return (int)(x-y) < 0;
 }
 
 int
 seq_le(ulong x, ulong y)
 {
-	return x <= y;
+	return (int)(x-y) <= 0;
 }
 
 int
 seq_gt(ulong x, ulong y)
 {
-	return x > y;
+	return (int)(x-y) > 0;
 }
 
 int
 seq_ge(ulong x, ulong y)
 {
-	return x >= y;
+	return (int)(x-y) >= 0;
 }
 
 /*
@@ -1023,6 +1031,28 @@ update(Conv *s, Tcp *seg)
 		return;
 	}
 
+	/* added by Dong for fast retransmission */
+	if( seg->ack == tcb->snd.una &&
+	    seg->len == 0 && seg->wnd == tcb->snd.wnd ) {
+
+		/* this is a pure ack w/o window update */
+//		print("dupack %lud ack %lud sndwnd %d advwin %d\n",
+//		tcb->snd.dupacks, seg->ack, tcb->snd.wnd, seg->wnd);
+
+		if(++tcb->snd.dupacks == TCPREXMTTHRESH) {
+			/*
+			 *  tahoe tcp rxt the packet, half sshthresh,
+ 			 *  and set cwnd to one packet
+			 */
+			tcb->snd.recovery = 1;
+			tcb->snd.rxt = tcb->snd.nxt;
+//			print("fast rxt %lud, nxt %lud\n", tcb->snd.una, tcb->snd.nxt);
+			tcprxmit(s, 0);
+		} else {
+			/* do reno tcp here. */
+		}
+	}
+
 	if(seq_ge(seg->ack,tcb->snd.wl2))
 	if(seq_gt(seg->seq,tcb->snd.wl1) || (seg->seq == tcb->snd.wl1)) {
 		if(seg->wnd != 0 && tcb->snd.wnd == 0)
@@ -1036,12 +1066,30 @@ update(Conv *s, Tcp *seg)
 	if(!seq_gt(seg->ack, tcb->snd.una))
 		return;
 
-	/* something new was acked in this packet */
-	tcb->flags |= ACKED;
+        /*
+	 *  any positive ack turns off fast rxt,
+         *  (should we do new-reno on partial acks?)
+	 */
+	if(!tcb->snd.recovery || seq_ge(seg->ack, tcb->snd.rxt)) {
+		tcb->snd.dupacks = 0;
+		tcb->snd.recovery = 0;
+	} else {
+//		print("rxt next %lud, cwin %ud\n", seg->ack, tcb->cwind);
+	}
 
 	/* Compute the new send window size */
 	acked = seg->ack - tcb->snd.una;
-	if(tcb->cwind < tcb->snd.wnd) {
+
+	/* avoid slow start and timers for SYN acks */
+	if((tcb->flags & SYNACK) == 0) {
+		tcb->flags |= SYNACK;
+		acked--;
+		tcb->sndcnt--;
+		goto done;
+	}
+
+	/* slow start as long as we're not recovering from lost packets */
+	if(tcb->cwind < tcb->snd.wnd && !tcb->snd.recovery) {
 		if(tcb->cwind < tcb->ssthresh) {
 			expand = tcb->mss;
 			if(acked < expand)
@@ -1084,12 +1132,7 @@ update(Conv *s, Tcp *seg)
 		}
 	}
 
-	if((tcb->flags & SYNACK) == 0) {
-		tcb->flags |= SYNACK;
-		acked--;
-		tcb->sndcnt--;
-	}
-
+done:
 	qdiscard(s->wq, acked);
 
 	tcb->sndcnt -= acked;
@@ -1539,7 +1582,7 @@ tcpoutput(Conv *s)
 	int msgs;
 	Tcpctl *tcb;
 	Block *hbp, *bp;
-	int sndcnt, n, first;
+	int sndcnt, n;
 	ulong ssize, dsize, usable, sent;
 	Fs *f;
 	Tcppriv *tpriv;
@@ -1562,7 +1605,6 @@ tcpoutput(Conv *s)
 		tcb->flags |= FORCE;
 	}
 
-	first = tcb->snd.ptr == tcb->snd.una;
 	for(msgs = 0; msgs < 100; msgs++) {
 		sndcnt = tcb->sndcnt;
 		sent = tcb->snd.ptr - tcb->snd.una;
@@ -1587,22 +1629,7 @@ tcpoutput(Conv *s)
 			if(tcb->snd.wnd < usable)
 				usable = tcb->snd.wnd;
 			usable -= sent;
-			/*
-			 *  hold small pieces in the hopes that more will come along.
-			 *  this is pessimal in synchronous communications so go ahead
-			 *  and send if any of the following:
-			 *   - there's no unacked packets outstanding
-			 *   - we've forced to send anyways
-			 *   - we've just gotten an ACK for a previous packet
-			 *   - there's more than 5 bytes queued
-			 */
-			if(!first)
-			if(!(tcb->flags&(FORCE|ACKED)))
-			if((sndcnt-sent) < 5)
-				usable = 0;
 		}
-		tcb->flags &= ~ACKED;
-
 		ssize = sndcnt-sent;
 		if(usable < ssize)
 			ssize = usable;
@@ -1614,6 +1641,19 @@ tcpoutput(Conv *s)
 		if(ssize == 0)
 		if((tcb->flags&FORCE) == 0)
 			break;
+
+		/* avoid sending short packets unless... */
+		if(dsize != 0) {
+			/* ...we have a full segment */
+			if(dsize != tcb->mss)
+			/* ...the data was just queued */
+			if((dsize + sent) != sndcnt)
+			/* ...we're being forced */
+			if(!(tcb->flags&FORCE))
+			/* ...we have at least half a window's worth to send */
+			if(dsize < tcb->snd.wnd/2 || tcb->snd.wnd == 0)
+				return;
+		}
 
 		tcphalt(tpriv, &tcb->acktimer);
 
@@ -1670,11 +1710,12 @@ tcpoutput(Conv *s)
 			seg.flags |= PSH;
 
 		/* keep track of balance of resent data */
-		if(tcb->snd.ptr < tcb->snd.nxt) {
+		if(seq_lt(tcb->snd.ptr, tcb->snd.nxt)) {
 			n = tcb->snd.nxt - tcb->snd.ptr;
 			if(ssize < n)
 				n = ssize;
 			tcb->resent += n;
+			tpriv->tstats.tcpRetransSegs++;
 		}
 
 		tcb->snd.ptr += ssize;
@@ -1712,8 +1753,12 @@ tcpoutput(Conv *s)
 			if(tcb->timer.state != TimerON)
 				tcpgo(tpriv, &tcb->timer);
 
-			/* If round trip timer isn't running, start it */
-			if(tcb->rtt_timer.state != TimerON) {
+			/*  If round trip timer isn't running, start it.
+			 *  measure the longest packet only in case the
+			 *  transmission time dominates RTT
+			 */
+			if(tcb->rtt_timer.state != TimerON)
+			if(ssize == tcb->mss) {
 				tcpgo(tpriv, &tcb->rtt_timer);
 				tcb->rttseq = tcb->snd.ptr;
 			}
@@ -1810,31 +1855,36 @@ tcpstartka(Conv *s, char **f, int n)
 }
 
 void
-tcprxmit(Conv *s)
+tcprxmit(Conv *s, int dolock)
 {
 	Tcpctl *tcb;
-	Tcppriv *tpriv;
 
-	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
 
-	qlock(s);
+	if(dolock)
+		qlock(s);
 	tcb->flags |= RETRAN|FORCE;
 	tcb->snd.ptr = tcb->snd.una;
 
-	/* Pull window down to a single packet and halve the slow
-	 * start threshold
+	/*
+	 *  We should be halving the slow start thershhold (down to one
+	 *  mss) but leaving it at mss seems to work well enough
 	 */
-	tcb->ssthresh = tcb->cwind / 2;
-	tcb->ssthresh = tcb->ssthresh;
-	if(tcb->mss > tcb->ssthresh)
-		tcb->ssthresh = tcb->mss;
+//	win = (tcb->cwind<tcb->snd.wnd)?tcb->cwind:tcb->snd.wnd/ tcb->mss;
+//	win = win/2;
+//	if ( win < 2 )
+//		win = 2;
+//	tcb->ssthresh = win * tcb->mss;
+ 	tcb->ssthresh = tcb->mss;
 
+	/*
+	 *  pull window down to a single packet
+	 */
 	tcb->cwind = tcb->mss;
 	tcpoutput(s);
 
-	tpriv->tstats.tcpRetransSegs++;
-	qunlock(s);
+	if(dolock)
+		qunlock(s);
 }
 
 void
@@ -1843,8 +1893,10 @@ tcptimeout(void *arg)
 	Conv *s;
 	Tcpctl *tcb;
 	int maxback;
+	Tcppriv *tpriv;
 
 	s = (Conv*)arg;
+	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
 
 
@@ -1859,7 +1911,9 @@ tcptimeout(void *arg)
 			localclose(s, Etimedout);
 			break;
 		}
-		tcprxmit(s);
+		tcprxmit(s, 1);
+		tpriv->tstats.tcpRetransTimeouts++;
+		tcb->snd.dupacks = 0;
 		break;
 	case Time_wait:
 		localclose(s, nil);
@@ -2088,7 +2142,7 @@ tcpstats(Proto *tcp, char *buf, int len)
 
 
 
-	return snprint(buf, len, "%lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud",
+	return snprint(buf, len, "%lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud",
 		tpriv->tstats.tcpRtoAlgorithm,
 		tpriv->tstats.tcpRtoMin,
 		tpriv->tstats.tcpRtoMax,
@@ -2101,6 +2155,7 @@ tcpstats(Proto *tcp, char *buf, int len)
 		tpriv->tstats.tcpInSegs,
 		tpriv->tstats.tcpOutSegs,
 		tpriv->tstats.tcpRetransSegs,
+		tpriv->tstats.tcpRetransTimeouts,
 		tpriv->tstats.InErrs,
 		tpriv->tstats.OutRsts);
 }
