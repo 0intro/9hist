@@ -120,7 +120,7 @@ vread(Chan *, void *va, long nbytes, vlong) {
 				break;
 			}
 			// Fill in APP marker fields here
-			thetime = todget();
+			thetime = todget(nil);
 			frameHeader.sec = (ulong)(thetime / 1000000000LL);
 			frameHeader.usec = (ulong)(thetime % 1000000000LL) / 1000;
 			frameHeader.frameSize = fragsize - 2 + sizeof(FrameHeader);

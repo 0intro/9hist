@@ -555,7 +555,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 	char *cbuf = buf;
 	int ch, i, k, id, eol;
 	vlong offset = off, x;
-	uvlong ticks;
+	vlong ticks, nsec;
 
 	if(n <= 0)
 		return n;
@@ -674,19 +674,17 @@ consread(Chan *c, void *buf, long n, vlong off)
 
 	case Qtiming:
 		k = 0;
+		nsec = todget(&ticks);
 		if(n >= 3*8){
-			ticks = fastticks((uvlong*)&fasthz);
 			vlong2le(cbuf+16, fasthz);
-			vlong2le(cbuf+8, ticks);
-			k += 2*8;
-		} else if(n >= 2*8){
-			ticks = fastticks(nil);
+			k += 8;
+		}
+		if(n >= 2*8){
 			vlong2le(cbuf+8, ticks);
 			k += 8;
 		}
 		if(n >= 8){
-			ticks = todget();
-			vlong2le(cbuf, ticks);
+			vlong2le(cbuf, nsec);
 			k += 8;
 		}
 		return k;
@@ -717,17 +715,17 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return 0;
 
 	case Qnsec:
-		x = todget();
+		x = todget(nil);
 		return readvlnum((ulong)offset, buf, n, x, 2*NUMSIZE);
 
 	case Qmsec:
-		x = todget();
+		x = todget(nil);
 		x /= 1000000LL;
 		i = x;
 		return readnum((ulong)offset, buf, n, i, NUMSIZE);
 
 	case Qtime:
-		x = todget();
+		x = todget(nil);
 		x /= 1000000000LL;
 		i = x;
 		return readnum((ulong)offset, buf, n, i, NUMSIZE);

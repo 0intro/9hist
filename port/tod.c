@@ -92,7 +92,7 @@ todset(vlong t, vlong delta, int n)
 //  get time of day
 //
 vlong
-todget(void)
+todget(vlong *ticksp)
 {
 	uvlong x;
 	vlong ticks, diff;
@@ -130,6 +130,9 @@ todget(void)
 		x = tod.lasttime;
 	tod.lasttime = x;
 
+	if(ticksp != nil)
+		*ticksp = ticks;
+
 	iunlock(&tod);
 	return x;
 }
@@ -145,7 +148,7 @@ todfix(void)
 	// once a second, make sure we don't overflow
 	if(MACHP(0)->ticks - last >= HZ){
 		last = MACHP(0)->ticks;
-		todget();
+		todget(nil);
 	}
 }
 
@@ -155,7 +158,7 @@ seconds(void)
 	vlong x;
 	int i;
 
-	x = todget();
+	x = todget(nil);
 	x /= TODFREQ;
 	i = x;
 	return i;
