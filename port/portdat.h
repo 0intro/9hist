@@ -8,7 +8,6 @@ typedef struct Egrp	Egrp;
 typedef struct Evalue	Evalue;
 typedef struct Fgrp	Fgrp;
 typedef struct Image	Image;
-typedef struct IOQ	IOQ;
 typedef struct List	List;
 typedef struct Mntcache Mntcache;
 typedef struct Mount	Mount;
@@ -470,6 +469,12 @@ enum
 
 	NERR = 15,
 	NNOTE = 5,
+
+	NSYSCALL = 37,		/* MUST be equal to the real thing!!!! */
+	Pcounter = 6,		/* per process counters */
+	 CSCNTR = 0,		/*  sched counter */
+	 FAULTCNTR = 1,		/*  fault counter */
+	 TLBCNTR = 2,		/*  utlbmiss */
 };
 
 struct Proc
@@ -551,6 +556,10 @@ struct Proc
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */
 	Notsave;
+
+	/* statistics */
+	ulong	counter[Pcounter];	/* specialized per process counters */
+	ulong	syscall[NSYSCALL];
 
 	/*
 	 *  machine specific MMU

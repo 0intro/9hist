@@ -125,6 +125,7 @@ struct Mach
 	void	*alarm;			/* alarms bound to this clock */
 
 	int	tlbfault;
+	int	otlbfault;
 	int	tlbpurge;
 	int	pfault;
 	int	cs;

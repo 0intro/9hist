@@ -87,6 +87,9 @@ sched(void)
 	if(up) {
 		splhi();
 		m->cs++;
+		up->counter[CSCNTR]++;
+up->counter[TLBCNTR] += m->tlbfault - m->otlbfault;
+m->otlbfault = m->tlbfault;
 		procsave(up);
 		if(setlabel(&up->sched)) {
 			procrestore(up);
@@ -229,6 +232,8 @@ newproc(void)
 		panic("pidalloc");
 	if(p->kstack == 0)
 		p->kstack = smalloc(KSTACK);
+	memset(p->counter, 0, sizeof(p->counter));
+	memset(p->syscall, 0, sizeof(p->syscall));
 
 	return p;
 }

@@ -516,7 +516,7 @@ mousetrack(int b, int dx, int dy)
  *  shift & right button is the same as middle button (for 2 button mice)
  */
 int
-m3mouseputc(IOQ *q, int c)
+m3mouseputc(int c)
 {
 	static uchar msg[3];
 	static int nb;
@@ -525,7 +525,6 @@ m3mouseputc(IOQ *q, int c)
 	short x;
 	int dx, dy, newbuttons;
 
-	USED(q);
 	/* 
 	 *  check bit 6 for consistency
 	 */
@@ -557,14 +556,13 @@ m3mouseputc(IOQ *q, int c)
  *  shift & right button is the same as middle button (for 2 button mice)
  */
 int
-mouseputc(IOQ *q, int c)
+mouseputc(int c)
 {
 	static short msg[5];
 	static int nb;
 	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7, 0, 2, 2, 6, 1, 5, 3, 7};
 	int dx, dy, newbuttons;
 
-	USED(q);
 	if((c&0xF0) == 0x80)
 		nb=0;
 	msg[nb] = c;

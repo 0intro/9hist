@@ -102,6 +102,7 @@ struct Mach
 	int	tlbpurge;		/* MUST BE SIXTH */
 
 	/* the following is safe to move */
+	ulong	otlbfault;		/* tlbfault at last sched */
 	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */

@@ -40,6 +40,8 @@ Syscall syssegflush;
 Syscall sysrendezvous;
 Syscall sysunmount;
 Syscall syswait;
+Syscall ;
+Syscall /* make sure port/portdat.h has nsyscall defined correctly!!! */;
 Syscall	sysdeath;
 
 Syscall *systab[]={
@@ -80,6 +82,8 @@ Syscall *systab[]={
 	[RENDEZVOUS]	sysrendezvous,
 	[UNMOUNT]	sysunmount,
 	[WAIT]		syswait,
+
+/* make sure port/portdat.h has NSYSCALL defined correctly!!! */
 };
 
 char *sysctab[]={
@@ -120,4 +124,6 @@ char *sysctab[]={
 	[RENDEZVOUS]	"Rendez",
 	[UNMOUNT]	"Unmount",
 	[WAIT]		"Wait",
+
+/* make sure port/portdat.h has NSYSCALL defined correctly!!! */
 };

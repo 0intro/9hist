@@ -518,6 +518,7 @@ syscall(Ureg *aur)
 			postnote(up, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
+		up->syscall[up->scallnr]++;
 
 		if(sp & (BY2WD-1)){
 			pprint("odd sp in sys call pc %lux sp %lux\n", ur->pc, ur->sp);

@@ -727,11 +727,3 @@ buzz(int f, int d)
 	USED(f);
 	USED(d);
 }
-
-int
-mouseputc(IOQ *q, int c)
-{
-	USED(q);
-	USED(c);
-	return 0;
-}

@@ -157,6 +157,7 @@ int		postnote(Proc*, int, char*, int);
 int		pprint(char*, ...);
 void		printinit(void);
 ulong		procalarm(ulong);
+int		proccounter(char *name);
 void		procctl(Proc*);
 void		procdump(void);
 void		procinit0(void);

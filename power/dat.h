@@ -130,6 +130,7 @@ struct Mach
 	int	load;
 	int	intr;
 	int	ledval;			/* value last written to LED */
+	int	otlbfault;
 
 	int	stack[1];
 };
