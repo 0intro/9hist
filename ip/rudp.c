@@ -301,7 +301,7 @@ doipoput(Conv *c, Fs *f, Block *bp, int x, int ttl)
 	Rudpcb *ucb;
 
 	ucb = (Rudpcb*)c->ptcl;
-	if(ucb->randdrop && nrand(10) == 1)
+	if(ucb->randdrop && nrand(100) < ucb->randdrop)
 		freeblist(bp);
 	else
 		ipoput(f, bp, x, ttl);
@@ -603,25 +603,34 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 	qunlock(ucb);
 }
 
+static char *rudpunknown = "unknown rudp ctl request";
+
 char*
 rudpctl(Conv *c, char **f, int n)
 {
 	Rudpcb *ucb;
+	int x;
 
 	ucb = (Rudpcb*)c->ptcl;
-	if(n == 1){
-		if(strcmp(f[0], "headers4") == 0){
-			ucb->headers = 4;
-			return nil;
-		} else if(strcmp(f[0], "headers") == 0){
-			ucb->headers = 6;
-			return nil;
-		} else if(strcmp(f[0], "randdrop") == 0){
-			ucb->randdrop = 1;
-			return nil;
-		}
+	if(n < 1)
+		return rudpunknown;
+
+	if(strcmp(f[0], "headers4") == 0){
+		ucb->headers = 4;
+		return nil;
+	} else if(strcmp(f[0], "headers") == 0){
+		ucb->headers = 6;
+		return nil;
+	} else if(strcmp(f[0], "randdrop") == 0){
+		x = 10;		/* default is 10% */
+		if(n > 1)
+			x = atoi(f[1]);
+		if(x > 100 || x < 0)
+			return "illegal rudp drop rate";
+		ucb->randdrop = x;
+		return nil;
 	}
-	return "unknown control request";
+	return rudpunknown;
 }
 
 void
