@@ -8,14 +8,26 @@
 void
 lock(Lock *l)
 {
-	if(tas(&l->key) == 0)
+	int i;
+	ulong pc;
+
+	pc = getcallerpc(l);
+
+	if(tas(&l->key) == 0){
+		l->pc = pc;
 		return;
+	}
 
 	for(;;){
+		i = 0;
 		while(l->key)
-			;
-		if(tas(&l->key) == 0)
+			if(i++ > 10000000)
+				panic("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux\n",
+					l->key, getcallerpc(l), l->pc);
+		if(tas(&l->key) == 0){
+			l->pc = pc;
 			return;
+		}
 	}
 }
 
@@ -23,10 +35,14 @@ void
 ilock(Lock *l)
 {
 	ulong x;
+	ulong pc;
+
+	pc = getcallerpc(l);
 
 	x = splhi();
 	if(tas(&l->key) == 0){
 		l->sr = x;
+		l->pc = pc;
 		return;
 	}
 
@@ -35,6 +51,7 @@ ilock(Lock *l)
 			;
 		if(tas(&l->key) == 0){
 			l->sr = x;
+			l->pc = pc;
 			return;
 		}
 	}
@@ -46,6 +63,7 @@ canlock(Lock *l)
 	if(tas(&l->key))
 		return 0;
 
+	l->pc = getcallerpc(l);
 	return 1;
 }
 

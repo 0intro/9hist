@@ -793,6 +793,10 @@ procdump(void)
 	ulong bss;
 	Schedq *rq;
 
+	if(up)
+		print("up %d\n", up->pid);
+	else
+		print("no current process\n");
 	for(i=0; i<conf.nproc; i++) {
 		p = &procalloc.arena[i];
 		if(p->state == Dead)
@@ -813,7 +817,8 @@ procdump(void)
 			continue;
 		print("rq%d:", rq-runq);
 		for(p = rq->head; p; p = p->rnext)
-			print(" %d(%d)", p->pid, m->ticks - p->readytime);
+			print(" %d(%d, %d)", p->pid, m->ticks - p->readytime,
+				m->ticks - p->movetime);
 		print("\n");
 	}
 	print("nrdy %d\n", nrdy);

@@ -28,6 +28,7 @@ struct Lock
 {
 	ulong	key;
 	ulong	sr;
+	ulong	pc;
 };
 
 struct Label
