@@ -506,6 +506,7 @@ freebroken(void)
 void
 pexit(char *exitstr, int freemem)
 {
+	int n;
 	Proc *p, *c;
 	Segment **s, **es, *os;
 	Waitq *wq, *f, *next;
@@ -526,9 +527,10 @@ pexit(char *exitstr, int freemem)
 		wq->w.time[TUser] = TK2MS(c->time[TUser]);
 		wq->w.time[TSys] = TK2MS(c->time[TSys]);
 		wq->w.time[TReal] = TK2MS(MACHP(0)->ticks - c->time[TReal]);
-		if(exitstr)
-			strncpy(wq->w.msg, exitstr, ERRLEN);
-		else
+		if(exitstr && exitstr[0]){
+			n = sprint(wq->w.msg, "%s %d:", c->text, c->pid);
+			strncpy(wq->w.msg+n, exitstr, ERRLEN-n);
+		}else
 			wq->w.msg[0] = '\0';
 
 		/* Find my parent */

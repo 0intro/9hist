@@ -23,12 +23,12 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 		return;
 
 	switch(newstate) {
-	case CLOSED:
+	case Closed:
 		s->psrc = 0;
 		s->pdst = 0;
 		s->dst = 0;
 		/* NO break */
-	case CLOSE_WAIT:		/* Remote closes */
+	case Close_wait:		/* Remote closes */
 		if(s->readq == 0)
 			break;
 
@@ -53,7 +53,7 @@ tcpstart(Ipconv *s, int mode, ushort window, char tos)
 {
 	Tcpctl *tcb = &s->tcpctl;
 
-	if(tcb->state != CLOSED)
+	if(tcb->state != Closed)
 		return;
 
 	init_tcpctl(s);
@@ -64,14 +64,14 @@ tcpstart(Ipconv *s, int mode, ushort window, char tos)
 	switch(mode){
 	case TCP_PASSIVE:
 		tcb->flags |= CLONE;
-		setstate(s, LISTEN);
+		setstate(s, Listen);
 		break;
 	case TCP_ACTIVE:
 		/* Send SYN, go into SYN_SENT state */
 		tcb->flags |= ACTIVE;
 		qlock(tcb);
 		send_syn(tcb);
-		setstate(s, SYN_SENT);
+		setstate(s, Syn_sent);
 		tcp_output(s);
 		qunlock(tcb);
 		break;

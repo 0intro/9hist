@@ -26,8 +26,8 @@ fault386(Ureg *ur)
 	n = fault(addr, read);
 	if(n < 0){
 		if(user){
-			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
-				read? "read" : "write", ur->pc, addr);
+			sprint(buf, "sys: trap: fault %s addr=0x%lux",
+				read? "read" : "write", addr);
 			postnote(u->p, 1, buf, NDebug);
 			return;
 		}

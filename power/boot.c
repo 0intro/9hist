@@ -131,6 +131,7 @@ setpasswd(void)
 int
 bitdial(char *arg)
 {
+	USED(arg);
 	return open("#3/bit3", ORDWR);
 }
 
@@ -189,14 +190,12 @@ nonetdial(char *arg)
 	cfd = open("#nnonet/2/ctl", ORDWR);
 	if(cfd < 0){
 		close(fd);
-		fd = -1;
 		prerror("opening #nnonet/2/ctl");
 		return -1;
 	}
 	if(write(cfd, a->cmd, strlen(a->cmd))<0){
 		close(cfd);
 		close(fd);
-		fd = cfd = -1;
 		prerror(a->cmd);
 		return -1;
 	}
@@ -246,7 +245,6 @@ dkdial(char *arg)
 	cfd = open("#k/dk/5/ctl", ORDWR);
 	if(cfd < 0){
 		close(fd);
-		fd = -1;
 		prerror("opening #k/dk/5/ctl");
 		return -1;
 	}
@@ -254,7 +252,6 @@ dkdial(char *arg)
 	if(write(cfd, cmd, strlen(cmd))<0){
 		close(cfd);
 		close(fd);
-		cfd = fd = -1;
 		prerror(cmd);
 		return -1;
 	}
@@ -381,7 +378,6 @@ void
 boot(int ask)
 {
 	int n, f, tries;
-	char *srvname;
 
 	if(ask)
 		outin("server", sys, sizeof(sys));
@@ -389,15 +385,15 @@ boot(int ask)
 	for(tries = 0; tries < 5; tries++){
 		fd = -1;
 		if(strncmp(sys, "bit!", 4) == 0)
-			fd = bitdial(srvname = &sys[4]);
+			fd = bitdial(&sys[4]);
 		else if(strncmp(sys, "hot!", 4) == 0)
-			fd = hotdial(srvname = &sys[4]);
+			fd = hotdial(&sys[4]);
 		else if(strncmp(sys, "dk!", 3) == 0)
-			fd = dkdial(srvname = &sys[3]);
+			fd = dkdial(&sys[3]);
 		else if(strncmp(sys, "nonet!", 6) == 0)
-			fd = nonetdial(srvname = &sys[6]);
+			fd = nonetdial(&sys[6]);
 		else
-			fd = nonetdial(srvname = sys);
+			fd = nonetdial(sys);
 		if(fd >= 0)
 			break;
 		print("can't connect, retrying...\n");

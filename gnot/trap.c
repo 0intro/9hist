@@ -40,7 +40,7 @@ char *trapname[]={
 	"illegal instruction",
 	"zero divide",
 	"chk, chk2 instruction",
-	"cptrapcc, trapcc, trapv instruction",
+	"trapcc instruction",
 	"privilege violation",
 	"trace",
 	"line 1010 emulator",
@@ -67,6 +67,15 @@ char *trapname[]={
 	"level 7 autovector",
 };
 
+char *fptrapname[]={
+[49-49]	"inexact result",
+[50-49]	"divide by zero",
+[51-49]	"underflow",
+[52-49]	"operand error",
+[53-49]	"overflow",
+[54-49]	"signaling NaN",
+};
+
 char*
 excname(unsigned vo, ulong pc)
 {
@@ -78,7 +87,12 @@ excname(unsigned vo, ulong pc)
 		/* special case, and pc will be o.k. */
 		if(vo==4 && *(ushort*)pc==0x4848)
 			return "breakpoint";
-		return trapname[vo];
+		sprint(buf, "trap: %s", trapname[vo]);
+		return buf;
+	}
+	if(49<=vo && vo<=54){
+		sprint(buf, "fp: %s", fptrapname[vo-49]);
+		return buf;
 	}
 	sprint(buf, "offset 0x%ux", vo<<2);
 	return buf;
@@ -97,7 +111,7 @@ trap(Ureg *ur)
 		u->dbgreg = ur;
 	}
 	if(user){
-		sprint(buf, "sys: %s pc=0x%lux", excname(ur->vo, ur->pc), ur->pc);
+		sprint(buf, "sys: %s", excname(ur->vo, ur->pc));
 		postnote(u->p, 1, buf, NDebug);
 	}else{
 		print("kernel trap %s pc=0x%lux\n", excname(ur->vo, ur->pc), ur->pc);
@@ -145,7 +159,9 @@ dumpregs(Ureg *ur)
 void
 notify(Ureg *ur)
 {
+	int l;
 	ulong s, sp;
+	Note *n;
 
 	if(u->p->procctl)
 		procctl(u->p);
@@ -155,12 +171,19 @@ notify(Ureg *ur)
 	s = spllo();
 	qlock(&u->p->debug);
 	u->p->notepending = 0;
-	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
+	n = &u->note[0];
+	if(strncmp(n->msg, "sys:", 4) == 0){
+		l = strlen(n->msg);
+		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
+			l = ERRLEN-15;
+		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
+	}
+	if(n->flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
-			pprint("suicide: %s\n", u->note[0].msg);
+			pprint("suicide: %s\n", n->msg);
     Die:
 		qunlock(&u->p->debug);
-		pexit(u->note[0].msg, u->note[0].flag!=NDebug);
+		pexit(n->msg, n->flag!=NDebug);
 	}
 	if(!u->notified){
 		if(!u->notify)

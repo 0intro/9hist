@@ -21,11 +21,11 @@ char *trapname[]={
 	"instruction access exception",
 	"illegal instruction",
 	"privileged instruction",
-	"fp disabled",
+	"fp: disabled",
 	"window overflow",
 	"window underflow",
 	"unaligned address",
-	"fp exception",
+	"fp: exception",
 	"data access exception",
 	"tag overflow",
 };
@@ -34,26 +34,33 @@ char*
 excname(ulong tbr)
 {
 	static char buf[64];	/* BUG: not reentrant! */
+	char xx[64];
+	char *t;
 
-	if(tbr < sizeof trapname/sizeof(char*))
-		return trapname[tbr];
-	if(tbr >= 130)
-		sprint(buf, "trap instruction %d", tbr-128);
-	else if(17<=tbr && tbr<=31)
-		sprint(buf, "interrupt level %d", tbr-16);
-	else switch(tbr){
-	case 36:
-		return "cp disabled";
+	switch(tbr){
+		return "trap: cp disabled";
 	case 40:
-		return "cp exception";
+		return "trap: cp exception";
 	case 128:
 		return "syscall";
 	case 129:
 		return "breakpoint";
-	default:
-		sprint(buf, "unknown trap %d", tbr);
 	}
-    Return:
+	if(tbr < sizeof trapname/sizeof(char*))
+		t = trapname[tbr];
+	else{
+		if(tbr >= 130)
+			sprint(xx, "trap instruction %d", tbr-128);
+		else if(17<=tbr && tbr<=31)
+			sprint(xx, "interrupt level %d", tbr-16);
+		else
+			sprint(xx, "unknown trap %d", tbr);
+		t = xx;
+	}
+	if(strncmp(t, "fp: ", 4) == 0)
+		strcpy(buf, t);
+	else
+		sprint(buf, "trap: %s", t);
 	return buf;
 }
 
@@ -134,7 +141,7 @@ trap(Ureg *ur)
     Error:
 		if(user){
 			spllo();
-			sprint(buf, "sys: %s pc=0x%lux", excname(tbr), ur->pc);
+			sprint(buf, "sys: %s", excname(tbr));
 			if(tbr == 8)
 				sprint(buf+strlen(buf), " FSR %lux", u->fpsave.fsr);
 			postnote(u->p, 1, buf, NDebug);
@@ -222,26 +229,31 @@ dumpregs(Ureg *ur)
 void
 notify(Ureg *ur)
 {
+	int l;
 	ulong s, sp;
+	Note *n;
 
 	if(u->p->procctl)
 		procctl(u->p);
-	if(u->nnote == 0)
+	if(u->nnote==0)
 		return;
 
-	s = spllo();		/* need to go low as may fault */
+	s = spllo();
 	qlock(&u->p->debug);
 	u->p->notepending = 0;
-	if(u->nnote==0){
-		qunlock(&u->p->debug);
-		return;
+	n = &u->note[0];
+	if(strncmp(n->msg, "sys:", 4) == 0){
+		l = strlen(n->msg);
+		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
+			l = ERRLEN-15;
+		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
 	}
-	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
+	if(n->flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
-			pprint("suicide: %s\n", u->note[0].msg);
+			pprint("suicide: %s\n", n->msg);
     Die:
 		qunlock(&u->p->debug);
-		pexit(u->note[0].msg, u->note[0].flag!=NDebug);
+		pexit(n->msg, n->flag!=NDebug);
 	}
 	if(!u->notified){
 		if(!u->notify)

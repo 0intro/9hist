@@ -77,7 +77,7 @@ debugbpt(Ureg *ur)
 		panic("kernel bpt");
 	/* restore pc to instruction that caused the trap */
 	ur->pc--;
-	sprint(buf, "sys: breakpoint pc=0x%lux", ur->pc);
+	sprint(buf, "sys: breakpoint");
 	postnote(u->p, 1, buf, NDebug);
 }
 
@@ -228,7 +228,7 @@ trap(Ureg *ur)
 			return;
 		if(v <= 16){
 			if(user){
-				sprint(buf, "sys: %s pc=0x%lux", excname[v], ur->pc);
+				sprint(buf, "sys: trap: %s", excname[v]);
 				postnote(u->p, 1, buf, NDebug);
 				return;
 			} else {
@@ -353,7 +353,9 @@ syscall(Ureg *ur)
 void
 notify(Ureg *ur)
 {
+	int l;
 	ulong s, sp;
+	Note *n;
 
 	if(u->p->procctl)
 		procctl(u->p);
@@ -363,12 +365,19 @@ notify(Ureg *ur)
 	s = spllo();
 	qlock(&u->p->debug);
 	u->p->notepending = 0;
-	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
+	n = &u->note[0];
+	if(strncmp(n->msg, "sys:", 4) == 0){
+		l = strlen(n->msg);
+		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
+			l = ERRLEN-15;
+		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
+	}
+	if(n->flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
-			pprint("suicide: %s\n", u->note[0].msg);
+			pprint("suicide: %s\n", n->msg);
     Die:
 		qunlock(&u->p->debug);
-		pexit(u->note[0].msg, u->note[0].flag!=NDebug);
+		pexit(n->msg, n->flag!=NDebug);
 	}
 	if(!u->notified){
 		if(!u->notify)

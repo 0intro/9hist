@@ -24,8 +24,8 @@ faultmips(Ureg *ur, int user, int code)
 
 	if(fault(addr, read) < 0){
 		if(user){
-			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
-				read? "read" : "write", ur->pc, ur->badvaddr);
+			sprint(buf, "sys: trap: fault %s addr=0x%lux",
+				read? "read" : "write", ur->badvaddr);
 			postnote(u->p, 1, buf, NDebug);
 			return;
 		}

@@ -16,11 +16,11 @@ enum
 };
 
 int 	udpsum = 1;
-Queue	*Ipoutput;		/* Control message stream for tcp/il */
-Ipifc	*ipifc;			/* IP protocol interfaces for stip */
-Ipconv	*ipconv[Nrprotocol];	/* Connections for each protocol */
-Network	*ipnet[Nrprotocol];	/* User level interface for protocol */
-QLock	ipalloc;		/* Protocol port allocation lock */
+Queue	*Ipoutput;			/* Control message stream for tcp/il */
+Ipifc	*ipifc;				/* IP protocol interfaces for stip */
+Ipconv	*ipconv[Nrprotocol];		/* Connections for each protocol */
+Network	*ipnet[Nrprotocol];		/* User level interface for protocol */
+QLock	ipalloc;			/* Protocol port allocation lock */
 
 /* ARPA User Datagram Protocol */
 void	udpstiput(Queue *, Block *);
@@ -157,7 +157,7 @@ ipincoming(Ipconv *base, Ipconv *from)
 	for(new = base; new < etab; new++) {
 		if(new->ref == 0 && canqlock(new)) {
 			if(new->ref ||
-		          (new->stproto == &tcpinfo && new->tcpctl.state != CLOSED) ||
+		          (new->stproto == &tcpinfo && new->tcpctl.state != Closed) ||
 			  (new->stproto == &ilinfo && new->ilctl.state != Ilclosed)) {
 				qunlock(new);
 				continue;
@@ -237,7 +237,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		errors("bad ip control");
 
 	if(strcmp(field[0], "connect") == 0) {
-		if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
+		if((cp->stproto == &tcpinfo && cp->tcpctl.state != Closed) ||
 		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
 				error(Edevbusy);
 
@@ -279,7 +279,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		cp->pdst = 0;
 	}
 	else if(strcmp(field[0], "announce") == 0) {
-		if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
+		if((cp->stproto == &tcpinfo && cp->tcpctl.state != Closed) ||
 		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
 				error(Edevbusy);
 
@@ -501,15 +501,15 @@ tcpstoput(Queue *q, Block *bp)
 		error(s->err);
 
 	switch(tcb->state) {
-	case LISTEN:
+	case Listen:
 		tcb->flags |= ACTIVE;
 		send_syn(tcb);
-		setstate(s, SYN_SENT);
+		setstate(s, Syn_sent);
 		/* No break */
-	case SYN_SENT:
-	case SYN_RECEIVED:
-	case ESTABLISHED:
-	case CLOSE_WAIT:
+	case Syn_sent:
+	case Syn_received:
+	case Established:
+	case Close_wait:
 		qlock(tcb);
 		tcb->sndcnt += blen(bp);
 		if(tcb->sndq == 0)
@@ -620,7 +620,7 @@ iplisten(Chan *c)
 	s = &ipconv[c->dev][connection];
 	base = ipconv[c->dev];
 
-	if((s->stproto == &tcpinfo && s->tcpctl.state != LISTEN) ||
+	if((s->stproto == &tcpinfo && s->tcpctl.state != Listen) ||
 	   (s->stproto == &ilinfo && s->ilctl.state != Illistening))
 		errors("not announced");
 
@@ -659,21 +659,21 @@ tcpstclose(Queue *q)
 	s->readq = 0;
 
 	switch(tcb->state){
-	case CLOSED:
-	case LISTEN:
-	case SYN_SENT:
+	case Closed:
+	case Listen:
+	case Syn_sent:
 		close_self(s, 0);
 		break;
-	case SYN_RECEIVED:
-	case ESTABLISHED:
+	case Syn_received:
+	case Established:
 		tcb->sndcnt++;
 		tcb->snd.nxt++;
-		setstate(s, FINWAIT1);
+		setstate(s, Finwait1);
 		goto output;
-	case CLOSE_WAIT:
+	case Close_wait:
 		tcb->sndcnt++;
 		tcb->snd.nxt++;
-		setstate(s, LAST_ACK);
+		setstate(s, Last_ack);
 	output:
 		qlock(tcb);
 		tcp_output(s);
@@ -785,10 +785,9 @@ portused(Ipconv *ic, Port port)
 	Ipconv *ifc, *etab;
 
 	etab = &ic[conf.ip];
-	for(ifc = ic; ifc < etab; ifc++) {
+	for(ifc = ic; ifc < etab; ifc++)
 		if(ifc->psrc == port) 
 			return ifc;
-	}
 
 	return 0;
 }
@@ -798,10 +797,10 @@ nextport(Ipconv *ic, Port base)
 {
 	Port i;
 
-	for(i = base; i < PORTMAX; i++) {
+	for(i = base; i < PORTMAX; i++)
 		if(!portused(ic, i))
 			return(i);
-	}
+
 	return(0);
 }
 
@@ -815,8 +814,9 @@ ip_conn(Ipconv *ic, Port dst, Port src, Ipaddr dest, char proto)
 	/* Look for a conversation structure for this port */
 	etab = &ic[conf.ip];
 	for(s = ic; s < etab; s++) {
-		if(s->psrc == dst && s->pdst == src &&
-		   (s->dst == dest || dest == 0))
+		if(s->psrc == dst)
+		if(s->pdst == src)
+		if(s->dst == dest || dest == 0)
 			return s;
 	}
 

@@ -90,8 +90,8 @@ fault68020(Ureg *ur, FFrame *f)
 
 	if(fault(addr, read) < 0){
 		if(user){
-			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
-				read? "read" : "write", ur->pc, badvaddr);
+			sprint(buf, "sys: trap: fault %s addr=0x%lux",
+				read? "read" : "write", badvaddr);
 			postnote(u->p, 1, buf, NDebug);
 			notify(ur);
 			return;

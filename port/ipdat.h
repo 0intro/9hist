@@ -337,19 +337,19 @@ struct Ipconv
 #define	read_timer(t)	((t)->count)
 #define	run_timer(t)	((t)->state == TIMER_RUN)
 
-enum
+enum					/* Tcp connection states */
 {
-	CLOSED = 0,
-	LISTEN,
-	SYN_SENT,
-	SYN_RECEIVED,
-	ESTABLISHED,
-	FINWAIT1,
-	FINWAIT2,
-	CLOSE_WAIT,
-	CLOSING,
-	LAST_ACK,
-	TIME_WAIT
+	Closed = 0,
+	Listen,
+	Syn_sent,
+	Syn_received,
+	Established,
+	Finwait1,
+	Finwait2,
+	Close_wait,
+	Closing,
+	Last_ack,
+	Time_wait
 };
 
 /*

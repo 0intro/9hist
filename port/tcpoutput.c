@@ -25,8 +25,8 @@ tcp_output(Ipconv *s)
 	tcb = &s->tcpctl;
 
 	switch(tcb->state) {
-	case LISTEN:
-	case CLOSED:
+	case Listen:
+	case Closed:
 		return;
 	}
 
@@ -76,10 +76,10 @@ tcp_output(Ipconv *s)
 		seg.mss = 0;
 
 		switch(tcb->state){
-		case SYN_SENT:
+		case Syn_sent:
 			seg.flags = 0;
 			/* No break */
-		case SYN_RECEIVED:
+		case Syn_received:
 			if(tcb->snd.ptr == tcb->iss){
 				seg.flags |= SYN;
 				dsize--;
@@ -173,12 +173,12 @@ tcp_timeout(void *arg)
 	DPRINT("Timer %lux state = %d\n", s, tcb->state);
 
 	switch(tcb->state){
-	case CLOSED:
+	case Closed:
 		panic("tcptimeout");
-	case TIME_WAIT:
+	case Time_wait:
 		close_self(s, 0);
 		break;
-	case ESTABLISHED:
+	case Established:
 		if(tcb->backoff < MAXBACKOFF)
 			tcb->backoff++;
 		goto retran;

@@ -152,7 +152,7 @@ trap(Ureg *ur)
 			if(ecode == FPEXC)
 				sprint(buf, "sys: fp: %s FCR31 %lux", fpexcname(x), x);
 			else
-				sprint(buf, "sys: %s pc=0x%lux", excname[ecode], ur->pc);
+				sprint(buf, "sys: trap: %s", excname[ecode]);
 
 			postnote(u->p, 1, buf, NDebug);
 		}else{
@@ -367,22 +367,31 @@ dumpregs(Ureg *ur)
 void
 notify(Ureg *ur)
 {
+	int l;
 	ulong s, sp;
+	Note *n;
 
 	if(u->p->procctl)
 		procctl(u->p);
-	if(u->nnote == 0)
+	if(u->nnote==0)
 		return;
 
 	s = spllo();
 	qlock(&u->p->debug);
 	u->p->notepending = 0;
-	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
+	n = &u->note[0];
+	if(strncmp(n->msg, "sys:", 4) == 0){
+		l = strlen(n->msg);
+		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
+			l = ERRLEN-15;
+		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
+	}
+	if(n->flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
-			pprint("suicide: %s\n", u->note[0].msg);
+			pprint("suicide: %s\n", n->msg);
     Die:
 		qunlock(&u->p->debug);
-		pexit(u->note[0].msg, u->note[0].flag!=NDebug);
+		pexit(n->msg, n->flag!=NDebug);
 	}
 	if(!u->notified){
 		if(!u->notify)

@@ -75,7 +75,7 @@ tcp_input(Ipconv *ipc, Block *bp)
 
 		e = &ipc[conf.ip];
 		for(s = ipc; s < e; s++) {
-			if(s->tcpctl.state == LISTEN)
+			if(s->tcpctl.state == Listen)
 			if(s->pdst == 0)
 			if(s->dst == 0) {
 				if(s->curlog >= s->backlog)
@@ -114,11 +114,11 @@ process:
 	qlock(tcb);
 
 	switch(tcb->state) {
-	case CLOSED:
+	case Closed:
 		freeb(bp);
 		reset(source, dest, tos, length, &seg);
 		goto done;
-	case LISTEN:
+	case Listen:
 		if(seg.flags & RST) {
 			freeb(bp);
 			goto done;
@@ -131,7 +131,7 @@ process:
 		if(seg.flags & SYN) {
 			proc_syn(s, tos, &seg);
 			send_syn(tcb);
-			setstate(s, SYN_RECEIVED);		
+			setstate(s, Syn_received);		
 			if(length != 0 || (seg.flags & FIN)) 
 				break;
 			freeb(bp);
@@ -139,7 +139,7 @@ process:
 		}
 		freeb(bp);
 		goto done;
-	case SYN_SENT:
+	case Syn_sent:
 		if(seg.flags & ACK) {
 			if(!seq_within(seg.ack, tcb->iss+1, tcb->snd.nxt)) {
 				freeb(bp);
@@ -163,10 +163,10 @@ process:
 			proc_syn(s, tos, &seg);
 			if(seg.flags & ACK){
 				update(s, &seg);
-				setstate(s, ESTABLISHED);
+				setstate(s, Established);
 			}
 			else 
-				setstate(s, SYN_RECEIVED);
+				setstate(s, Syn_received);
 
 			if(length != 0 || (seg.flags & FIN))
 				break;
@@ -205,9 +205,9 @@ process:
 
 	for(;;) {
 		if(seg.flags & RST) {
-			if(tcb->state == SYN_RECEIVED
+			if(tcb->state == Syn_received
 			   && !(tcb->flags & (CLONE|ACTIVE))) 
-				setstate(s, LISTEN);
+				setstate(s, Listen);
 			else
 				close_self(s, Econrefused);
 
@@ -227,10 +227,10 @@ process:
 		}
 
 		switch(tcb->state) {
-		case SYN_RECEIVED:
+		case Syn_received:
 			if(seq_within(seg.ack, tcb->snd.una+1, tcb->snd.nxt)){
 				update(s, &seg);
-				setstate(s, ESTABLISHED);
+				setstate(s, Established);
 			}
 			else {
 				freeb(bp);
@@ -238,33 +238,33 @@ process:
 				goto done;
 			}
 			break;
-		case ESTABLISHED:
-		case CLOSE_WAIT:
+		case Established:
+		case Close_wait:
 			update(s, &seg);
 			break;
-		case FINWAIT1:
+		case Finwait1:
 			update(s, &seg);
 			if(tcb->sndcnt == 0)
-				setstate(s, FINWAIT2);
+				setstate(s, Finwait2);
 			break;
-		case FINWAIT2:
+		case Finwait2:
 			update(s, &seg);
 			break;
-		case CLOSING:
+		case Closing:
 			update(s, &seg);
 			if(tcb->sndcnt == 0){
-				setstate(s, TIME_WAIT);
+				setstate(s, Time_wait);
 				tcb->timer.start = MSL2 * (1000 / MSPTICK);
 				start_timer(&tcb->timer);
 			}
 			break;
-		case LAST_ACK:
+		case Last_ack:
 			update(s, &seg);
 			if(tcb->sndcnt == 0) {
 				close_self(s, 0);
 				goto done;
 			}			
-		case TIME_WAIT:
+		case Time_wait:
 			tcb->flags |= FORCE;
 			start_timer(&tcb->timer);
 		}
@@ -280,10 +280,10 @@ process:
 
 		if(length != 0){
 			switch(tcb->state){
-			case SYN_RECEIVED:
-			case ESTABLISHED:
-			case FINWAIT1:
-			case FINWAIT2:
+			case Syn_received:
+			case Established:
+			case Finwait1:
+			case Finwait2:
 				/* Place on receive queue */
 				tcb->rcvcnt += blen(bp);
 				if(s->readq && bp) {
@@ -310,32 +310,32 @@ process:
 			tcb->flags |= FORCE;
 
 			switch(tcb->state) {
-			case SYN_RECEIVED:
-			case ESTABLISHED:
+			case Syn_received:
+			case Established:
 				tcb->rcv.nxt++;
-				setstate(s, CLOSE_WAIT);
+				setstate(s, Close_wait);
 				break;
-			case FINWAIT1:
+			case Finwait1:
 				tcb->rcv.nxt++;
 				if(tcb->sndcnt == 0) {
-					setstate(s, TIME_WAIT);
+					setstate(s, Time_wait);
 					tcb->timer.start = MSL2 * (1000/MSPTICK);
 					start_timer(&tcb->timer);
 				}
 				else 
-					setstate(s, CLOSING);
+					setstate(s, Closing);
 				break;
-			case FINWAIT2:
+			case Finwait2:
 				tcb->rcv.nxt++;
-				setstate(s, TIME_WAIT);
+				setstate(s, Time_wait);
 				tcb->timer.start = MSL2 * (1000/MSPTICK);
 				start_timer(&tcb->timer);
 				break;
-			case CLOSE_WAIT:
-			case CLOSING:
-			case LAST_ACK:
+			case Close_wait:
+			case Closing:
+			case Last_ack:
 				break;
-			case TIME_WAIT:
+			case Time_wait:
 				start_timer(&tcb->timer);
 				break;
 			}
@@ -374,13 +374,13 @@ tcp_icmp(Ipconv *ipc, Ipaddr source, Ipaddr dest, char type, char code, Block **
 	case ICMP_UNREACH:
 		tcb->type = type;
 		tcb->code = code;
-		if(tcb->state == SYN_SENT || tcb->state == SYN_RECEIVED)
+		if(tcb->state == Syn_sent || tcb->state == Syn_received)
 			close_self(s, Enetunreach);
 		break;
 	case ICMP_TIMXCEED:
 		tcb->type = type;
 		tcb->code = code;
-		if(tcb->state == SYN_SENT || tcb->state == SYN_RECEIVED)
+		if(tcb->state == Syn_sent || tcb->state == Syn_received)
 			close_self(s, Etimedout);
 		break;
 	case ICMP_SOURCEQUENCH:
@@ -492,7 +492,7 @@ update(Ipconv *s, Tcp *seg)
 			rtt = tcb->rtt_timer.start - tcb->rtt_timer.count;
 			rtt *= MSPTICK;	
 			if(rtt > tcb->srtt &&
-			  (tcb->state == SYN_SENT || tcb->state == SYN_RECEIVED))
+			  (tcb->state == Syn_sent || tcb->state == Syn_received))
 				tcb->srtt = rtt;
 			else {
 				abserr = (rtt > tcb->srtt) ? rtt - tcb->srtt : tcb->srtt - rtt;
@@ -861,7 +861,7 @@ close_self(Ipconv *s, int reason)
 
 	tcb->reseq = 0;
 	s->err = reason;
-	setstate(s, CLOSED);
+	setstate(s, Closed);
 }
 
 int
