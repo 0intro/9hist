@@ -73,6 +73,7 @@ clock(Ureg *ur)
 	checkalarms();
 	uartclock();
 	mouseclock();
+	randomclock();
 
 	if(up == 0 || up->state != Running)
 		return;
