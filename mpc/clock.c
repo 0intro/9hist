@@ -141,7 +141,7 @@ clkprint(void)
 	print("\n");
 }
 
-uvlong
+vlong
 fastticks(uvlong *hz)
 {
 	if(hz)
