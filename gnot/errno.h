@@ -49,5 +49,6 @@ enum{
 	Ebadblt,	/* bad bitblt or bitmap request */
 	Enobitmap,	/* out of bitmap descriptors */
 	Enobitstore,	/* out of bitmap storage */
+	Ebadbitmap,	/* unallocated bitmap */
 	Egreg,		/* it's all greg's fault */
 };

@@ -9,6 +9,13 @@
 
 #include	"gnot.h"
 
+extern Font	defont0;	/* BUG */
+
+/*
+ * Device (#b/bitblt) is exclusive use on open, so no locks are necessary
+ * for i/o
+ */
+
 /*
  * Some fields in Bitmaps are overloaded:
  *	ldepth = -1 means free.
@@ -20,27 +27,30 @@
 struct{
 	Ref;
 	int	bltuse;
-	QLock	blt;		/* a group of bitblts in a single write is atomic */
 	Bitmap	*map;		/* arena */
 	Bitmap	*free;		/* free list */
 	ulong	*words;		/* storage */
 	ulong	nwords;		/* total in arena */
 	ulong	*wfree;		/* pointer to next free word */
 	int	lastid;		/* last allocated bitmap id */
+	int	init;		/* freshly opened; init message pending */
 }bit;
 
 #define	FREE	0x80000000
 void	bitcompact(void);
 void	bitfree(Bitmap*);
 extern	Bitmap	screen;
+Mouse	mouse;
 
 enum{
 	Qdir,
 	Qbitblt,
+	Qmouse,
 };
 
 Dirtab bitdir[]={
 	"bitblt",	Qbitblt,	0,			0600,
+	"mouse",	Qmouse,		0,			0600,
 };
 
 #define	NBIT	(sizeof bitdir/sizeof(Dirtab))
@@ -113,6 +123,7 @@ bitopen(Chan *c, int omode)
 			error(0, Einuse);
 		}
 		bit.lastid = -1;
+		bit.init = 1;
 		unlock(&bit);
 		incref(&bit);
 	}
@@ -147,7 +158,7 @@ bitclose(Chan *c)
 	Bitmap *bp;
 
 	if(c->qid != CHDIR){
-		lock(&bit);			/* FREE ALL THE BITMAPS: BUG */
+		lock(&bit);
 		if(--bit.ref == 0){
 			for(i=1,bp=&bit.map[1]; i<conf.nbitmap; i++,bp++)
 				if(bp->ldepth >= 0)
@@ -160,6 +171,15 @@ bitclose(Chan *c)
 
 #define	GSHORT(p)		(((p)[0]<<0) | ((p)[1]<<8))
 #define	GLONG(p)		((GSHORT(p)<<0) | (GSHORT(p+2)<<16))
+#define	PSHORT(p, v)		((p)[0]=(v), (p)[1]=((v)>>8))
+#define	PLONG(p, v)		(PSHORT(p, (v)), PSHORT(p+2, (v)>>16))
+
+/*
+ * These macros turn user-level (high bit at left) into internal (whatever)
+ * bit order.  On the gnot they're trivial.
+ */
+#define	U2K(x)	(x)
+#define	K2U(x)	(x)
 
 long
 bitread(Chan *c, void *va, long n)
@@ -172,20 +192,37 @@ bitread(Chan *c, void *va, long n)
 	if(c->qid != Qbitblt)
 		error(0, Egreg);
 	p = va;
-	qlock(&bit.blt);
-	if(waserror()){
-		qunlock(&bit.blt);
-		nexterror();
-	}
 	/*
 	 * Fuss about and figure out what to say.
 	 */
+	if(bit.init){
+		/*
+		 * init:
+		 *	'I'		1
+		 *	ldepth		2
+		 * 	rectangle	16
+		 */
+		if(n < 19)
+			error(0, Ebadblt);
+		p[0] = 'I';
+		PSHORT(p+1, screen.ldepth);
+		PLONG(p+3, screen.r.min.x);
+		PLONG(p+7, screen.r.min.y);
+		PLONG(p+11, screen.r.max.x);
+		PLONG(p+15, screen.r.max.y);
+		bit.init = 0;
+		goto done;
+	}
 	if(bit.lastid > 0){
+		/*
+		 * allocate:
+		 *	'A'		1
+		 *	bitmap id	2
+		 */
 		if(n < 3)
 			error(0, Ebadblt);
 		p[0] = 'A';
-		p[1] = bit.lastid;
-		p[2] = bit.lastid>>8;
+		PSHORT(p+1, bit.lastid);
 		bit.lastid = -1;
 		n = 3;
 		goto done;
@@ -193,7 +230,6 @@ bitread(Chan *c, void *va, long n)
 	error(0, Ebadblt);
 
     done:
-	qunlock(&bit.blt);
 	return n;
 }
 
@@ -201,9 +237,8 @@ bitread(Chan *c, void *va, long n)
 long
 bitwrite(Chan *c, void *va, long n)
 {
-	uchar *p;
-	long m;
-	long v;
+	uchar *p, *q;
+	long m, v, miny, maxy, t, x, y;
 	ulong l, nw, ws;
 	Point pt;
 	Rectangle rect;
@@ -217,13 +252,12 @@ bitwrite(Chan *c, void *va, long n)
 
 	p = va;
 	m = n;
-	qlock(&bit.blt);
-	if(waserror()){
-		qunlock(&bit.blt);
-		nexterror();
-	}
 	while(m > 0)
 		switch(*p){
+		default:
+			pprint("bitblt request 0x%x\n", *p);
+			error(0, Ebadblt);
+
 		case 'a':
 			/*
 			 * allocate:
@@ -247,7 +281,6 @@ bitwrite(Chan *c, void *va, long n)
 			if(rect.min.x >= 0)
 				l = (rect.max.x+ws-1)/ws - rect.min.x/ws;
 			else{	/* make positive before divide */
-				long t;
 				t = (-rect.min.x)+ws-1;
 				t = (t/ws)*ws;
 				l = (t+rect.max.x+ws-1)/ws;
@@ -273,7 +306,7 @@ bitwrite(Chan *c, void *va, long n)
 			bp->zero = -bp->zero;
 			bp->width = l;
 			bp->ldepth = v;
-			bp->rect = rect;
+			bp->r = rect;
 			bp->cache = 0;
 			bit.lastid = bp-bit.map;
 			m -= 18;
@@ -295,13 +328,13 @@ bitwrite(Chan *c, void *va, long n)
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth < 0)
-				error(0, Ebadblt);
+				error(0, Ebadbitmap);
 			pt.x = GLONG(p+3);
 			pt.y = GLONG(p+7);
 			v = GSHORT(p+11);
 			src = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || src->ldepth < 0)
-				error(0, Ebadblt);
+				error(0, Ebadbitmap);
 			rect.min.x = GLONG(p+13);
 			rect.min.y = GLONG(p+17);
 			rect.max.x = GLONG(p+21);
@@ -322,15 +355,124 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
-			if(v >= conf.nbitmap || dst->ldepth<0)
-				error(0, Ebadblt);
+			if(v>=conf.nbitmap || dst->ldepth<0)
+				error(0, Ebadbitmap);
 			bitfree(dst);
 			m -= 3;
 			p += 3;
 			break;
+
+		case 's':
+			/*
+			 * string
+			 *	's'		1
+			 *	id		2
+			 *	pt		8
+			 *	font id		2
+			 *	fcode		2
+			 * 	string		n (null terminated)
+			 */
+			if(m < 16)
+				error(0, Ebadblt);
+			v = GSHORT(p+1);
+			dst = &bit.map[v];
+			if(v>=conf.nbitmap || dst->ldepth<0)
+				error(0, Ebadbitmap);
+			pt.x = GLONG(p+3);
+			pt.y = GLONG(p+7);
+			v = GSHORT(p+11);
+			if(v != 0)	/* BUG */
+				error(0, Ebadblt);
+			v = GSHORT(p+13);
+			p += 15;
+			m -= 15;
+			q = memchr(p, 0, m);
+			if(q == 0)
+				error(0, Ebadblt);
+			string(dst, pt, &defont0/*BUG*/, (char*)p, v);
+			q++;
+			m -= q-p;
+			p = q;
+			break;
+
+		case 't':
+			/*
+			 * texture
+			 *	't'		1
+			 *	dst id		2
+			 *	Rectangle	16
+			 *	src id		2
+			 *	fcode		2
+			 */
+			if(m < 23)
+				error(0, Ebadblt);
+			v = GSHORT(p+1);
+			dst = &bit.map[v];
+			if(v>=conf.nbitmap || dst->ldepth<0)
+				error(0, Ebadbitmap);
+			rect.min.x = GLONG(p+3);
+			rect.min.y = GLONG(p+7);
+			rect.max.x = GLONG(p+11);
+			rect.max.y = GLONG(p+15);
+			v = GSHORT(p+19);
+			src = &bit.map[v];
+			if(v>=conf.nbitmap || src->ldepth<0)
+				error(0, Ebadbitmap);
+			if(src->r.min.x!=0 || src->r.min.y!=0 || src->r.max.x!=16 || src->r.max.y!=16)
+				error(0, Ebadblt);
+			v = GSHORT(p+21);
+			{
+				int i;
+				Texture t;
+
+				for(i=0; i<16; i++)
+					t.bits[i] = src->base[i]>>16;
+				texture(dst, rect, &t, v);
+			}
+			m -= 23;
+			p += 23;
+			break;
+
+		case 'w':
+			/*
+			 * write
+			 *	'w'		1
+			 *	dst id		2
+			 *	miny		4
+			 *	maxy		4
+			 *	data		bytewidth*(maxy-miny)
+			 */
+			if(m < 11)
+				error(0, Ebadblt);
+			v = GSHORT(p+1);
+			dst = &bit.map[v];
+			if(v>=conf.nbitmap || dst->ldepth<0)
+				error(0, Ebadbitmap);
+			miny = GLONG(p+3);
+			maxy = GLONG(p+7);
+			ws = 1<<(3-dst->ldepth);	/* pixels per byte */
+			/* set l to number of bytes of incoming data per scan line */
+			if(dst->r.min.x >= 0)
+				l = (dst->r.max.x+ws-1)/ws - dst->r.min.x/ws;
+			else{	/* make positive before divide */
+				t = (-dst->r.min.x)+ws-1;
+				t = (t/ws)*ws;
+				l = (t+dst->r.max.x+ws-1)/ws;
+			}
+			p += 11;
+			m -= 11;
+			if(m < l*(maxy-miny))
+				error(0, Ebadblt);
+			for(y=miny; y<maxy; y++){
+				q = (uchar*)addr(dst, Pt(dst->r.min.x, y));
+				q += (dst->r.min.x&((sizeof(ulong))*ws-1))/8;
+				for(x=0; x<l; x++)
+					*q++ = U2K(*p++);
+				m -= l;
+			}
+			break;
 		}
 
-	qunlock(&bit.blt);
 	return n;
 }
 
@@ -376,4 +518,13 @@ print("bitcompact\n");
 	}
 	bit.wfree = p1;
 print("bitcompact done\n");
+}
+
+void
+mousebuttons(int b)
+{
+	if(mouse.buttons != b){
+		print("buttons %x\n", b);
+		mouse.buttons = b;
+	}
 }

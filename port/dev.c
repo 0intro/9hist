@@ -67,6 +67,8 @@ devattach(int tc, char *spec)
 Chan *
 devclone(Chan *c, Chan *nc)
 {
+	if(c->flag & COPEN)
+		panic("clone of open file type %c\n", devchar[c->type]);
 	if(nc == 0)
 		nc = newchan();
 	nc->type = c->type;

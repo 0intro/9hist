@@ -16,6 +16,8 @@ struct{
 	int	bwid;
 }out;
 
+void	duartinit(void);
+
 Bitmap	screen =
 {
 	(ulong*)((4*1024*1024-256*1024)|KZERO),	/* BUG */
@@ -29,7 +31,8 @@ Bitmap	screen =
 void
 screeninit(void)
 {
-	bitblt(&screen, Pt(0, 0), &screen, screen.rect, 0);
+	duartinit();
+	bitblt(&screen, Pt(0, 0), &screen, screen.r, 0);
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
@@ -44,14 +47,14 @@ screenputc(int c)
 	if(c == '\n'){
 		out.pos.x = MINX;
 		out.pos.y += defont0.height;
-		if(out.pos.y > screen.rect.max.y-defont0.height)
-			out.pos.y = screen.rect.min.y;
+		if(out.pos.y > screen.r.max.y-defont0.height)
+			out.pos.y = screen.r.min.y;
 		bitblt(&screen, Pt(0, out.pos.y), &screen,
-		    Rect(0, out.pos.y, screen.rect.max.x, out.pos.y+2*defont0.height), 0);
+		    Rect(0, out.pos.y, screen.r.max.x, out.pos.y+2*defont0.height), 0);
 	}else if(c == '\t'){
 		nx = out.pos.x + (8-(out.pos.x/out.bwid&7))*out.bwid;
 		out.pos.x = nx;
-		if(out.pos.x >= screen.rect.max.x)
+		if(out.pos.x >= screen.r.max.x)
 			screenputc('\n');
 	}else if(c == '\b'){
 		if(out.pos.x >= out.bwid+MINX){
@@ -60,7 +63,7 @@ screenputc(int c)
 			out.pos.x -= out.bwid;
 		}
 	}else{
-		if(out.pos.x >= screen.rect.max.x-out.bwid)
+		if(out.pos.x >= screen.r.max.x-out.bwid)
 			screenputc('\n');
 		buf[0] = c&0x7F;
 		buf[1] = 0;
@@ -77,13 +80,18 @@ struct Duart{
 	uchar	cmnd;		/* Command Register */
 	uchar	data;		/* RX Holding / TX Holding Register */
 	uchar	ipc_acr;	/* Input Port Change/Aux. Control Register */
+#define	ivr	ivr		/* Interrupt Vector Register */
 	uchar	is_imr;		/* Interrupt Status/Interrupt Mask Register */
+#define	ip_opcr	is_imr		/* Input Port/Output Port Configuration Register */
 	uchar	ctur;		/* Counter/Timer Upper Register */
+#define	scc_sopbc ctur		/* Start Counter Command/Set Output Port Bits Command */
 	uchar	ctlr;		/* Counter/Timer Lower Register */
+#define	scc_ropbc ctlr		/* Stop Counter Command/Reset Output Port Bits Command */
 };
 
 enum{
 	CHAR_ERR	=0x00,	/* MR1x - Mode Register 1 */
+	PAR_ENB		=0x00,
 	EVEN_PAR	=0x00,
 	ODD_PAR		=0x04,
 	NO_PAR		=0x10,
@@ -113,6 +121,9 @@ enum{
 	PAR_ERR		=0x20,
 	FRM_ERR		=0x40,
 	RCVD_BRK	=0x80,
+	BD9600		=0xBB,
+	BD4800		=0x99,
+	BD2400		=0x88,
 	IM_IPC		=0x80,	/* IMRx/ISRx - Interrupt Mask/Interrupt Status */
 	IM_DBB		=0x40,
 	IM_RRDYB	=0x20,
@@ -141,6 +152,54 @@ uchar keymap[]={
 /*F0*/	0x09,	0x08,	0xb2,	0x1b,	0x0a,	0xf5,	0x81,	0x58,
 	0x58,	0x58,	0x58,	0x58,	0x58,	0x58,	0x7f,	0xb2,
 };
+
+void
+duartinit(void)
+{
+	Duart *duart;
+
+	duart  =  DUARTREG;
+
+	/*
+	 * Keyboard
+	 */
+	duart[0].cmnd = RESET_RCV|DIS_TX|DIS_RX;
+	duart[0].cmnd = RESET_TRANS;
+	duart[0].cmnd = RESET_ERR;
+	duart[0].cmnd = RESET_MR;
+	duart[0].mr1_2 = CHAR_ERR|PAR_ENB|EVEN_PAR|CBITS8;
+	duart[0].mr1_2 = NORM_OP|ONESTOPB;
+	duart[0].sr_csr = BD4800;
+
+	/*
+	 * Pen
+	 */
+	duart[1].cmnd = RESET_RCV|DIS_TX|DIS_RX;
+	duart[1].cmnd = RESET_TRANS;
+	duart[1].cmnd = RESET_ERR;
+	duart[1].cmnd = RESET_MR;
+	duart[1].mr1_2 = CHAR_ERR|NO_PAR|CBITS8;
+	duart[1].mr1_2 = NORM_OP|ONESTOPB;
+	duart[1].sr_csr = BD2400;
+
+	/*
+	 * Output port
+	 */
+	duart[0].ipc_acr = 0xBF;	/* allow change	of state interrupt */
+	duart[1].ip_opcr = 0x00;
+	duart[1].scc_ropbc = 0xFF;	/* make sure the port is reset first */
+	duart[1].scc_sopbc = 0x04;	/* dtr = 1, pp = 01 */
+	duart[0].is_imr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA;
+	duart[0].cmnd = ENB_TX|ENB_RX;	/* enable TX and RX last */
+	duart[1].cmnd = ENB_TX|ENB_RX;
+
+	/*
+	 * Initialize keyboard
+	 */
+	while (!(duart[0].sr_csr & (XMT_EMT|XMT_RDY)))
+		;
+	duart[0].data = 0x02;
+}
 
 void
 duartintr(void)
@@ -176,5 +235,14 @@ duartintr(void)
 	 */
 	if(cause & IM_RRDYB)		/* pen input */
 		c = duart[1].data;
+	/*
+	 * Is it 4?
+	 */
+	if(cause & IM_XRDYB)
+		duart[1].cmnd = DIS_TX;
+	/*
+	 * Is it 3?
+	 */
+	if(cause & IM_IPC)
+		mousebuttons((~duart[0].ipc_acr) & 7);
 }
-
