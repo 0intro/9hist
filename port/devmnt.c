@@ -31,7 +31,7 @@ struct Mntalloc
 	int	rpctag;
 }mntalloc;
 
-#define MAXRPC		(MAXFDATA+MAXMSG)
+#define MAXRPC		(16*1024+MAXMSG)
 #define limit(n, max)	(n > max ? max : n)
 
 void	mattach(Mnt*, Chan*, char*);
@@ -138,7 +138,12 @@ mntattach(char *muxattach)
 	m->rip = 0;
 	m->c = c;
 	m->c->flag |= CMSG;
-	m->blocksize = defmaxmsg;
+	if(strcmp(bogus.spec, "16k") == 0) {
+		m->blocksize = 16*1024;
+		bogus.spec = "";
+	}
+	else
+		m->blocksize = defmaxmsg;
 	m->flags = bogus.flags & ~MCACHE;
 
 	switch(devchar[m->c->type]) {
