@@ -176,7 +176,8 @@ ipopen(Chan *c, int omode)
 			error(Ebadarg);
 		break;
 	case iplistenqid:
-		if(cp->stproto != &tcpinfo)
+		if(cp->stproto != &tcpinfo &&
+		   cp->stproto != &ilinfo)
 			error(Eprotonosup);
 
 		if(cp->backlog == 0)
@@ -227,8 +228,8 @@ ipclonecon(Chan *c)
 	for(new = base; new < etab; new++) {
 		if(new->ref == 0 && canqlock(new)) {
 			if(new->ref ||
-		          (new->stproto == &tcpinfo &&
-			   new->tcpctl.state != CLOSED)) {
+		          (new->stproto == &tcpinfo && new->tcpctl.state != CLOSED) ||
+			  (new->stproto == &ilinfo && new->ilctl.state != Ilclosed)) {
 				qunlock(new);
 				continue;
 			}
@@ -299,14 +300,13 @@ ipread(Chan *c, void *a, long n, ulong offset)
 		sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(Myip), cp->psrc);
 		return stringread(c, a, n, buf, offset);
 	case ipstatusqid:
-		if(cp->stproto == &tcpinfo) {
-			sprint(buf, "tcp/%d %d %s %s\n", connection,
-				cp->ref, tcpstate[cp->tcpctl.state],
+		if(cp->stproto == &tcpinfo)
+			sprint(buf, "tcp/%d %d %s %s\n", connection, cp->ref, tcpstate[cp->tcpctl.state],
 				cp->tcpctl.flags & CLONE ? "listen" : "connect");
-		}
+		else if(cp->stproto == &ilinfo)
+			sprint(buf, "il/%d %d %s\n", connection, cp->ref, ilstate[cp->ilctl.state]);
 		else
-			sprint(buf, "%s/%d %d\n", cp->stproto->name, 
-				connection, cp->ref);
+			sprint(buf, "%s/%d %d\n", cp->stproto->name, connection, cp->ref);
 
 		return stringread(c, a, n, buf, offset);
 	}
@@ -333,9 +333,9 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		m = getfields(buf, field, 5, ' ');
 
 		if(strcmp(field[0], "connect") == 0) {
-			if(cp->stproto == &tcpinfo &&
-			   cp->tcpctl.state != CLOSED)
-				error(Edevbusy);
+			if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
+			   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
+					error(Edevbusy);
 
 			if(m != 2)
 				error(Ebadarg);
@@ -364,8 +364,8 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		}
 		else if(strcmp(field[0], "announce") == 0 ||
 			strcmp(field[0], "reserve") == 0) {
-				if(cp->stproto == &tcpinfo &&
-				   cp->tcpctl.state != CLOSED)
+			if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
+			   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
 					error(Edevbusy);
 
 			if(m != 2)

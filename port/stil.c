@@ -15,6 +15,7 @@
 int ilcksum = 1;
 Queue	*Iloutput;		/* Il to lance output channel */
 static int initseq = 25000;
+char *ilstate[] = { "Closed", "Syncer", "Syncee", "Established", "Listening", "Closing" };
 
 void	ilrcvmsg(Ipconv*, Block*);
 void	ilackproc(void*);
