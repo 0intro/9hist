@@ -360,7 +360,7 @@ addflush(Rectangle r)
 	/*
 	 * absorb if:
 	 *	total area is small
-	 *	waste is less than ½ total area
+	 *	waste is less than half total area
 	 * 	rectangles touch
 	 */
 	if(anbb<=1024 || waste*2<anbb || rectXrect(flushrect, r)){
@@ -981,7 +981,7 @@ drawclose(Chan *c)
 		/* all screens are freed, so now we can free images */
 		dp = cl->dimage;
 		for(i=0; i<NHASH; i++){
-			while(d = *dp){	/* assign = */
+			while((d = *dp) != nil){
 				*dp = d->next;
 				drawfreedimage(d);
 			}
@@ -1288,7 +1288,7 @@ drawmesg(Client *client, void *av, int n)
 	fmt = nil;
 	if(waserror()){
 		if(fmt) printmesg(fmt, a, 1);
-	//	iprint("error: %s\n", up->error);
+	/*	iprint("error: %s\n", up->error);	*/
 		nexterror();
 	}
 	while((n-=m) > 0){
@@ -1297,7 +1297,7 @@ drawmesg(Client *client, void *av, int n)
 		switch(*a){
 		default:
 			error("bad draw command");
-		/* new allocate: 'b' id[4] screenid[4] refresh[1] chan[4] repl[1] R[4*4] clipR[4*4] rrggbbαα[4] */
+		/* new allocate: 'b' id[4] screenid[4] refresh[1] chan[4] repl[1] R[4*4] clipR[4*4] rrggbbaa[4] */
 		case 'b':
 			printmesg(fmt="LLbLbRRL", a, 0);
 			m = 1+4+4+1+4+1+4*4+4*4+4;

@@ -57,7 +57,7 @@ main(int argc, char *argv[])
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
 	
-	print("hello world\n");
+	print("hello world from sh\n");
 
 	if(argc>1 && strcmp(argv[1], "-t")==0)
 		tflag++;

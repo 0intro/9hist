@@ -67,6 +67,41 @@ enum {
 
 static	ulong	clkreload;
 
+#ifdef XXX
+ulong
+millisec(void)
+{
+	ulong tbu, tbl, x;
+	vlong t;
+
+	do {
+		tbu = gettbu();
+		tbl = gettbl();
+	} while (gettbu() != tbu);
+	t = (((vlong)tbu)<<32) + tbl;
+
+	t <<= 4;
+	t /= m->oscclk * 1000;
+
+	x = t;
+	if((long)(ledtime-x) < 0)
+		powerdownled();
+
+	return (ulong)t;
+}
+
+#endif
+ulong
+millisec(void)
+{
+	ulong tbl, x;
+
+	tbl = gettbl();
+	x = tbl/((m->oscclk * 1000)/16);
+
+	return x;
+}
+
 void
 delayloopinit(void)
 {
@@ -118,6 +153,13 @@ clockintr(Ureg *ur)
 	m->iomem->swsr = 0xaa39;
 	
 	m->ticks++;
+
+	if((m->iomem->pddat & SIBIT(15)) == 0) {
+		print("button pressed\n");
+		delay(200);
+		reset();
+	}
+
 	if(m->proc)
 		m->proc->pc = ur->pc;
 
@@ -132,6 +174,12 @@ clockintr(Ureg *ur)
 		for(lp = clock0link; lp; lp = lp->link)
 			lp->clock();
 		unlock(&clock0lock);
+	}
+
+	if(m->flushmmu){
+		if(up)
+			flushmmu();
+		m->flushmmu = 0;
 	}
 
 	if(up == 0 || up->state != Running)

@@ -83,12 +83,6 @@
 #define	MACH		30		/* R30 is m-> */
 #define	USER		29		/* R29 is up-> */
 
-/*
- * Fundamental addresses
- */
-#define	MACHADDR	((long)&mach0)
-
-#define	UREGSIZE	((8+32)*4)
 
 /*
  *  virtual MMU
@@ -100,10 +94,17 @@
 #define PPN(x)		((x)&~(BY2PG-1))
 
 /*
+ * Fundamental addresses
+ */
+#define	MACHADDR	(KTZERO-MAXMACH*MACHSIZE)
+#define	MACHP(n)	((Mach *)(MACHADDR+(n)*MACHSIZE))
+
+#define	UREGSIZE	((8+32)*4)
+
+/*
  * MMU
  */
 
-#ifdef notdef
 /* L1 table entry and Mx_TWC flags */
 #define PTEWT		(1<<1)	/* write through */
 #define PTE4K		(0<<2)
@@ -119,11 +120,18 @@
 #define	PTEKERNEL	(0<<2)
 #define	PTEUSER		(1<<2)
 #define PTESIZE		(1<<7)
-#endif
+
+#define	NTLBPID		16
+#define	TLBPID(n)	((n)&(NTLBPID-1))
+
+/* soft tlb */
+#define	STLBLOG		12
+#define	STLBSIZE	(1<<STLBLOG)
+
 /*
  *  portable MMU bits for fault.c - though still machine specific
  */
-#define PTEVALID	(MMUPP|MMUSH|MMUV)
+#define PTEVALID	(MMUPP|MMUV)
 #define PTEWRITE	(2<<10)
 #define	PTERONLY	(3<<10)
 #define	PTEUNCACHED	(1<<4)
@@ -167,26 +175,26 @@
 #define	UZERO		0			/* base of user address space */
 #define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
 #define	KZERO		0x80000000		/* base of kernel address space */
-#define	KTZERO		0xffc00000		/* first address in kernel text */
+#define	KTZERO		0x80010000		/* first address in kernel text */
 #define	USTKTOP		(KZERO-BY2PG)		/* byte just beyond user stack */
 #define	USTKSIZE	(16*1024*1024)		/* size of user stack */
 #define	TSTKTOP		(USTKTOP-USTKSIZE)	/* end of new stack in sysexec */
 #define TSTKSIZ 	100
+#define	CONFPARSED	(KZERO+0x2000)
 
-#define	INTMEM		0x80000000
-#define	ISAMEM		0x80100000
-#define	FLASHMEM	0xff000000
+#define	INTMEM		0xff000000
+#define	ISAMEM		0xfe000000
+#define	FLASHMEM	0xff200000
 #define	SACMEM		FLASHMEM + 0x80000
-#define	NVRAMMEM	0x80600000
-#define DRAMMEM		0xff800000		/* to 0xffffffff: 8 Meg */
+#define	NVRAMMEM	0xfc000000
+#define DRAMMEM		0x80000000
 
 #define	SIRAM	(INTMEM+0xC00)
-#define	LCDCOLR	(INTMEM+0xE00)
 #define	DPRAM	(INTMEM+0x2000)
 #define	DPLEN1	0x200
 #define	DPLEN2	0x400
 #define	DPLEN3	0x800
-#define	DPBASE	(DPRAM+DPLEN1)
+#define	DPBASE	(DPRAM+DPLEN3)
 
 #define	SCC1P	(INTMEM+0x3C00)
 #define	I2CP	(INTMEM+0x3C80)

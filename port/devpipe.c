@@ -113,6 +113,8 @@ static int
 pipegen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 {
 	int id;
+	int len;
+	Pipe *p;
 
 	if(i == DEVDOTDOT){
 		devdir(c, c->qid, "#|", 0, eve, CHDIR|0555, dp);
@@ -125,7 +127,19 @@ pipegen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	if(tab==0 || i>=ntab)
 		return -1;
 	tab += i;
-	devdir(c, (Qid){NETQID(id, tab->qid.path),0}, tab->name, tab->length, eve, tab->perm, dp);
+	p = c->aux;
+	switch(tab->qid.path){
+	case Qdata0:
+		len = qlen(p->q[0]);
+		break;
+	case Qdata1:
+		len = qlen(p->q[1]);
+		break;
+	default:
+		len = tab->length;
+		break;
+	}
+	devdir(c, (Qid){NETQID(id, tab->qid.path),0}, tab->name, len, eve, tab->perm, dp);
 	return 1;
 }
 

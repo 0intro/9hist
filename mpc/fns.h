@@ -18,6 +18,7 @@ void	dcflush(void*, ulong);
 void	delay(int);
 ulong	draminit(ulong*);
 void	dtlbmiss(void);
+void	dtlberror(void);
 void	dumpregs(Ureg*);
 void	delayloopinit(void);
 void	eieio(void);
@@ -43,10 +44,6 @@ void	gotopc(ulong);
 void	icflush(void*, ulong);
 void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
-void	iofree(int);
-void	ioinit(void);
-int	iounused(int, int);
-int	ioalloc(int, int, int, char*);
 int	inb(int);
 void	insb(int, void*, int);
 ushort	ins(int);
@@ -84,6 +81,7 @@ void	procsave(Proc*);
 void	procsetup(Proc*);
 void	putdec(ulong);
 void	putmsr(ulong);
+void	putcasid(ulong);
 ulong	rmapalloc(RMap*, ulong, int, int);
 void	screeninit(void);
 void	setpanic(void);
@@ -94,19 +92,20 @@ int	segflush(void*, ulong);
 void	spireset(void);
 long	spioutin(void*, long, void*);
 int	tas(void*);
+uchar*	tarlookup(uchar *addr, char *file, int *dlen);
 void	touser(void*);
 void	trapinit(void);
 void	trapvec(void);
+void	tlbflush(ulong);
+void	tlbflushall(void);
 void	uartinstall(void);
 void	uartwait(void);	/* debugging */
 int unsac(uchar *dst, uchar *src, int n, int nsrc);
 void	wbflush(void);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
-
-// identity map between kernel physical and virtual addresses
-#define KADDR(a)	((void*)(a))
-#define PADDR(a)	((ulong)(a))
+#define KADDR(a)	((void*)((ulong)(a)|KZERO))
+#define PADDR(a)	((ulong)(a)&~KZERO)
 
 /* IBM bit field order */
 #define	IBIT(b)		((ulong)1<<(31-(b)))

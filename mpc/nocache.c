@@ -15,7 +15,6 @@ cinit(void)
 void
 copen(Chan *c)
 {
-print("copen called!\n");
 	USED(c);
 }
 

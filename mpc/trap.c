@@ -35,6 +35,7 @@ void	faultpower(Ureg *ur, ulong addr, int read);
 void	kernfault(Ureg*, int);
 void	syscall(Ureg* ureg);
 void	noted(Ureg*, ulong);
+void	reset(void);
 
 char *excname[] =
 {
@@ -119,7 +120,7 @@ sethvec(int v, void (*r)(void))
 {
 	ulong *vp, pa, o;
 
-	vp = (ulong*)(0xfff00000+v);
+	vp = KADDR(v);
 	vp[0] = 0x7c1043a6;	/* MOVW R0, SPR(SPRG0) */
 	vp[1] = 0x7c0802a6;	/* MOVW LR, R0 */
 	vp[2] = 0x7c1243a6;	/* MOVW R0, SPR(SPRG2) */
@@ -151,11 +152,14 @@ trap(Ureg *ur)
 {
 	int ecode;
 	static struct {int callsched;} c = {1};
+	int user = (ur->srr1 & MSR_PR) != 0;
+	char buf[ERRLEN];
 
 	m->intrts = fastticks(nil);
 	ecode = (ur->cause >> 8) & 0xff;
-	if(ecode < 0 || ecode >= 0x1F)
-		ecode = 0x1F;
+
+if(ur->status & MSR_RI == 0)
+print("double fault?: ecode = %d\n", ecode);
 	switch(ecode){
 	case CEI:
 		intr(ur);
@@ -164,21 +168,24 @@ trap(Ureg *ur)
 	case CDEC:
 		clockintr(ur);
 		break;
-
 	case CIMISS:
+		faultpower(ur, ur->pc, 1);
+		break;
 	case CITLBE:
 		faultpower(ur, ur->pc, 1);
 		break;
 	case CDMISS:
-		faultpower(ur, getdepn(), 1);
+if(0) print("CDMISS: %lux %lux\n", m->epn, m->cmp1);
+		faultpower(ur, m->dar, 1);
 		break;
 	case CDTLBE:
-		faultpower(ur, getdar(), !(getdsisr() & (1<<25)));
+		faultpower(ur, m->dar, !(m->dsisr & (1<<25)));
 		break;
 
 	case CEMU:
-		print("pc=#%lux op=#%8.8lux\n", ur->pc, *(ulong*)ur->pc);
-		goto Default;
+		print("CEMU: pc=#%lux op=#%8.8lux\n", ur->pc, *(ulong*)ur->pc);
+		sprint(buf, "sys: trap: illegal op addr=0x%lux", ur->pc);
+		postnote(up, 1, buf, NDebug);
 		break;
 
 	case CSYSCALL:
@@ -196,14 +203,20 @@ trap(Ureg *ur)
 
 	Default:
 	default:
+		spllo();
+		print("ecode = %d\n", ecode);
+		if(ecode < 0 || ecode >= 0x1F)
+			ecode = 0x1F;
 		print("kernel %s pc=0x%lux\n", excname[ecode], ur->pc);
 		dumpregs(ur);
 		dumpstack();
-		spllo();
-		exit(1);
+		delay(100);
+		reset();
 	}
 
 	splhi();
+	if(user)
+		notify(ur);
 }
 
 void
@@ -211,9 +224,8 @@ faultpower(Ureg *ureg, ulong addr, int read)
 {
 	int user, insyscall, n;
 	char buf[ERRLEN];
-
 	user = (ureg->srr1 & MSR_PR) != 0;
-//print("fault: pid=%d pc = %ux, addr = %ux read = %d user = %d stack=%ux\n", up->pid, ureg->pc, addr, read, user, &ureg);
+if(0)print("fault: pid=%ld pc = %lux, addr = %lux read = %d user = %d stack=%ulx\n", up->pid, ureg->pc, addr, read, user, &ureg);
 	insyscall = up->insyscall;
 	up->insyscall = 1;
 	spllo();
@@ -223,7 +235,8 @@ faultpower(Ureg *ureg, ulong addr, int read)
 			dumpregs(ureg);
 			panic("fault: 0x%lux\n", addr);
 		}
-print("sys: trap: fault %s addr=0x%lux\n", read? "read" : "write", addr);
+print("fault: pid=%ld pc = %lux, addr = %lux read = %d user = %d stack=%ulx\n", up->pid, ureg->pc, addr, read, user, &ureg);
+dumpregs(ureg);
 		sprint(buf, "sys: trap: fault %s addr=0x%lux",
 			read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);
@@ -269,12 +282,13 @@ trapinit(void)
 	/*
 	 * set all exceptions to trap
 	 */
-	for(i = 0x0; i < 0x3000; i += 0x100)
+	for(i = 0x0; i < 0x2000; i += 0x100)
 		sethvec(i, trapvec);
 
 	//sethvec(CEI<<8, intrvec);
-	//sethvec2(CIMISS<<8, itlbmiss);
-	//sethvec2(CDMISS<<8, dtlbmiss);
+	sethvec2(CIMISS<<8, itlbmiss);
+	sethvec2(CDMISS<<8, dtlbmiss);
+	sethvec2(CDTLBE<<8, dtlberror);
 }
 
 void
@@ -315,9 +329,6 @@ intrenable(int v, void (*r)(Ureg*, void*), void *arg, int)
 	iunlock(&veclock);
 }
 
-/*
- * called directly by l.s:/intrvec
- */
 void
 intr(Ureg *ur)
 {
@@ -497,8 +508,12 @@ reset(void)
 	io = m->iomem;
 	io->plprcrk = KEEP_ALIVE_KEY;	// unlock
 	io->plprcr |= IBIT(24);		// enable checkstop reset
-	putmsr(getmsr() & ~MSR_ME);
+	putmsr(getmsr() & ~(MSR_ME|MSR_RI));
+predawn = 1;
+print("reset = %ulx\n", getmsr());
+	delay(1000);
 	// cause checkstop -> causes reset
+	*(uchar*)(0xdeadbeef) = 0;
 	*(ulong*)(0) = 0;
 }
 
@@ -616,7 +631,7 @@ syscall(Ureg* ureg)
 	up->dbgreg = ureg;
 
 	scallnr = ureg->r3;
-//print("scall %s\n", sysctab[scallnr]);
+//print("scall %s lr =%lux\n", sysctab[scallnr], ureg->lr);
 	up->scallnr = scallnr;
 	spllo();
 
@@ -675,8 +690,6 @@ notify(Ureg* ur)
 	int l;
 	ulong s, sp;
 	Note *n;
-
-//print("***notify %ld\n", up->pid);
 
 	if(up->procctl)
 		procctl(up);
@@ -753,7 +766,6 @@ noted(Ureg* ureg, ulong arg0)
 	Ureg *nureg;
 	ulong oureg, sp;
 
-//print("***noted\n");
 	qlock(&up->debug);
 	if(arg0!=NRSTR && !up->notified) {
 		qunlock(&up->debug);

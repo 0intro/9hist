@@ -13,9 +13,8 @@ typedef struct Map	Map;
 typedef struct PCArch	PCArch;
 typedef struct Proc	Proc;
 typedef struct RMap RMap;
+typedef struct Softtlb	Softtlb;
 typedef struct Ureg	Ureg;
-
-#define	MACHP(n)	(n==0? &mach0 : *(Mach**)0)
 
 /*
  *  parameters for sysproc.c
@@ -52,7 +51,7 @@ struct Notsave
 #define NCOLOR 1
 struct PMMU
 {
-	ulong	UNUSED;
+	int	pidonmach[MAXMACH];
 };
 
 /*
@@ -111,13 +110,23 @@ struct Mach
 {
 	/* OFFSETS OF THE FOLLOWING KNOWN BY l.s */
 	int	machno;			/* physical id of processor (unused) */
-	ulong	splpc;			/* pc of last caller to splhi */
+	ulong	splpc;		/* pc of last caller to splhi */
 	int	mmask;			/* 1<<m->machno (unused) */
-	Proc	*proc;			/* current process on this processor */
+	Proc	*proc;		/* current process on this processor */
+	Softtlb	*stb;		/* software tlb cache */
+	ulong tlbfault;		/* # of tlb faults */
+	ulong dar;		/* # of tlb faults */
+	ulong dsisr;		/* # of tlb faults */
+	ulong epn;
+	ulong cmp1;
 
 	/* ordering from here on irrelevant */
 	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
+	QLock	stlblk;		/* lock for allocating stlb entries on this mach */
+	int	lastpid;		/* last pid allocated on this machine */
+	int	purgepid;		/* last pid purged on this machine */
+	Proc*	pidproc[NTLBPID];	/* proc that owns tlbpid on this mach */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	int	nrdy;
@@ -132,7 +141,6 @@ struct Mach
 
 	ulong	fairness;		/* for runproc */
 
-	int	tlbfault;
 	int	tlbpurge;
 	int	pfault;
 	int	cs;
@@ -146,14 +154,19 @@ struct Mach
 	/* MUST BE LAST */
 	int	stack[1];
 };
-extern	Mach	mach0;
+
+struct Softtlb
+{
+	ulong	virt;
+	ulong	phys;
+};
 
 /*
  * Fake kmap
  */
 typedef void		KMap;
 #define	VA(k)		((ulong)(k))
-#define	kmap(p)		(KMap*)((p)->pa)
+#define	kmap(p)		(KMap*)(((p)->pa)|KZERO)
 #define	kunmap(k)
 
 /*

@@ -6,13 +6,6 @@
 #include "io.h"
 #include "../port/error.h"
 
-/*
- * Rather than reading /adm/users, which is a lot of work for
- * a toy program, we assume all groups have the form
- *	NNN:user:user:
- * meaning that each user is the leader of his own group.
- */
-
 enum
 {
 	OPERM	= 0x3,		/* mask of all permission types in open mode */
@@ -85,7 +78,8 @@ enum
 	Powner =	64,
 };
 
-static uchar *data = SACMEM;
+static char *sacfs = "fs.sac";
+static uchar *data;
 static int blocksize;
 static Sac root;
 static Cache cache[CacheSize];
@@ -104,9 +98,26 @@ sacinit(void)
 {
 	SacHeader *hdr;
 	uchar *p;
+	char *s;
 	int i;
 
 print("sacinit\n");
+	s = getconf("flash");
+	if(s == nil) {
+		print("devsac: no flash file system\n");
+		return;
+	}
+
+	p = (uchar*)strtoul(s, 0, 0);
+	if(p == 0) {
+		print("devsac: bad address for flash file system\n");
+		return;
+	}
+	data = tarlookup(p, sacfs, &i);
+	if(data == 0) {
+		print("devsac: could not find file: %s\n", sacfs);
+		return;
+	}
 	hdr = (SacHeader*)data;
 	if(getl(hdr->magic) != Magic) {
 print("devsac: bad magic\n");

@@ -7,11 +7,7 @@
 #include	"init.h"
 #include	"pool.h"
 
-#define MAXCONF 32
-
-char *confname[MAXCONF];
-char *confval[MAXCONF];
-int nconf;
+static char **confenv = (char**)(CONFPARSED);
 
 int	predawn = 1;
 
@@ -23,13 +19,17 @@ struct Bootargs
 	uchar	chksum;
 };
 
-Conf	conf;
+/*
+ * software tlb simulation
+ */
+Softtlb stlb[MAXMACH][STLBSIZE];
 
-static void options(void);
+Conf	conf;
 
 void
 main(void)
 {
+	powerdownled();
 	machinit();
 	clockinit();
 	confinit();
@@ -38,19 +38,11 @@ main(void)
 	printinit();
 	cpminit();
 	uartinstall();
+print("hello world from kernel %ux %ux %ux\n", m->iomem->pddat, m->iomem->pddir, m->iomem->pdpar);
 	mmuinit();
-
-// turn on pcmcia
-*(uchar*)(NVRAMMEM+0x100001) |= 0x60;
-
-print("m->delayloop = %ld\n", m->delayloop);
-	delayloopinit();
-print("m->delayloop = %ld\n", m->delayloop);
-
 	pageinit();
 	procinit0();
 	initseg();
-	options();
 	links();
 	chandevreset();
 	swapinit();
@@ -69,6 +61,7 @@ machinit(void)
 	m->delayloop = 20000;
 	m->cputype = getpvr()>>16;
 	m->iomem = KADDR(INTMEM);
+	m->stb = &stlb[0][0];
 
 	io = m->iomem;
 	osc = 50;
@@ -78,24 +71,39 @@ machinit(void)
 	m->cpuhz = m->speed*MHz;	/* general system clock (cycles) */
 	m->clockgen = osc*MHz;		/* clock generator frequency (cycles) */
 
-	*(ushort*)&(io->memc[4].base) = 0x8060;
-//	*(ushort*)&(io->memc[7].option) = 0xffe0;
-	*(ushort*)&(io->memc[7].base) = 0xff00;
+	active.machs = 1;
+	active.exiting = 0;
 
+	/* enable check stop reset */
+	io->plprcrk = KEEP_ALIVE_KEY;	// unlock
+	io->plprcr |= IBIT(24);		// enable checkstop reset
+	putmsr(getmsr() | MSR_RI | MSR_ME);
+//	putmsr(getmsr() & ~MSR_ME);
 }
 
-
-void
-bootargs(ulong base)
+char*
+getconf(char *name)
 {
-print("bootargs = %ulx\n", base);
-	USED(base);
+	char **p, *q;
+	int n;
+
+	n = strlen(name);
+
+	for(p = confenv; *p; p++) {
+		q = *p;
+		if(strncmp(q, name, n) == 0 && q[n] == '=')
+			return q+n+1;
+	}
+	return 0;
 }
 
 void
 init0(void)
 {
-	int i;
+	char **p, *q, name[NAMELEN];
+	int n;
+
+print("init0\n");
 
 	up->nerrlab = 0;
 
@@ -116,9 +124,18 @@ init0(void)
 			ksetenv("service", "cpu");
 		else
 			ksetenv("service", "terminal");
-		for(i = 0; i < nconf; i++)
-			if(confname[i] && confname[i][0] != '*')
-				ksetenv(confname[i], confval[i]);
+		
+		for(p = confenv; *p; p++) {
+			q = strchr(p[0], '=');
+			if(q == 0)
+				continue;
+			n = q-p[0];
+			if(n >= NAMELEN)
+				n = NAMELEN-1;
+			memmove(name, p[0], n);
+			name[n] = 0;
+			ksetenv(name, q+1);
+		}
 		poperror();
 	}
 	kproc("alarm", alarmkproc, 0);
@@ -162,9 +179,6 @@ userinit(void)
 	p->seg[SSEG] = s;
 	pg = newpage(1, 0, USTKTOP-BY2PG);
 	segpage(s, pg);
-	k = kmap(pg);
-	bootargs(VA(k));
-	kunmap(k);
 
 	/*
 	 * Text
@@ -256,21 +270,23 @@ confinit(void)
 {
 	int nbytes;
 	ulong pa;
+	char **p;
+
+	/* fix up confenv */
+	for(p = confenv; *p; p++)
+		*p = KADDR(*p);
 
 	conf.nmach = 1;		/* processors */
 	conf.nproc = 60;	/* processes */
 
 	// hard wire for now
-	pa = 0xffd00000;		// leave 1 Meg for kernel
-	nbytes = 2*1024*1024;	// leave room at the top as well
+	pa = 0x200000;		// leave 2 Meg for kernel
+	nbytes = 8*1024*1024;	// leave room at the top as well
 	
 	conf.npage0 = nbytes/BY2PG;
 	conf.base0 = pa;
 	
-	pa = 0xfff04000;
-	nbytes = 1024*1024 - 0x4000;
-
-	conf.npage1 = nbytes/BY2PG;
+	conf.npage1 = 0;
 	conf.base1 = pa;
 
 	conf.npage = conf.npage0 + conf.npage1;
@@ -279,8 +295,8 @@ confinit(void)
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 
 	/* set up other configuration parameters */
-	conf.nswap = 0; // conf.npage*3;
-	conf.nswppo = 0; // 4096;
+	conf.nswap = 0;
+	conf.nswppo = 0; 
 	conf.nimage = 20;
 
 	conf.copymode = 0;		/* copy on write */
@@ -307,112 +323,58 @@ getcfields(char* lp, char** fields, int n, char* sep)
 	return i;
 }
 
-static char BOOTARGS[] = 
-		"ether0=type=SCC port=1 ea=000086353a6b\r\n"
-		"ether1=type=589E port=0x300\r\n";
-
-static void
-options(void)
-{
-	long i, n;
-	char *cp, *p, *q;
-	char *line[MAXCONF];
-	Bootargs *ba;
-
-	/*
-	 *  parse configuration args from dos file plan9.ini
-	 */
-	ba = (Bootargs*)(NVRAMMEM+ 4*1024);
-	if(ba->chksum == nvcsum(ba->args, sizeof(ba->args))) {
-		cp = smalloc(strlen(ba->args)+1);
-		memmove(cp, ba->args, strlen(ba->args)+1);
-	} else
-		cp = BOOTARGS;
-print("bootargs = %s\n", cp);
-
-	/*
-	 * Strip out '\r', change '\t' -> ' '.
-	 */
-	p = cp;
-	for(q = cp; *q; q++){
-		if(*q == '\r')
-			continue;
-		if(*q == '\t')
-			*q = ' ';
-		*p++ = *q;
-	}
-	*p = 0;
-
-	n = getcfields(cp, line, MAXCONF, "\n");
-	for(i = 0; i < n; i++){
-		if(*line[i] == '#')
-			continue;
-		cp = strchr(line[i], '=');
-		if(cp == 0)
-			continue;
-		*cp++ = 0;
-		if(cp - line[i] >= NAMELEN+1)
-			*(line[i]+NAMELEN-1) = 0;
-		confname[nconf] = line[i];
-		confval[nconf] = cp;
-		nconf++;
-	}
-}
-
 int
 isaconfig(char *class, int ctlrno, ISAConf *isa)
 {
 	char cc[NAMELEN], *p, *q, *r;
-	int n;
 
 	sprint(cc, "%s%d", class, ctlrno);
-	for(n = 0; n < nconf; n++){
-		if(strncmp(confname[n], cc, NAMELEN))
-			continue;
-		isa->nopt = 0;
-		p = confval[n];
-		while(*p){
-			while(*p == ' ' || *p == '\t')
-				p++;
-			if(*p == '\0')
-				break;
-			if(strncmp(p, "type=", 5) == 0){
-				p += 5;
-				for(q = isa->type; q < &isa->type[NAMELEN-1]; q++){
-					if(*p == '\0' || *p == ' ' || *p == '\t')
-						break;
-					*q = *p++;
-				}
-				*q = '\0';
+
+	p = getconf(cc);
+	if(p == 0)
+		return 0;
+print("%s=%s\n", cc, p);	
+	isa->nopt = 0;
+	while(*p){
+		while(*p == ' ' || *p == '\t')
+			p++;
+		if(*p == '\0')
+			break;
+		if(strncmp(p, "type=", 5) == 0){
+			p += 5;
+			for(q = isa->type; q < &isa->type[NAMELEN-1]; q++){
+				if(*p == '\0' || *p == ' ' || *p == '\t')
+					break;
+				*q = *p++;
 			}
-			else if(strncmp(p, "port=", 5) == 0)
-				isa->port = strtoul(p+5, &p, 0);
-			else if(strncmp(p, "irq=", 4) == 0)
-				isa->irq = strtoul(p+4, &p, 0);
-			else if(strncmp(p, "mem=", 4) == 0)
-				isa->mem = strtoul(p+4, &p, 0);
-			else if(strncmp(p, "size=", 5) == 0)
-				isa->size = strtoul(p+5, &p, 0);
-			else if(strncmp(p, "freq=", 5) == 0)
-				isa->freq = strtoul(p+5, &p, 0);
-			else if(strncmp(p, "dma=", 4) == 0)
-				isa->dma = strtoul(p+4, &p, 0);
-			else if(isa->nopt < NISAOPT){
-				r = isa->opt[isa->nopt];
-				while(*p && *p != ' ' && *p != '\t'){
-					*r++ = *p++;
-					if(r-isa->opt[isa->nopt] >= ISAOPTLEN-1)
-						break;
-				}
-				*r = '\0';
-				isa->nopt++;
-			}
-			while(*p && *p != ' ' && *p != '\t')
-				p++;
+			*q = '\0';
 		}
-		return 1;
+		else if(strncmp(p, "port=", 5) == 0)
+			isa->port = strtoul(p+5, &p, 0);
+		else if(strncmp(p, "irq=", 4) == 0)
+			isa->irq = strtoul(p+4, &p, 0);
+		else if(strncmp(p, "mem=", 4) == 0)
+			isa->mem = strtoul(p+4, &p, 0);
+		else if(strncmp(p, "size=", 5) == 0)
+			isa->size = strtoul(p+5, &p, 0);
+		else if(strncmp(p, "freq=", 5) == 0)
+			isa->freq = strtoul(p+5, &p, 0);
+		else if(strncmp(p, "dma=", 4) == 0)
+			isa->dma = strtoul(p+4, &p, 0);
+		else if(isa->nopt < NISAOPT){
+			r = isa->opt[isa->nopt];
+			while(*p && *p != ' ' && *p != '\t'){
+				*r++ = *p++;
+				if(r-isa->opt[isa->nopt] >= ISAOPTLEN-1)
+					break;
+			}
+			*r = '\0';
+			isa->nopt++;
+		}
+		while(*p && *p != ' ' && *p != '\t')
+			p++;
 	}
-	return 0;
+	return 1;
 }
 
 int
@@ -435,43 +397,5 @@ cistrcmp(char *a, char *b)
 			break;
 	}
 	return 0;
-}
-
-int
-cistrncmp(char *a, char *b, int n)
-{
-	unsigned ac, bc;
-
-	while(n > 0){
-		ac = *a++;
-		bc = *b++;
-		n--;
-
-		if(ac >= 'A' && ac <= 'Z')
-			ac = 'a' + (ac - 'A');
-		if(bc >= 'A' && bc <= 'Z')
-			bc = 'a' + (bc - 'A');
-
-		ac -= bc;
-		if(ac)
-			return ac;
-		if(bc == 0)
-			break;
-	}
-
-	return 0;
-}
-
-/* dummy - not used */
-
-void
-iofree(int)
-{
-}
-
-int
-ioalloc(int, int, int, char*)
-{
-	return 1;
 }
 

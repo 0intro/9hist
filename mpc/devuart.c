@@ -279,19 +279,24 @@ smcsetup(Uart *up)
 	up->brgc = brgalloc();
 	if(up->brgc < 0)
 		error(Eio);
-//	m->bcsr[1] &= ~DisableRS232a;	/* enable rs232-1 */
 
 	io = ioplock();
-	io->pbpar |= IBIT(23)|IBIT(24)|IBIT(25);	/* enable SMC1 TX/RX/SYN */
-	io->pbdir &= ~(IBIT(23)|IBIT(24)|IBIT(25));
+	/* step 1 */
+	io->papar |= SIBIT(8)|SIBIT(9);
+	io->padir &= ~(SIBIT(8)|SIBIT(9));
+	io->paodr &= ~(SIBIT(8)|SIBIT(9));
+
 	io->brgc[up->brgc] = baudgen(up->baud, 16) | BaudEnable;
-	io->simode = (io->simode & ~0xF000) | (up->brgc<<12);	/* SMC1 to NMSI mode, set Tx/Rx clock */
+
+	/* step 3: route clock to SMC2 */
+	io->simode = (io->simode & ~0xF0000000) | (up->brgc<<28);
+
 	iopunlock();
 
-	up->param = KADDR(SMC1P);
+	up->param = KADDR(SMC2P);
 	uartsetbuf(up);
 
-	cpmop(InitRxTx, SMC1ID, 0);
+	cpmop(InitRxTx, SMC2ID, 0);
 
 	/* SMC protocol parameters */
 	p = (Uartsmc*)up->param;
@@ -300,12 +305,12 @@ smcsetup(Uart *up)
 	p->brkln = 0;
 	p->brkec = 0;
 	p->brkcr = 1;
-	smc = IOREGS(0xA80, SMC);
+	smc = IOREGS(0xA90, SMC);
 	smc->smce = 0xff;	/* clear events */
 	smc->smcm = BSY|RXB|TXB;	/* enable all possible interrupts */
 	up->smc = smc;
 	smc->smcmr = ((1+8+1-1)<<11)|(2<<4);	/* 8-bit, 1 stop, no parity; UART mode */
-	intrenable(VectorCPIC+4, smcuintr, up, BUSUNKNOWN);
+	intrenable(VectorCPIC+3, smcuintr, up, BUSUNKNOWN);
 	smc->smcmr |= 3;	/* enable rx/tx */
 }
 

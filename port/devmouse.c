@@ -142,6 +142,7 @@ mouseopen(Chan *c, int omode)
 		unlock(&mouse);
 		break;
 	case Qmousein:
+		error("disabled");
 		lock(&mouse);
 		if(mouse.inopen){
 			unlock(&mouse);

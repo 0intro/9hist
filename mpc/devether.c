@@ -349,6 +349,7 @@ etherreset(void)
 		ether->mbps = 10;
 		if(isaconfig("ether", ctlrno, ether) == 0)
 			continue;
+print("etherreset ether%d\n", ctlrno);
 		for(n = 0; cards[n].type; n++){
 			if(cistrcmp(cards[n].type, ether->type))
 				continue;

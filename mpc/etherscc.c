@@ -137,10 +137,10 @@ attach(Ether *ether)
 static void
 closed(Ether *ether)
 {
-	Ctlr *ctlr;
-
-	ctlr = ether->ctlr;
 	if(0){
+		Ctlr *ctlr;
+
+		ctlr = ether->ctlr;
 		if(ether->port == 2)
 			scc2stop(ctlr->scc);
 		ilock(ctlr);
@@ -268,15 +268,14 @@ interrupt(Ureg*, void *arg)
 			ctlr->overrun++;
 		if(events & TXE)
 			ether->oerrs++;
-		if(0 || events & TXE)
-			print("ETHER.SCC#%d: scce = 0x%uX\n", ether->ctlrno, events);
 	}
+
 	/*
 	 * Receiver interrupt: run round the descriptor ring logging
 	 * errors and passing valid receive data up to the higher levels
 	 * until we encounter a descriptor still owned by the chip.
 	 */
-	if(events & (RXF|RXB) || 1){
+	if(events & (RXF|RXB)){
 		dre = &ctlr->rdr[ctlr->rdrx];
 		while(((status = dre->status) & BDEmpty) == 0){
 			if(status & RxError || (status & (BDFirst|BDLast)) != (BDFirst|BDLast)){
@@ -288,7 +287,7 @@ interrupt(Ureg*, void *arg)
 					ether->crcs++;
 				if(status & RxeOV)
 					ether->overflows++;
-				//print("eth rx: %ux\n", status);
+				print("eth rx: %ux\n", status);
 			}
 			else{
 				/*
@@ -320,7 +319,7 @@ interrupt(Ureg*, void *arg)
 	/*
 	 * Transmitter interrupt: handle anything queued for a free descriptor.
 	 */
-	if(events & TXB){
+	if(events & (TXB|TXE)){
 		lock(ctlr);
 		while(ctlr->ntq){
 			dre = &ctlr->tdr[ctlr->tdri];
@@ -348,11 +347,13 @@ interrupt(Ureg*, void *arg)
 			ctlr->ntq--;
 			ctlr->tdri = NEXT(ctlr->tdri, Ntdre);
 		}
+
+		if(events & TXE)
+			cpmop(RestartTx, ctlr->sccid, 0);
+
 		txstart(ether);
 		unlock(ctlr);
 	}
-	if(events & TXE)
-		cpmop(RestartTx, ctlr->sccid, 0);
 }
 
 static long
@@ -391,52 +392,84 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 static void
 sccsetup(Ctlr *ctlr, SCC *scc, uchar *ea)
 {
-	int i, rcs, tcs;
+	int i;
 	Etherparam *p;
 	IMM *io;
 
 	io = ioplock();
-	p = (Etherparam*)KADDR(SCC1P);
 
-	if(ctlr->port != 1)
-		panic("only do SCC1 at the momment");
+	switch(ctlr->port) {
+	default:
+		iopunlock();
+		return;
+	case 2:
+		p = (Etherparam*)(SCC2P);
 
-	// step 1: enable TXD RXD ports
-	io->papar |= SIBIT(14)|SIBIT(15);
-	io->padir &= ~(SIBIT(14)|SIBIT(15));
-	io->paodr &= ~SIBIT(14);
-		
-	// step 2: enable CLSN and RENA ports
-	io->pcpar &= ~(SIBIT(11)|SIBIT(10));
-	io->pcdir &= ~(SIBIT(11)|SIBIT(10));
-	io->pcso |= SIBIT(11)|SIBIT(10);
-	eieio();
+		// step 1: enable TXD RXD ports
+		io->papar |= SIBIT(12)|SIBIT(13);
+		io->padir &= ~(SIBIT(12)|SIBIT(13));
+		io->paodr &= ~(SIBIT(12)|SIBIT(13));
 
-	// setp 3
-	io->pcpar &= ~SIBIT(15);		/* disble TENA pin */
+		// step 2: enable CLSN and RENA ports
+		io->pcpar &= ~(SIBIT(8)|SIBIT(9));
+		io->pcdir &= ~(SIBIT(8)|SIBIT(9));
+		io->pcso |= SIBIT(8)|SIBIT(9);
 
-	// step 4: enable clocks
-	io->papar |= SIBIT(6)|SIBIT(4);	/* enable CLK2 and CLK4 */
-	io->padir &= ~(SIBIT(6)|SIBIT(4));
-	eieio();
+		// setp 3: disble TENA pin */
+		io->pcpar &= ~SIBIT(14);
+		io->pcdir &= ~SIBIT(14);
+	
+		// step 4: enable clocks CLK3 and CLK4
+		io->papar |= SIBIT(6)|SIBIT(7);
+		io->padir &= ~(SIBIT(6)|SIBIT(7));
 
-	// step 5/6: route clocks
-	io->sicr = (7<<3) | (5);
-	eieio();
+		// step 5/6: route clocks
+		iopunlock();
+		sccnmsi(2, CLK1, CLK2);	/* connect the clocks */
+		io = ioplock();
+		break;
+
+	case 3:
+		p = (Etherparam*)KADDR(SCC3P);
+
+		// step 1: enable TXD RXD ports
+		io->pbpar |= IBIT(24)|IBIT(25);
+		io->pbdir |= IBIT(24)|IBIT(25);
+		io->pbodr &= ~(IBIT(24)|IBIT(25));
+			
+		// step 2: enable CLSN and RENA ports
+		io->pcpar &= ~(SIBIT(4)|SIBIT(5));
+		io->pcdir &= ~(SIBIT(4)|SIBIT(5));
+		io->pcso |= SIBIT(4)|SIBIT(5);
+		eieio();
+	
+		// setp 3
+		io->pcpar &= ~SIBIT(13);
+		io->pcdir &= ~SIBIT(13);
+	
+		// step 4: enable clocks
+		io->papar |= SIBIT(4)|SIBIT(5);
+		io->padir &= ~(SIBIT(4)|SIBIT(5));
+		eieio();
+	
+		// step 5/6: route clocks
+		iopunlock();
+		sccnmsi(3, CLK3, CLK4);
+		io = ioplock();
+		break;
+	}
 
 	// step 7: set dma priority
 	io->sdcr = 1;
-
+	
 	iopunlock();
-
-//	sccnmsi(ctlr->port, rcs, tcs);	/* connect the clocks */
 
 	// step 8:
 	p->rbase = PADDR(ctlr->rdr);
 	p->tbase = PADDR(ctlr->tdr);
 
 	// step 9:
-	cpmop(InitRxTx, SCC1ID, 0);
+	cpmop(InitRxTx, sccid[ctlr->port], 0);
 
 	// step 10
 	p->rfcr = 0x18;   // manuals say 0x10
@@ -514,9 +547,17 @@ sccsetup(Ctlr *ctlr, SCC *scc, uchar *ea)
 	// step 33:
 	scc->psmr = 0x080A;	/* 32-bit CRC, non-promiscuous */
 
-	// step 34
-	io->pcpar |= SIBIT(15);	/* enable TENA pin (RTS2) */
-	io->pcdir &= ~SIBIT(15);
+	// step 34: enable TENA 
+	switch(ctlr->port) {
+	case 2:
+		io->pcpar |= SIBIT(14);
+		io->pcdir &= ~SIBIT(14);
+		break;
+	case 3:
+		io->pcpar |= SIBIT(13);
+		io->pcdir &= ~SIBIT(13);
+		break;
+	}
 
 	// step 35: done at attach time
 }
@@ -527,6 +568,8 @@ reset(Ether* ether)
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
 	SCC *scc;
+
+print("etherscc: reset\n");
 
 	if(m->speed < 24){
 		print("%s ether: system speed must be >= 24MHz for ether use\n", ether->type);
@@ -583,5 +626,5 @@ void
 etherscclink(void)
 {
 	addethercard("SCC", reset);
-//	addethercard("SCC2", reset);
+//	addethercard("SCC3", reset);
 }
