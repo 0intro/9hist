@@ -9,6 +9,7 @@ typedef struct Dirtab	Dirtab;
 typedef struct Env	Env;
 typedef struct Envp	Envp;
 typedef struct Envval	Envval;
+typedef struct Etherpkt	Etherpkt;
 typedef struct FPsave	FPsave;
 typedef struct Label	Label;
 typedef struct List	List;
@@ -408,6 +409,7 @@ struct Block
 	uchar	*base;		/* start of the buffer */
 	uchar	flags;
 	uchar	type;
+	ulong	va;		/* virtual address if mapped for a dev */
 };
 
 /* flag bits */
@@ -486,6 +488,17 @@ enum {
 	Slowqid = Sctlqid,
 	Streamhi= (17*1024),	/* byte count high water mark */
 	Streambhi= 32,		/* block count high water mark */
+};
+
+/*
+ *  Ethernet packet buffers.
+ */
+struct Etherpkt {
+	uchar d[6];
+	uchar s[6];
+	uchar type[2];
+	uchar data[1500];
+	uchar crc[4];
 };
 
 /*

@@ -39,6 +39,25 @@ char sysname[64];
  */
 int ioid;
 
+/*
+ *  lance memory mapping
+ */
+typedef struct Lancemap	Lancemap;
+struct Lancemap
+{
+	int	rused;		/* first used receive map */
+	int	rnext;		/* next receive map to use */
+	int	rtot;
+
+	int	tused;		/* first used transmit map */
+	int	tnext;		/* next transmit map to use */
+	int	ttot;
+	Rendez	tr;		/* where to wait for a transmit map */
+};
+Lancemap lm;
+
+extern int	ioid;
+
 char	user[NAMELEN] = "bootes";
 
 void
@@ -132,6 +151,8 @@ ioboardinit(void)
 {
 	long i;
 	int maxlevel;
+	ushort *sp;
+	uchar ea[6];
 
 	ioid = *IOID;
 	if(ioid >= IO3R1)
@@ -178,6 +199,122 @@ ioboardinit(void)
 	 *  enable all interrupts on the IO2
 	 */
 	*IO2SETMASK = 0xff;
+
+	/*
+	 *  get our ether addr out of the non-volatile ram
+	 */
+	ea[0] = LANCEID[20]>>8;
+	ea[1] = LANCEID[16]>>8;
+	ea[2] = LANCEID[12]>>8;
+	ea[3] = LANCEID[8]>>8;
+	ea[4] = LANCEID[4]>>8;
+	ea[5] = LANCEID[0]>>8;
+
+	/*
+	 *  reset the lance.
+	 *  configure the lance software parameters.
+	 *  run through all lance memory to set parity.
+	 */
+	if(ioid >= IO3R1){
+		MODEREG->promenet |= 1;
+		MODEREG->promenet &= ~1;
+		lanceconfig(LANCE3RAM, LANCE3END, LANCERAP, LANCERDP, 4,
+			(void*)0x800000, ea);
+		for(sp = LANCE3RAM; sp < LANCE3END; sp += 2)
+			*sp = 0;
+	} else {
+		MODEREG->promenet &= ~1;
+		MODEREG->promenet |= 1;
+		lanceconfig(LANCERAM, LANCEEND, LANCERAP, LANCERDP, 1,
+			(void*)0x0, ea);
+		for(sp = LANCERAM; sp < LANCEEND; sp += 1)
+			*sp = 0;
+	}
+
+	/*
+	 *  initialize the map/buffer use
+	 */
+	lm.ttot = 128;
+	lm.rtot = 128;
+	lm.rnext = lm.rused = lm.tnext = lm.tused = 0;
+}
+
+/*
+ *  map/copy a list of blocks to somewhere the lance can access
+ *
+ *  if bp==0, just create a block and map it in
+ */
+static int
+isomap(void *x)
+{
+	int next;
+
+	next = (int)x;
+	return x != lm.tused;
+}
+Block *
+lancemap(Block *bp, int len)
+{
+	Block *nbp, *tbp;
+	int next;
+	ulong x;
+
+	if(bp == 0){
+		next = lm.rnext+1 % lm.rtot;
+		if(ioid >= IO3R1){
+			bp = allocb(sizeof(Etherpkt));
+			x = (ulong)(bp->wptr);
+			*WRITEMAP = (next<<16) | ((x>>12)&0xFFFF);
+			bp->va = (next<<12) | (x & 0xFFF));
+		} else {
+			bp = allocb(0);
+			x = (ulong)(LANCEMEM+4*1024+next*sizeof(Etherpkt));
+			bp->va = x;
+			bp->rptr = (uchar *)x;
+			bp->wptr = (uchar *)x;
+		}
+		lm.rnext = next;
+		return bp;
+	}
+
+	if(ioid >= IO3R1){
+		for(nbp = bp; nbp; nbp = nbp->next){
+			next = lm.tnext+1 % lm.ttot;
+			if(next == lm.tused)
+				sleep(&lm.tr, isomap, (void *)next);
+			x = (ulong)(nbp->rptr);
+			*WRITEMAP = ((lm.rtot + next)<<16) | ((x>>12)&0xFFFF);
+			nbp->va = ((lm.rtot + next)<<12) | (x & 0xFFF));
+			lm.tnext = next;
+		}
+	} else {
+		tbp = bp;
+		bp = allocb(0);
+		next = lm.tnext+1 % lm.ttot;
+		if(next == lm.tused)
+			sleep(&lm.tr, isomap, (void *)next);
+		x = (ulong)(LANCEMEM+4*1024+(next+lm.rtot)*sizeof(Etherpkt));
+		bp->va = x;
+		bp->rptr = (uchar *)x;
+		bp->wptr = (uchar *)x;
+		for(nbp = tbp; nbp; nbp = nbp->next){
+			n = BLEN(nbp);
+			if(BLEN(bp) + n < sizeof(Etherpkt))
+				n = sizeof(Etherpkt) - BLEN(bp);
+			memcpy(bp->wptr, nbp->rptr, n);
+			bp->wptr += n;
+		}
+		freeb(tbp);
+		lm.tnext = next;
+	}
+}
+
+/*
+ *  get a block back from the lance
+ */
+Block *
+lanceunmap(Block *bp)
+{
 }
 
 void

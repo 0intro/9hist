@@ -91,6 +91,7 @@ void	isdir(Chan*);
 void	kbdchar(int);
 void	kproc(char*, void(*)(void*), void*);
 void	launchinit(void);
+void	lanceconfig(void*, void*, void*, void*, int, void*, uchar*);
 void	lancereset(void);
 void	lanceinit(void);
 void	lanceintr(void);
