@@ -134,7 +134,7 @@ floppysetdef(FDrive *dp)
 	for(t = floppytype; t < &floppytype[nelem(floppytype)]; t++)
 		if(dp->dt == t->dt){
 			dp->t = t;
-			floppydir[NFDIR*dp->dev].length = dp->t->cap;
+			floppydir[1+NFDIR*dp->dev].length = dp->t->cap;
 			break;
 		}
 }
@@ -220,19 +220,19 @@ floppyattach(char *spec)
 static Walkqid*
 floppywalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, nc, name, nname, floppydir, fl.ndrive*NFDIR, devgen);
+	return devwalk(c, nc, name, nname, floppydir, 1+fl.ndrive*NFDIR, devgen);
 }
 
 static int
 floppystat(Chan *c, uchar *dp, int n)
 {
-	return devstat(c, dp, n, floppydir, fl.ndrive*NFDIR, devgen);
+	return devstat(c, dp, n, floppydir, 1+fl.ndrive*NFDIR, devgen);
 }
 
 static Chan*
 floppyopen(Chan *c, int omode)
 {
-	return devopen(c, omode, floppydir, fl.ndrive*NFDIR, devgen);
+	return devopen(c, omode, floppydir, 1+fl.ndrive*NFDIR, devgen);
 }
 
 static void
@@ -297,7 +297,7 @@ changed(Chan *c, FDrive *dp)
 				if(dp->dt == dp->t->dt)
 					break;
 			}
-			floppydir[NFDIR*dp->dev].length = dp->t->cap;
+			floppydir[1+NFDIR*dp->dev].length = dp->t->cap;
 
 			/* floppyon will fail if there's a controller but no drive */
 			if(floppyon(dp) < 0)
@@ -353,7 +353,7 @@ floppyread(Chan *c, void *a, long n, vlong off)
 	ulong offset = off;
 
 	if(c->qid.type & QTDIR)
-		return devdirread(c, a, n, floppydir, fl.ndrive*NFDIR, devgen);
+		return devdirread(c, a, n, floppydir, 1+fl.ndrive*NFDIR, devgen);
 
 	rv = 0;
 	dp = &fl.d[c->qid.path & ~Qmask];
@@ -908,7 +908,7 @@ floppyformat(FDrive *dp, char *params)
 		for(t = floppytype; t < &floppytype[nelem(floppytype)]; t++){
 			if(strcmp(f[1], t->name)==0 && t->dt==dp->dt){
 				dp->t = t;
-				floppydir[NFDIR*dp->dev].length = dp->t->cap;
+				floppydir[1+NFDIR*dp->dev].length = dp->t->cap;
 				break;
 			}
 		}
