@@ -52,8 +52,8 @@ extern SDifc sd53c8xxifc;
 
 #else
 
-#define KPRINT	if(1) print
-#define IPRINT	if(1) print
+#define KPRINT	if(0) print
+#define IPRINT	if(0) print
 #define DEBUG(n)	(0)
 #define IFLUSH()
 
