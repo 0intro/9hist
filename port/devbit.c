@@ -103,6 +103,7 @@ void	arenafree(Arena*);
 void	bitstring(GBitmap*, Point, GFont*, uchar*, long, Fcode);
 void	bitloadchar(GFont*, int, GSubfont*, int);
 extern	GBitmap	gscreen;
+extern	islcd;
 
 Mouseinfo	mouse;
 Cursorinfo	cursor;
@@ -746,6 +747,55 @@ bitread(Chan *c, void *va, long n, ulong offset)
 	return n;
 }
 
+static Rectangle mbb = {10000, 10000, -10000, -10000};
+
+static void
+mbbrect(Rectangle r)
+{
+	if (r.min.x < mbb.min.x)
+		mbb.min.x = r.min.x;
+	if (r.min.y < mbb.min.y)
+		mbb.min.y = r.min.y;
+	if (r.max.x > mbb.max.x)
+		mbb.max.x = r.max.x;
+	if (r.max.y > mbb.max.y)
+		mbb.max.y = r.max.y;
+}
+
+static void
+mbbpt(Point p)
+{
+	if (p.x < mbb.min.x)
+		mbb.min.x = p.x;
+	if (p.y < mbb.min.y)
+		mbb.min.y = p.y;
+	if (p.x >= mbb.max.x)
+		mbb.max.x = p.x+1;
+	if (p.y >= mbb.max.y)
+		mbb.max.y = p.y+1;
+}
+
+Point
+bitstrsize(GFont *f, uchar *p, int l)
+{
+	ushort r;
+	Point s = {0,0};
+	GCacheinfo *c;
+
+	while(l > 0){
+		r = BGSHORT(p);
+		p += 2;
+		l -= 2;
+		if(r >= f->ncache)
+			continue;
+		c = &f->cache[r];
+		if(c->bottom > s.y)
+			s.y = c->bottom;
+		s.x += c->width;
+	}
+	return s;
+}
+
 long
 bitwrite(Chan *c, void *va, long n, ulong offset)
 {
@@ -754,6 +804,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	ulong l, nw, ws, rv, q0, q1;
 	ulong *lp;
 	int off, isoff, i, j, ok;
+	ulong *endscreen = gaddr(&gscreen, Pt(0, gscreen.r.max.y));
 	Point pt, pt1, pt2;
 	Rectangle rect;
 	Cursor curs;
@@ -763,6 +814,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	BSubfont *f, *tf, **fp;
 	GFont *ff, **ffp;
 	GCacheinfo *gc;
+	extern void screenupdate(Rectangle);
 
 	if(!conf.monitor)
 		error(Egreg);
@@ -856,6 +908,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			gbitblt(dst, pt, src, rect, fc);
+			if(islcd && dst->base < endscreen)
+				mbbrect(Rpt(pt, add(pt, sub(rect.max, rect.min))));
 			m -= 31;
 			p += 31;
 			break;
@@ -1089,6 +1143,10 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			gsegment(dst, pt1, pt2, t, fc);
+			if(islcd && dst->base < endscreen) {
+				mbbpt(pt1);
+				mbbpt(pt2);
+			}
 			m -= 22;
 			p += 22;
 			break;
@@ -1188,6 +1246,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			gpoint(dst, pt1, t, fc);
+			if(islcd && dst->base < endscreen)
+				mbbpt(pt1);
 			m -= 14;
 			p += 14;
 			break;
@@ -1278,6 +1338,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			bitstring(dst, pt, ff, p, l, fc);
+			if(islcd && dst->base < endscreen)
+				mbbrect(Rpt(pt, add(pt, bitstrsize(ff, p, l))));
 			m -= l;
 			p += l;
 			break;
@@ -1315,6 +1377,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			gtexture(dst, rect, src, fc);
+			if(islcd && dst->base < endscreen)
+				mbbrect(rect);
 			m -= 23;
 			p += 23;
 			break;
@@ -1393,6 +1457,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				t = (t/ws)*ws;
 				l = (t+dst->r.max.x+ws-1)/ws;
 			}
+			if(islcd && dst->base < endscreen)
+				mbbrect(Rect(dst->r.min.x, miny, dst->r.max.x, maxy));
 			p += 11;
 			m -= 11;
 			if(m < l*(maxy-miny))
@@ -1504,6 +1570,10 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	poperror();
 	if(isoff)
 		cursoron(1);
+	if(islcd) {
+		screenupdate(mbb);
+		mbb = Rect(10000, 10000, -10000, -10000);
+	}
 	qunlock(&bit);
 	return n;
 }
@@ -1851,10 +1921,12 @@ cursoron(int dolock)
 		cursor.r.max = add(mouse.xy, Pt(16, 16));
 		cursor.r = raddp(cursor.r, cursor.offset);
 		gbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
-		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
+		gbitblt(&gscreen, cursor.r.min,
 			&clr, Rect(0, 0, 16, 16), flipping? flipD[D&~S] : D&~S);
-		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
+		gbitblt(&gscreen, cursor.r.min,
 			&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
+		if(islcd)
+			mbbrect(cursor.r);
 	}
 	if(dolock)
 		unlock(&cursor);
@@ -1865,8 +1937,11 @@ cursoroff(int dolock)
 {
 	if(dolock)
 		lock(&cursor);
-	if(--cursor.visible == 0)
+	if(--cursor.visible == 0) {
 		gbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
+		if(islcd)
+			mbbrect(cursor.r);
+	}
 	if(dolock)
 		unlock(&cursor);
 }

@@ -196,7 +196,6 @@ static int	floppysense(void);
 static void	floppywait(void);
 static long	floppyxfer(Drive*, int, void*, long, long);
 static void	floppyformat(Drive*, char*);
-static long	floppythrice(Drive*, int, void*, long, long);
 static int	cmddone(void*);
 void Xdelay(int);
 
@@ -372,32 +371,52 @@ islegal(ulong offset, long n, Drive *dp)
 }
 
 /*
- *  check if the floppy has been replaced under foot.  cause a read error if it has.
+ *  check if the floppy has been replaced under foot.  cause
+ *  an error if it has.
  *
- *  a seek and a read clears the condition.  this was determined experimentally,
- *  there has to be a better way.
+ *  a seek and a read clears the condition.  this was determined
+ *  experimentally, there has to be a better way.
+ *
+ *  if the read fails, cycle through the possible floppy
+ *  density till one works or we've cycled through all
+ *  possibilities.
  */
 static void
 changed(Chan *c, Drive *dp)
 {
 	ulong old;
+	Type *start;
 
-	if(inb(Pdir)&Fchange){
-		setdef(dp);
+	/*
+	 *  if floppy has changed or first time through
+	 */
+	if((inb(Pdir)&Fchange) || dp->vers == 0){
 		dp->vers++;
-		dp->confused = 1;
+		setdef(dp);
+		start = dp->t;
+		dp->confused = 1;	/* make floppyon recal */
 		floppyon(dp);
-		if(dp->cyl)
-			floppythrice(dp, Fread, dp->cache, 0, dp->t->tsize);
-		else
-			floppythrice(dp, Fread, dp->cache, dp->t->heads*dp->t->tsize,
-					dp->t->tsize);
+		floppyseek(dp, dp->t->heads*dp->t->tsize);
+		while(waserror()){
+			while(++dp->t){
+				if(dp->t == &floppytype[NTYPES])
+					dp->t = floppytype;
+				if(dp->dt == dp->t->dt)
+					break;
+			}
+			floppydir[NFDIR*dp->dev].length = dp->t->cap;
+			if(dp->t == start)
+				nexterror();
+			floppyon(dp);
+		}
+		floppyxfer(dp, Fread, dp->cache, 0, dp->t->tsize);
+		poperror();
 	}
+
 	old = c->qid.vers;
 	c->qid.vers = dp->vers;
-	if(old && old!=dp->vers){
+	if(old && old != dp->vers)
 		error(Eio);
-	}
 }
 
 long
@@ -443,7 +462,7 @@ floppyread(Chan *c, void *a, long n, ulong offset)
 			 */
 			if(dp->ccyl!=cyl || dp->chead!=head){
 				dp->ccyl = -1;
-				i = floppythrice(dp, Fread, dp->cache,
+				i = floppyxfer(dp, Fread, dp->cache,
 					(cyl*dp->t->heads+head)*nn, nn);
 				if(i != nn){
 					if(i == 0)
@@ -494,7 +513,7 @@ floppywrite(Chan *c, void *a, long n, ulong offset)
 			floppypos(dp, offset+rv);
 			if(dp->tcyl == dp->ccyl)
 				dp->ccyl = -1;
-			i = floppythrice(dp, Fwrite, aa+rv, offset+rv, n-rv);
+			i = floppyxfer(dp, Fwrite, aa+rv, offset+rv, n-rv);
 			if(i < 0)
 				break;
 			if(i == 0)
@@ -753,6 +772,7 @@ floppyrecal(Drive *dp)
 	dp->cyl = fl.stat[1];
 	if(dp->cyl != 0){
 		DPRINT("recalibrate went to wrong cylinder %d\n", dp->cyl);
+		dp->cyl = -1;
 		dp->confused = 1;
 		return -1;
 	}
@@ -829,59 +849,24 @@ floppyseek(Drive *dp, long off)
 }
 
 /*
- *  since floppies are so flakey, automaticly retry failed attempts.
- *  every 3 tries switch to a different density
+ *  read or write to floppy.  try up to three times.
  */
-static long
-floppythrice(Drive *dp, int cmd, void *a, long off, long n)
-{
-	int tries;
-	long rv;
-	Type *start;
-
-	start = dp->t;
-	for(tries = 0; ; tries++){
-		if(waserror()){
-			if(cmd != Fread || strcmp(u->error, Eintr)==0)
-				nexterror();
-
-			/* walk through the compatible types */
-			if(tries == 3){
-				while(++dp->t){
-					if(dp->t == &floppytype[NTYPES])
-						dp->t = floppytype;
-					if(dp->dt == Tnone)
-						break;
-					if(dp->dt == dp->t->dt)
-						break;
-				}
-				floppydir[NFDIR*dp->dev].length = dp->t->cap;
-				if(dp->t == start)
-					nexterror();
-				tries = 0;
-				floppyon(dp);
-			}
-		} else {
-			rv = floppyxfer(dp, cmd, a, off, n);
-			poperror();
-			return rv;
-		}
-	}
-}
-
 static long
 floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 {
 	long offset;
+	int tries = 0;
 
 	if(off >= dp->t->cap)
 		return 0;
 	if(off + n > dp->t->cap)
 		n = dp->t->cap - off;
 
-	/*
-	 *  calculate new position and seek to it (dp->len may be trimmed)
-	 */
+	/* retry on error 3 times */
+	while(waserror())
+		if(tries++ >= 3)
+			nexterror();
+
 	dp->len = n;
 	if(floppyseek(dp, off) < 0)
 		error(Eio);
@@ -892,6 +877,10 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	/*
 	 *  set up the dma (dp->len may be trimmed)
 	 */
+	if(waserror()){
+		dmaend(DMAchan);
+		nexterror();
+	}
 	dp->len = dmasetup(DMAchan, a, dp->len, cmd==Fread);
 
 	/*
@@ -919,6 +908,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	 */
 	floppywait();
 	dmaend(DMAchan);
+	poperror();
 
 	/*
 	 *  check for errors
@@ -947,6 +937,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 		dp->confused = 1;
 		error(Eio);
 	}
+	poperror();
 
 	dp->lasttouched = m->ticks;
 	return dp->len;
@@ -1016,6 +1007,10 @@ floppyformat(Drive *dp, char *params)
 			*bp++ = sec;
 			*bp++ = t->bcode;
 		}
+		if(waserror()){
+			dmaend(DMAchan);
+			nexterror();
+		}
 		dmasetup(DMAchan, buf, bp-buf, 0);
 
 		/*
@@ -1038,6 +1033,7 @@ floppyformat(Drive *dp, char *params)
 		 */
 		floppywait();
 		dmaend(DMAchan);
+		poperror();
 
 		/*
 		 *  check for errors
@@ -1055,6 +1051,7 @@ floppyformat(Drive *dp, char *params)
 		}
 	}
 	free(buf);
+	dp->confused = 1;
 	poperror();
 }
 

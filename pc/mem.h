@@ -53,7 +53,6 @@
 
 #define	MACHSIZE	4096
 
-#define isphys(x) (((ulong)x)&KZERO)
 
 /*
  *  known 80386 segments (in GDT) and their selectors

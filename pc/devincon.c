@@ -60,7 +60,7 @@ typedef struct Incon	Incon;
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
 
-#define DPRINT if(incondebug)kprint
+#define DPRINT /*if(incondebug)k*/print
 
 static void	inconintr(Ureg *ur);
 
@@ -174,11 +174,21 @@ Dirtab incondir[]={
 };
 #define NINCON	(sizeof incondir/sizeof incondir[0])
 
+/*static void
+Xdelay(int n)
+{
+	while(--n >= 0) ;
+}
+#define	SDLY	1000
+*/
+#define	Xdelay(n)
+
 static void
 reset(int dev)				/* hardware reset */
 {
 	outb(dev+Qpcr, Finitbar);
 	outb(dev+Qpcr, 0);
+	Xdelay(10000);
 	outb(dev+Qpcr, Finitbar);
 }
 
@@ -188,6 +198,7 @@ wrctl(int dev, int data)		/* write control character */
 	outb(dev+Qpcr, Finitbar);	/* no interrupts, please */
 	outb(dev+Qdlr, data);
 	outb(dev+Qpcr, Finitbar|Fstrobe);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fie);
 }
 
@@ -197,6 +208,7 @@ wrdata(int dev, int data)		/* write data character */
 	outb(dev+Qpcr, Finitbar|Fsi);
 	outb(dev+Qdlr, data);
 	outb(dev+Qpcr, Finitbar|Fsi|Fstrobe);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fsi|Fie);
 }
 
@@ -206,6 +218,7 @@ wrcmd(int dev, int data)		/* write command */
 	outb(dev+Qpcr, Finitbar|Faf);
 	outb(dev+Qdlr, data);
 	outb(dev+Qpcr, Finitbar|Faf|Fstrobe);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fie);
 }
 
@@ -219,8 +232,10 @@ rdstatus(Incon *ip)			/* read status */
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
 	outb(dev+Qdlr, 0x01);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
+	Xdelay(SDLY);
 	data = (inb(dev+Qpsr)&0xf8)<<2;
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
+	Xdelay(SDLY);
 	data |= inb(dev+Qpsr)>>3;
 	if(data&(OVERFLOW|CRC_ERROR)){
 		if(data&OVERFLOW)
@@ -230,6 +245,7 @@ rdstatus(Incon *ip)			/* read status */
 	}
 	outb(dev+Qdlr, 0x03);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fie);
 
 	return data;
@@ -240,6 +256,7 @@ iwrcmd(int dev, int data)		/* write command at interrupt level */
 {
 	outb(dev+Qdlr, data);
 	outb(dev+Qpcr, Finitbar|Faf|Fstrobe);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf);
 }
 
@@ -252,8 +269,10 @@ irdstatus(Incon *ip)			/* read status at interrupt level */
 
 	outb(dev+Qdlr, 0x01);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
+	Xdelay(SDLY);
 	data = (inb(dev+Qpsr)&0xf8)<<2;
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
+	Xdelay(SDLY);
 	data |= inb(dev+Qpsr)>>3;
 	if(data&(OVERFLOW|CRC_ERROR)){
 		if(data&OVERFLOW)
@@ -272,8 +291,10 @@ irddata(int dev)			/* read data at interrupt level */
 
 	outb(dev+Qdlr, 0x00);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
+	Xdelay(SDLY);
 	data = (inb(dev+Qpsr)&0xf8)<<2;
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
+	Xdelay(SDLY);
 	data |= inb(dev+Qpsr)>>3;
 
 	return data;
@@ -285,8 +306,10 @@ irdnext(int dev)			/* read next data at interrupt level */
 	int data;
 
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
+	Xdelay(SDLY);
 	data = (inb(dev+Qpsr)&0xf8)<<2;
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
+	Xdelay(SDLY);
 	data |= inb(dev+Qpsr)>>3;
 
 	return data;
@@ -297,12 +320,13 @@ irdnop(int dev, int pcr)		/* read nop (mux reset) */
 {
 	outb(dev+Qdlr, 0x03);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, pcr);
 }
-
+/*
 int		Irdnext(int);
 #define	irdnext	Irdnext
-
+*/
 /*
  *  set the incon parameters
  */
@@ -415,6 +439,7 @@ inconpoll(Incon *ip, int station)
 			break;
 		}
 	}
+print("poll: status 0x%.2ux\n", rdstatus(ip));
 }
 
 /*
@@ -471,7 +496,7 @@ inconreset(void)
 	 */
 /*	inconset(&incon[0], 3, 15); /**/
 	for(i=0; i<Nincon; i++){
-		incon[i].dev = lptbase[i];
+		incon[i].dev = lptbase[1/*i*/];
 		incon[i].state = Notliving;
 		reset(incon[i].dev);
 		incon[i].ri = incon[i].wi = 0;
@@ -496,7 +521,8 @@ inconattach(char *spec)
 	int i;
 	Chan *c;
 
-	setvec(Parallelvec, inconintr);
+	/*setvec(Parallelvec, inconintr);*/
+setvec(Int0vec+5, inconintr);
 	i = strtoul(spec, 0, 0);
 	if(i >= Nincon)
 		error(Ebadarg);
@@ -785,10 +811,10 @@ inconoput(Queue *q, Block *bp)
 		/*
 		 *  spin till there is room
 		 */
-		for(n=0, end = NOW+1000; rdstatus(ip) & TX_FULL; n++){
+		for(n=0, end = NOW+1000; (ctl=rdstatus(ip)) & TX_FULL; n++){
 			nop();	/* make sure we don't optimize too much */
 			if(NOW > end){
-				print("incon output stuck 0\n");
+				print("incon output stuck 0 %.2ux\n", ctl);
 				freemsg(q, bp);
 				qunlock(&ip->xmit);
 				return;
@@ -1076,6 +1102,7 @@ inconintr(Ureg *ur)
 	int pcr;
 	Incon *ip;
 
+print("I");
 	USED(ur);
 	ip = &incon[0];
 	pcr = inb(ip->dev+Qpcr);

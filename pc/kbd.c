@@ -183,7 +183,6 @@ mousecmd(int cmd)
 void
 i8042a20(void)
 {
-	outready();
 	outb(Cmd, 0xD1);
 	outready();
 	outb(Data, 0xDF);
@@ -196,10 +195,19 @@ i8042a20(void)
 void
 i8042reset(void)
 {
+	/*
+	 *  this works for dhog
+	 */
+	outready();
+	outb(Cmd, 0xFE);	/* pulse reset line */
+	outready();
+	/*
+	 *  this is the old IBM way
+	 */
 	outready();
 	outb(Cmd, 0xD1);
 	outready();
-	outb(Data, 0xDE);
+	outb(Data, 0xDE);	/* set reset line high */
 	outready();
 }
 

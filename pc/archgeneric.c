@@ -15,7 +15,7 @@ genericreset(void)
 PCArch generic =
 {
 	"generic",
-	genericreset,
+	i8042reset,
 	0,
 	0,
 	0,
