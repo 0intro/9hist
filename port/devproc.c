@@ -66,7 +66,7 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	Qid qid;
 	Proc *p;
 	char buf[NAMELEN];
-	ulong pid, path, perm;
+	ulong pid, path, perm, len;
 
 	USED(ntab);
 	if(c->qid.path == CHDIR){
@@ -94,8 +94,12 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	if(perm == 0)
 		perm = p->procmode;
 
+	len = tab->length;
+	if(QID(c->qid) == Qwait)
+		len = p->nwait * sizeof(Waitmsg);
+
 	qid = (Qid){path|tab->qid.path, c->qid.vers};
-	devdir(c, qid, tab->name, tab->length, p->user, perm, dp);
+	devdir(c, qid, tab->name, len, p->user, perm, dp);
 	return 1;
 }
 
@@ -399,6 +403,10 @@ procread(Chan *c, void *va, long n, ulong offset)
 		}
 
 		lock(&p->exl);
+		if(u->p == p && p->nchild == 0 && p->waitq == 0) {
+			unlock(&p->exl);
+			error(Enochild);
+		}
 		while(p->waitq == 0) {
 			unlock(&p->exl);
 			sleep(&p->waitr, haswaitq, p);
