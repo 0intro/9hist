@@ -265,6 +265,7 @@ struct Astarchan
 	int	framing;	/* framing errors */
 	int	overrun;	/* overruns */
 	int	dtr;		/* non-zero means dtr on */
+	int	rts;		/* non-zero means rts on */
 
 	Queue	*iq;
 	Queue	*oq;
@@ -282,8 +283,8 @@ enum
 	Qstat,
 };
 #define TYPE(x)		((x)&0xff)
-#define BOARD(x)	((((x)&~CHDIR)>>16)&0xff)
-#define CHAN(x)		((((x)&~CHDIR)>>8)&0xff)
+#define BOARD(x)	(((x)>>16)&0xff)
+#define CHAN(x)		(((x)>>8)&0xff)
 #define QID(b,c,t)	(((b)<<16)|((c)<<8)|(t))
 
 static int	astarsetup(Astar*);
@@ -576,7 +577,7 @@ astarclose(Chan *c)
 			qunlock(ac);
 			nexterror();
 		}
-		if(--ac->opens == 0){
+		if(--(ac->opens) == 0){
 			disable(ac);
 			qclose(ac->iq);
 			qclose(ac->oq);
@@ -660,7 +661,8 @@ statread(Astarchan *ac, void *buf, long n, ulong offset)
 	UNLOCKPAGE(ac->a);
 
 	/* CCB.mstat fields */
-	sprint(s, "ferr %d oerr %d baud %d", ac->framing, ac->overrun, ac->baud);
+	sprint(s, "opens %d ferr %d oerr %d baud %d", ac->opens, ac->framing,
+		ac->overrun, ac->baud);
 	if(mstat & Cctsstat)
 		strcat(s, " cts");
 	if(mstat & Cdsrstat)
@@ -669,10 +671,11 @@ statread(Astarchan *ac, void *buf, long n, ulong offset)
 		strcat(s, " ring");
 	if(mstat & Cdcdstat)
 		strcat(s, " dcd");
-	if(ac->opens)
+	if(ac->dtr)
 		strcat(s, " dtr");
-	if((bstat & Crbrts) == 0)
+	if(ac->rts && (bstat & Crbrts) == 0)
 		strcat(s, " rts");
+	strcat(s, "\n");
 
 	return readstr(offset, buf, n, s);
 }
@@ -831,6 +834,7 @@ startcp(Astar *a)
 		ac = &a->c[i];
 		ac->a = a;
 		ac->ccb = (CCB*)x;
+		ac->baud = 9600;	/* a100i default */
 		ac->perm = 0660;
 		ac->iq = qopen(4*1024, 0, astarkickin, ac);
 		ac->oq = qopen(4*1024, 0, astarkick, ac);
@@ -960,7 +964,6 @@ enable(Astarchan *ac)
 	UNLOCKPAGE(a);
 	chancmd(ac, Cconfall);
 
-	astarctl(ac, "b9600");
 	astarctl(ac, "l8");
 	astarctl(ac, "p0");
 	astarctl(ac, "d1");
@@ -1047,7 +1050,7 @@ astarctl(Astarchan *ac, char *cmd)
 			 n |= Cdtrctl;
 		else
 			 n &= ~Cdtrctl;
-		ac->dtr = n;
+		ac->dtr = i;
 		ccb->mctl = LEUS(n);
 		break;
 	case 'f':
@@ -1126,6 +1129,7 @@ astarctl(Astarchan *ac, char *cmd)
 		else
 			 n &= ~Crtsctl;
 		ccb->mctl = LEUS(n);
+		ac->rts = i;
 		break;
 	case 'Q':
 	case 'q':

@@ -796,7 +796,8 @@ uartstatus(Chan *c, Uart *p, void *buf, long n, long offset)
 	str[0] = 0;
 	tstat = p->sticky[Mctl];
 	mstat = uartrdreg(p, Mstat);
-	sprint(str, "ferr %d oerr %d baud %d", p->frame, p->overrun, p->baud);
+	sprint(str, "opens %d ferr %d oerr %d baud %d", p->opens,
+		p->frame, p->overrun, p->baud);
 	if(mstat & Cts)
 		strcat(str, " cts");
 	if(mstat & Dsr)
