@@ -26,7 +26,7 @@ struct address {
 
 Address addr[] = {
 	{ "ross", "connect 020701005eff" },
-	{ "bootes", "connect 080069020205" },
+	{ "bootes", "connect 0800690203f3" },
 	{ "helix", "connect 080069020427" },
 	{ "spindle", "connect 0800690202df" },
 	{ "r70", "connect 08002b04265d" },

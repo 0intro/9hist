@@ -132,10 +132,6 @@ duartintr(void)
 		c = duart->data;
 		if(status & (FRM_ERR|OVR_ERR|PAR_ERR))
 			duart->cmnd = RESET_ERR;
-		switch(c &= 0x7F){
-		case 0x10:
-			panic("^p");
-		}
 		kbdchar(c);
 	}
 	/*

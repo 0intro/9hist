@@ -249,6 +249,8 @@ echo(int c)
 	/*
 	 * ^t hack BUG
 	 */
+	if(c == 0x10)
+		panic("^p");
 	if(c == 0x14)
 		DEBUG();
 	if(c == 0x15)
@@ -272,6 +274,8 @@ echo(int c)
 void
 kbdchar(int c)
 {
+	if(c == 0)	/* NULs cause trouble */
+		return;
 	if(c == '\r')
 		c = '\n';
 	echo(c);
