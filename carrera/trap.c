@@ -57,6 +57,7 @@ char *fpcause[] =
 };
 char	*fpexcname(Ureg*, ulong, char*);
 #define FPEXPMASK	(0x3f<<12)		/* Floating exception bits in fcr31 */
+void (*eisadma[8])(void);			/* Eisa dma chain vectors */
 
 
 char *regname[]={
@@ -284,8 +285,20 @@ trap(Ureg *ur)
 }
 
 void
+seteisadma(int ch, void (*func)(void))
+{
+	if(ch < 0 || ch > 7)
+		panic("seteisadma");
+	if(eisadma[ch] != 0)
+		print("EISA dma%d: intr used twice");
+
+	eisadma[ch] = func;
+}
+
+void
 intr(Ureg *ur)
 {
+	int i;
 	static uchar devint;
 	ulong cause = ur->cause;
 	ulong isr, vec;
@@ -351,8 +364,16 @@ intr(Ureg *ur)
 		case 7:
 			audiosbintr();
 			break;
+		case 10:
+			mpegintr();
+			break;
 		case 13:
-			audiodmaintr();
+			isr = EISAINB(Eisadmaintr) & ~(1<<4);
+			for(i = 0; i < 8; i++) {
+				if(isr & 1)
+					eisadma[i]();
+				isr >>= 1;
+			}
 			break;
 		}
 		cause &= ~INTR4;

@@ -48,6 +48,7 @@ enum
 	Eisamphys	= 0x91000000,
 	  Eisavgaphys	= Eisamphys+0xA0000,
 	Eisamvirt	= 0xE0300000,	/* Second 1M page entry from Intctl */
+	Eisadmaintr	= 0x40a,
 	Intctlphys	= 0xF0000000,	
 	Intctlvirt	= 0xE0200000,
 	  Uart1int	= (1<<9),

@@ -400,7 +400,7 @@ ns16552kick(Uart *p)
 	if(p->cts && p->blocked == 0){
 		n = 0;
 		while((uartrdreg(p, Lstat) & Outready) == 0){
-			if(++n > 10000){
+			if(++n > 100000){
 				print("stuck serial line\n");
 				break;
 			}
