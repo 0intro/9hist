@@ -20,7 +20,7 @@ enum
 	TimerON		= 1,
 	TimerDONE	= 2,
 	MAX_TIME 	= (1<<20),	/* Forever */
-	TCP_ACK		= 200,		/* Timed ack sequence in ms */
+	TCP_ACK		= 50,		/* Timed ack sequence in ms */
 
 	URG		= 0x20,		/* Data marked urgent */
 	ACK		= 0x10,		/* Acknowledge is valid */
@@ -1417,12 +1417,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 				if(tcb->rcv.nxt - tcb->last_ack >= 2*tcb->mss &&
 				   qlen(s->rq) < 8*tcb->mss){
 					tcb->flags |= FORCE;
-					if(tcb->acktimer.state == TimerON)
-						tcphalt(tpriv, &tcb->acktimer);
-				} else {
-					if(tcb->acktimer.state != TimerON)
-						tcpgo(tpriv, &tcb->acktimer);
 				}
+				if(tcb->acktimer.state != TimerON)
+					tcpgo(tpriv, &tcb->acktimer);
 
 				break;
 			case Finwait2:
@@ -1556,18 +1553,18 @@ tcpoutput(Conv *s)
 			if(tcb->snd.wnd < usable)
 				usable = tcb->snd.wnd;
 			usable -= sent;
-
 			/*
 			 *  hold small pieces in the hopes that more will come along.
 			 *  this is pessimal in synchronous communications so go ahead
-			 *  and send if:
-			 *   - all previous xmits are acked
+			 *  and send if any of the following:
+			 *   - there's no unacked packets outstanding
 			 *   - we've forced to send anyways
 			 *   - we've just gotten an ACK for a previous packet
+			 *   - there's more than 5 bytes queued
 			 */
 			if(!first)
 			if(!(tcb->flags&(FORCE|ACKED)))
-			if((sndcnt-sent) < tcb->mss)
+			if((sndcnt-sent) < 5)
 				usable = 0;
 		}
 		tcb->flags &= ~ACKED;
