@@ -212,6 +212,7 @@ sdclose(Chan *c)
 	if(c->mode != OWRITE && c->mode != ORDWR)
 		return;
 
+print("sdclose: qid 0x%lux drive %d, part %d\n", c->qid, DRIVE(c->qid), PART(c->qid));
 	d = &disk[DRIVE(c->qid)];
 	p = &d->table[PART(c->qid)];
 	if(strcmp(p->name, "partition"))

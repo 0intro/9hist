@@ -81,9 +81,9 @@ scsireset(void)
 }
 
 int
-scsiexec(Target *tp, int rw, uchar *cmd, int cbytes, void *data, int *dbytes)
+scsiexec(Target *t, int rw, uchar *cmd, int cbytes, void *data, int *dbytes)
 {
-	return (*scsi[tp->ctlrno]->io)(tp, rw, cmd, cbytes, data, dbytes);
+	return (*scsi[t->ctlrno]->io)(t, rw, cmd, cbytes, data, dbytes);
 }
 
 Target*
@@ -104,18 +104,18 @@ scsiunit(int ctlr, int unit)
 static void
 scsiprobe(Ctlr *ctlr)
 {
-	Target *tp;
+	Target *t;
 	uchar cmd[6];
 	int i, s, nbytes;
 
 	for(i = 0; i < NTarget; i++) {
-		tp = &ctlr->target[i];
+		t = &ctlr->target[i];
 
 		/*
 		 * Test unit ready
 		 */
 		memset(cmd, 0, sizeof(cmd));
-		s = scsiexec(tp, SCSIread, cmd, sizeof(cmd), 0, 0);
+		s = scsiexec(t, SCSIread, cmd, sizeof(cmd), 0, 0);
 		if(s < 0)
 			continue;
 
@@ -123,8 +123,8 @@ scsiprobe(Ctlr *ctlr)
 		 * Determine if the drive exists and is not ready or
 		 * is simply not responding
 		 */
-		if((s = scsireqsense(tp, 0, 0)) != STok){
-			print("scsi%d: unit %d unavailable, status %d\n", tp->ctlrno, i, s);
+		if((s = scsireqsense(t, 0, 0)) != STok){
+			print("scsi%d: unit %d unavailable, status %d\n", t->ctlrno, i, s);
 			continue;
 		}
 
@@ -132,17 +132,17 @@ scsiprobe(Ctlr *ctlr)
 		 * Inquire to find out what the device is
 		 * Drivers then use the result to attach to targets
 		 */
-		memset(tp->inq, 0, Ninq);
+		memset(t->inq, 0, Ninq);
 		cmd[0] = CMDinquire;
 		cmd[4] = Ninq;
 		nbytes = Ninq;
-		s = scsiexec(tp, SCSIread, cmd, sizeof(cmd), tp->inq, &nbytes);
+		s = scsiexec(t, SCSIread, cmd, sizeof(cmd), t->inq, &nbytes);
 		if(s < 0) {
-			print("scsi%d: unit %d inquire failed, status %d\n", tp->ctlrno, i, s);
+			print("scsi%d: unit %d inquire failed, status %d\n", t->ctlrno, i, s);
 			continue;
 		}
-		print("scsi%d: unit %d %s\n", tp->ctlrno, i, tp->inq+8);
-		tp->ok = 1;
+		print("scsi%d: unit %d %s\n", t->ctlrno, i, t->inq+8);
+		t->ok = 1;
 	}
 }
 
@@ -291,13 +291,13 @@ static char *key[] =
 };
 
 int
-scsireqsense(Target *tp, char lun, int quiet)
+scsireqsense(Target *t, char lun, int quiet)
 {
 	char *s;
 	int sr, try, nbytes;
 	uchar cmd[6], *sense;
 
-	sense = tp->scratch;
+	sense = t->scratch;
 
 	for(try = 0; try < 5; try++) {
 		memset(cmd, 0, sizeof(cmd));
@@ -307,7 +307,7 @@ scsireqsense(Target *tp, char lun, int quiet)
 		memset(sense, 0, sizeof(sense));
 
 		nbytes = Nscratch;
-		sr = scsiexec(tp, SCSIread, cmd, sizeof(cmd), sense, &nbytes);
+		sr = scsiexec(t, SCSIread, cmd, sizeof(cmd), sense, &nbytes);
 		if(sr != STok)
 			return sr;
 
@@ -337,7 +337,7 @@ scsireqsense(Target *tp, char lun, int quiet)
 
 	s = key[sense[2]&0xf];
 	print("scsi%d: unit %d reqsense: '%s' code #%2.2ux #%2.2ux\n",
-		tp->ctlrno, tp->target, s, sense[12], sense[13]);
+		t->ctlrno, t->target, s, sense[12], sense[13]);
 	return STcheck;
 }
 

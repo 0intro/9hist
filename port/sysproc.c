@@ -182,6 +182,7 @@ sysrfork(ulong *arg)
 	if(up->wired)
 		procwired(p);
 	ready(p);
+	sched();
 	return pid;
 }
 
