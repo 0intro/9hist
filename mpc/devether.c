@@ -130,11 +130,11 @@ etherrtrace(Netfile* f, Etherpkt* pkt, int len)
 }
 
 Block*
-etheriq(Ether* ether, Block* bp, int freebp)
+etheriq(Ether* ether, Block* bp, int fromwire)
 {
 	Etherpkt *pkt;
 	ushort type;
-	int len, multi, forme;
+	int len, multi, tome, fromme;
 	Netfile **ep, *f, **fp, *fx;
 	Block *xbp;
 
@@ -150,7 +150,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 	/* check for valid multcast addresses */
 	if(multi && memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) && ether->prom == 0){
 		if(!activemulti(ether, pkt->d, sizeof(pkt->d))){
-			if(freebp){
+			if(fromwire){
 				freeb(bp);
 				bp = 0;
 			}
@@ -158,19 +158,25 @@ etheriq(Ether* ether, Block* bp, int freebp)
 		}
 	}
 
-	// is it for me?
-	forme = memcmp(pkt->d, ether->ea, sizeof(pkt->d)) == 0;
+	/* is it for me? */
+	tome = memcmp(pkt->d, ether->ea, sizeof(pkt->d)) == 0;
+	fromme = memcmp(pkt->s, ether->ea, sizeof(pkt->s)) == 0;
 
 	/*
 	 * Multiplex the packet to all the connections which want it.
-	 * If the packet is not to be used subsequently (freebp != 0),
+	 * If the packet is not to be used subsequently (fromwire != 0),
 	 * attempt to simply pass it into one of the connections, thereby
 	 * saving a copy of the data (usual case hopefully).
 	 */
 	for(fp = ether->f; fp < ep; fp++){
-		if((f = *fp) && (f->type == type || f->type < 0) && (forme || multi || f->prom)){
-			if(f->type > -2){
-				if(freebp && fx == 0)
+		if(f = *fp)
+		if(f->type == type || f->type < 0)
+		if(tome || multi || f->prom){
+			/* Don't want to hear bridged packets */
+			if(f->bridge && !fromwire && !fromme)
+				continue;
+			if(!f->headersonly){
+				if(fromwire && fx == 0)
 					fx = f;
 				else if(xbp = iallocb(len)){
 					memmove(xbp->wp, pkt, len);
@@ -190,7 +196,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 			ether->soverflows++;
 		return 0;
 	}
-	if(freebp){
+	if(fromwire){
 		freeb(bp);
 		return 0;
 	}
@@ -201,7 +207,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 static int
 etheroq(Ether* ether, Block* bp)
 {
-	int len, loopback, s, mine;
+	int len, loopback, s;
 	Etherpkt *pkt;
 
 	ether->outpackets++;
@@ -217,19 +223,18 @@ etheroq(Ether* ether, Block* bp)
 	 */
 	pkt = (Etherpkt*)bp->rp;
 	len = BLEN(bp);
-	loopback = (memcmp(pkt->d, ether->ea, sizeof(pkt->d)) == 0);
-	mine = memcmp(pkt->s, ether->ea, sizeof(pkt->s)) == 0;
-	if(mine)
+	loopback = memcmp(pkt->d, ether->ea, sizeof(pkt->d)) == 0;
 	if(loopback || memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) == 0 || ether->prom){
 		s = splhi();
-		etheriq(ether, bp, loopback);
+		etheriq(ether, bp, 0);
 		splx(s);
 	}
 
 	if(!loopback){
 		qbwrite(ether->oq, bp);
 		ether->transmit(ether);
-	}
+	} else
+		freeb(bp);
 
 	return len;
 }

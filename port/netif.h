@@ -39,6 +39,8 @@ struct Netfile
 
 	int	type;			/* multiplexor type */
 	int	prom;			/* promiscuous mode */
+	int	bridge;			/* bridge mode */
+	int	headersonly;		/* headers only - no data */
 	uchar	maddr[8];		/* bitmask of multicast addresses requested */
 	int	nmaddr;			/* number of multicast addresses */
 

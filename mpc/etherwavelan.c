@@ -626,76 +626,87 @@ int wavelan_diag(Ether *ether, int port)
 
 int wavelan_hw_config(int base, Ether *ether)
 {
-	struct i82593_conf_block cfblk;
+	
+	/* the i82593_conf_block uses bit fields which are not
+	 * machine independent.  In particular this code does not work
+	 * on the powerPC (bigendian)
+	 */
+	if(0) {
+		struct i82593_conf_block cfblk;
 
-	memset(&cfblk, 0x00, sizeof(struct i82593_conf_block));
-	cfblk.d6mod = FALSE;	/* Run in i82593 advanced mode */
-	cfblk.fifo_limit = 6;	/* = 48 bytes rx and tx fifo thresholds */
-	cfblk.forgnesi = FALSE;	/* 0=82C501, 1=AMD7992B compatibility */
-	cfblk.fifo_32 = 0;
-	cfblk.throttle_enb = TRUE;
-	cfblk.contin = TRUE;	/* enable continuous mode */
-	cfblk.cntrxint = FALSE;	/* enable continuous mode receive interrupts */
-	cfblk.addr_len = WAVELAN_ADDR_SIZE;
-	cfblk.acloc = TRUE;	/* Disable source addr insertion by i82593 */
-	cfblk.preamb_len = 2;	/* 7 byte preamble */
-	cfblk.loopback = FALSE;
-	cfblk.lin_prio = 0;	/* conform to 802.3 backoff algoritm */
-	cfblk.exp_prio = 0;	/* conform to 802.3 backoff algoritm */
-	cfblk.bof_met = 0;	/* conform to 802.3 backoff algoritm */
-	cfblk.ifrm_spc = 6;	/* 96 bit times interframe spacing */
-	cfblk.slottim_low = 0x10 & 0x7;	/* 512 bit times slot time */
-	cfblk.slottim_hi = 0x10 >> 3;
-	cfblk.max_retr = 15;	
-	cfblk.prmisc = FALSE;	/* Promiscuous mode ?? */
-	cfblk.bc_dis = FALSE;	/* Enable broadcast reception */
-	cfblk.crs_1 = TRUE;	/* Transmit without carrier sense */
-	cfblk.nocrc_ins = FALSE; /* i82593 generates CRC */	
-	cfblk.crc_1632 = FALSE;	/* 32-bit Autodin-II CRC */
- 	cfblk.crs_cdt = FALSE;	/* CD not to be interpreted as CS */
-	cfblk.cs_filter = 0;  	/* CS is recognized immediately */
-	cfblk.crs_src = FALSE;	/* External carrier sense */
-	cfblk.cd_filter = 0;  	/* CD is recognized immediately */
-	cfblk.min_fr_len = 64 >> 2;	/* Minimum frame length 64 bytes */
-	cfblk.lng_typ = FALSE;	/* Length field > 1500 = type field */
-	cfblk.lng_fld = TRUE; 	/* Disable 802.3 length field check */
-	cfblk.rxcrc_xf = TRUE;	/* Don't transfer CRC to memory */
-	cfblk.artx = TRUE;	/* Disable automatic retransmission */
-	cfblk.sarec = TRUE;	/* Disable source addr trig of CD */
-	cfblk.tx_jabber = TRUE;	/* Disable jabber jam sequence */
-	cfblk.hash_1 = FALSE; 	/* Use bits 0-5 in mc address hash */
-	cfblk.lbpkpol = TRUE; 	/* Loopback pin active high */
-	cfblk.fdx = FALSE;	/* Disable full duplex operation */
-	cfblk.dummy_6 = 0x3f; 	/* all ones */
-	cfblk.mult_ia = FALSE;	/* No multiple individual addresses */
-	cfblk.dis_bof = FALSE;	/* Disable the backoff algorithm ?! */
-	cfblk.dummy_1 = TRUE; 	/* set to 1 */
-	cfblk.tx_ifs_retrig = 3; /* Hmm... Disabled */
-	cfblk.mc_all = FALSE;	/* No multicast all mode */	
-	cfblk.rcv_mon = 0;	/* Monitor mode disabled */
-	cfblk.frag_acpt = TRUE;/* Do not accept fragments */
-	cfblk.tstrttrs = FALSE;	/* No start transmission threshold */
-	cfblk.fretx = TRUE;	/* FIFO automatic retransmission */
-	cfblk.syncrqs = TRUE; 	/* Synchronous DRQ deassertion... */
-	cfblk.sttlen = TRUE;  	/* 6 byte status registers */
-	cfblk.rx_eop = TRUE;  	/* Signal EOP on packet reception */
-	cfblk.tx_eop = TRUE;  	/* Signal EOP on packet transmission */
-	cfblk.rbuf_size = RX_SIZE>>11;	/* Set receive buffer size */
-	cfblk.rcvstop = TRUE; 	/* Enable Receive Stop Register */
+		memset(&cfblk, 0x00, sizeof(struct i82593_conf_block));
+		cfblk.d6mod = FALSE;	/* Run in i82593 advanced mode */
+		cfblk.fifo_limit = 6;	/* = 48 bytes rx and tx fifo thresholds */
+		cfblk.forgnesi = FALSE;	/* 0=82C501, 1=AMD7992B compatibility */
+		cfblk.fifo_32 = 0;
+		cfblk.throttle_enb = TRUE;
+		cfblk.contin = TRUE;	/* enable continuous mode */
+		cfblk.cntrxint = FALSE;	/* enable continuous mode receive interrupts */
+		cfblk.addr_len = WAVELAN_ADDR_SIZE;
+		cfblk.acloc = TRUE;	/* Disable source addr insertion by i82593 */
+		cfblk.preamb_len = 2;	/* 7 byte preamble */
+		cfblk.loopback = FALSE;
+		cfblk.lin_prio = 0;	/* conform to 802.3 backoff algoritm */
+		cfblk.exp_prio = 0;	/* conform to 802.3 backoff algoritm */
+		cfblk.bof_met = 0;	/* conform to 802.3 backoff algoritm */
+		cfblk.ifrm_spc = 6;	/* 96 bit times interframe spacing */
+		cfblk.slottim_low = 0x10 & 0x7;	/* 512 bit times slot time */
+		cfblk.slottim_hi = 0x10 >> 3;
+		cfblk.max_retr = 15;	
+		cfblk.prmisc = FALSE;	/* Promiscuous mode ?? */
+		cfblk.bc_dis = FALSE;	/* Enable broadcast reception */
+		cfblk.crs_1 = TRUE;	/* Transmit without carrier sense */
+		cfblk.nocrc_ins = FALSE; /* i82593 generates CRC */	
+		cfblk.crc_1632 = FALSE;	/* 32-bit Autodin-II CRC */
+		cfblk.crs_cdt = FALSE;	/* CD not to be interpreted as CS */
+		cfblk.cs_filter = 0;  	/* CS is recognized immediately */
+		cfblk.crs_src = FALSE;	/* External carrier sense */
+		cfblk.cd_filter = 0;  	/* CD is recognized immediately */
+		cfblk.min_fr_len = 64 >> 2;	/* Minimum frame length 64 bytes */
+		cfblk.lng_typ = FALSE;	/* Length field > 1500 = type field */
+		cfblk.lng_fld = TRUE; 	/* Disable 802.3 length field check */
+		cfblk.rxcrc_xf = TRUE;	/* Don't transfer CRC to memory */
+		cfblk.artx = TRUE;	/* Disable automatic retransmission */
+		cfblk.sarec = TRUE;	/* Disable source addr trig of CD */
+		cfblk.tx_jabber = TRUE;	/* Disable jabber jam sequence */
+		cfblk.hash_1 = FALSE; 	/* Use bits 0-5 in mc address hash */
+		cfblk.lbpkpol = TRUE; 	/* Loopback pin active high */
+		cfblk.fdx = FALSE;	/* Disable full duplex operation */
+		cfblk.dummy_6 = 0x3f; 	/* all ones */
+		cfblk.mult_ia = FALSE;	/* No multiple individual addresses */
+		cfblk.dis_bof = FALSE;	/* Disable the backoff algorithm ?! */
+		cfblk.dummy_1 = TRUE; 	/* set to 1 */
+		cfblk.tx_ifs_retrig = 3; /* Hmm... Disabled */
+		cfblk.mc_all = FALSE;	/* No multicast all mode */	
+		cfblk.rcv_mon = 0;	/* Monitor mode disabled */
+		cfblk.frag_acpt = TRUE;/* Do not accept fragments */
+		cfblk.tstrttrs = FALSE;	/* No start transmission threshold */
+		cfblk.fretx = TRUE;	/* FIFO automatic retransmission */
+		cfblk.syncrqs = TRUE; 	/* Synchronous DRQ deassertion... */
+		cfblk.sttlen = TRUE;  	/* 6 byte status registers */
+		cfblk.rx_eop = TRUE;  	/* Signal EOP on packet reception */
+		cfblk.tx_eop = TRUE;  	/* Signal EOP on packet transmission */
+		cfblk.rbuf_size = RX_SIZE>>11;	/* Set receive buffer size */
+		cfblk.rcvstop = TRUE; 	/* Enable Receive Stop Register */
+		outb(PIORL(base), (TX_BASE & 0xff));
+		outb(PIORH(base), (((TX_BASE >> 8) & PIORH_MASK) | PIORH_SEL_TX));
+		outb(PIOP(base), (sizeof(struct i82593_conf_block) & 0xff));    /* lsb */
+		outb(PIOP(base), (sizeof(struct i82593_conf_block) >> 8));	/* msb */
+		outsb(PIOP(base), ((char *) &cfblk), sizeof(struct i82593_conf_block));
+	} else {
+		/*
+ 		 * The following are the values that result in the above on
+		 * the 386.  Sleazy, but these values don't change and I
+		 * don't have any docs anyway
+		 */
+		uchar buf[16] = { 0x86, 0x80, 0x2e, 0x00, 0x60, 0x00, 0xf2, 0x08,
+						  0x00, 0x40, 0xbe, 0x00, 0x3f, 0x47, 0xf1, 0x24};
 
-	outb(PIORL(base), (TX_BASE & 0xff));
-	outb(PIORH(base), (((TX_BASE >> 8) & PIORH_MASK) | PIORH_SEL_TX));
-	outb(PIOP(base), (sizeof(struct i82593_conf_block) & 0xff));    /* lsb */
-	outb(PIOP(base), (sizeof(struct i82593_conf_block) >> 8));	/* msb */
-
-// super sleazy - but it will do for now
-//	outsb(PIOP(base), ((char *) &cfblk), sizeof(struct i82593_conf_block));
-	{
-		uchar buf[16];
-		int i;
-		for(i=0; i<16; i++)
-			buf[i] = ((char *) &cfblk)[(i&~3)+(3-(i&3))];
-		outsb(PIOP(base), buf, sizeof(struct i82593_conf_block));
+		outb(PIORL(base), (TX_BASE & 0xff));
+		outb(PIORH(base), (((TX_BASE >> 8) & PIORH_MASK) | PIORH_SEL_TX));
+		outb(PIOP(base), (sizeof(buf) & 0xff));    /* lsb */
+		outb(PIOP(base), (sizeof(buf) >> 8));	/* msb */
+		outsb(PIOP(base), buf, sizeof(buf));
 	}
 
 	/* reset transmit DMA pointer */

@@ -284,10 +284,16 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 		if(f->type < 0)
 			nif->all++;
 	} else if(matchtoken(buf, "promiscuous")){
-		f->prom = 1;
-		nif->prom++;
-		if(nif->prom == 1 && nif->promiscuous != nil)
-			nif->promiscuous(nif->arg, 1);
+		if(f->prom == 0){
+			if(nif->prom == 0 && nif->promiscuous != nil)
+				nif->promiscuous(nif->arg, 1);
+			f->prom = 1;
+			nif->prom++;
+		}
+	} else if(matchtoken(buf, "bridge")){
+		f->bridge = 1;
+	} else if(matchtoken(buf, "headersonly")){
+		f->headersonly = 1;
 	} else if((p = matchtoken(buf, "addmulti")) != 0){
 		if(parseaddr(binaddr, p, nif->alen) < 0)
 			error("bad address");

@@ -513,6 +513,8 @@ portbind(Bridge *b, int argc, char *argv[])
 		devtab[ctl->type]->write(ctl, buf, strlen(buf), 0);
 		snprint(buf, sizeof(buf), "promiscuous");
 		devtab[ctl->type]->write(ctl, buf, strlen(buf), 0);
+		snprint(buf, sizeof(buf), "bridge");
+		devtab[ctl->type]->write(ctl, buf, strlen(buf), 0);
 
 		// open data port
 		port->data[0] = namec(path, Aopen, ORDWR, 0);
