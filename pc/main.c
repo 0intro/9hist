@@ -33,7 +33,7 @@ char *confval[MAXCONF];
 int nconf;
 
 /* memory map */
-#define MAXMEG 64
+#define MAXMEG 128
 char mmap[MAXMEG+2];
 
 void
@@ -425,8 +425,10 @@ confinit(void)
 	for(i = MAXMEG; i > 1; i--){
 		if(mmap[i] != 'x')
 			continue;
+/*
 		if(memclrtest(i, MB, x) < 0)
 			mmap[i] = ' ';
+ */
 		x += 0x3141526;
 	}
 
