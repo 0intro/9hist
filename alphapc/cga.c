@@ -91,7 +91,6 @@ screeninit(void)
 static void
 cgascreenputs(char* s, int n)
 {
-#ifdef notdef
 	if(!screeninitdone)
 		return;
 	if(!islo()){
@@ -109,10 +108,6 @@ cgascreenputs(char* s, int n)
 		cgascreenputc(*s++);
 
 	unlock(&cgascreenlock);
-#else
-	while(n-- > 0)
-		cgascreenputc(*s++);
-#endif /* notdef */
 }
 
 void (*screenputs)(char*, int) = cgascreenputs;

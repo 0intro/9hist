@@ -33,12 +33,6 @@ main(void)
 		arch->coreinit();
 	trapinit();
 	screeninit();
-screenputs("Hello Squidboy\n", 15);
-{ static Lock l;
-  ilock(&l);
-xxfirmware();
-  iunlock(&l);
-}
 	printinit();
 
 	/* console */
