@@ -6,12 +6,14 @@
 #include	"io.h"
 
 /*
- *	The page table is shared across all processes and processors
- *	(hence needs to be locked for updates on a multiprocessor).
+ *	We have one page table per processor.
+ *
  *	Different processes are distinguished via the VSID field in
  *	the segment registers.  As flushing the entire page table is an
  *	expensive operation, we implement an aging algorithm for
  *	mmu pids, with a background kproc to purge stale pids en mass.
+ *
+ *	This needs modifications to run on a multiprocessor.
  */
 
 static ulong	ptabsize;			/* number of bytes in page table */
@@ -58,7 +60,7 @@ mmuinit(void)
 	putsdr1(PADDR(m->ptabbase) | (ptabmask>>10));
 	m->mmupid = PIDBASE;
 	m->sweepcolor = 0;
-	m->trigcolor = 2;
+	m->trigcolor = COLMASK;
 }
 
 static int
@@ -79,7 +81,6 @@ mmusweep(void*)
 			sleep(&m->sweepr, work, nil);
 
 		sweepcolor = m->sweepcolor;
-//print("sweep %d trig %d\n", sweepcolor, m->trigcolor);
 		x = splhi();
 		p = proctab(0);
 		for(i = 0; i < conf.nproc; i++, p++)
@@ -95,7 +96,7 @@ mmusweep(void*)
 				*ptab = 0;
 			ptab += 2;
 		}
-//print("swept %d\n", sweepcolor);
+		tlbflushall();
 
 		m->sweepcolor = (sweepcolor+1) & COLMASK;
 		m->trigcolor = (m->trigcolor+1) & COLMASK;
@@ -112,8 +113,15 @@ newmmupid(void)
 		m->mmupid = PIDBASE;
 	newcolor = PIDCOLOR(m->mmupid);
 	if(newcolor != PIDCOLOR(pid)) {
-		if(newcolor == m->sweepcolor)
-			panic("ran out of pids");
+		if(newcolor == m->sweepcolor) {
+			/* desperation time.  can't block here.  punt to fault/putmmu */
+			print("newmmupid: %uld: no free mmu pids\n", up->pid);
+			if(m->mmupid == PIDBASE)
+				m->mmupid = PIDMAX;
+			else
+				m->mmupid--;
+			pid = 0;
+		}
 		else if(newcolor == m->trigcolor)
 			wakeup(&m->sweepr);
 	}
@@ -172,9 +180,13 @@ putmmu(ulong va, ulong pa, Page *pg)
 	ulong *p, *ep, *q, pteg;
 	ulong vsid, ptehi, x, hash;
 
-	mp = up->mmupid;
-	if(mp == 0)
-		panic("putmmu pid");
+	/*
+	 *	If mmupid is 0, mmuswitch/newmmupid was unable to assign us
+	 *	a pid, hence we faulted.  Keep calling sched() until the mmusweep
+	 *	proc catches up, and we are able to get a pid.
+	 */
+	while((mp = up->mmupid) == 0)
+		sched();
 
 	vsid = VSID(mp, va>>28);
 	hash = (vsid ^ (va>>12)&0xffff) & ptabmask;
@@ -189,7 +201,6 @@ putmmu(ulong va, ulong pa, Page *pg)
 		x = p[0];
 		if(x == ptehi) {
 			q = p;
-if(q[1] == pa) print("putmmu already set pte\n");
 			break;
 		}
 		if(q == nil && (x & BIT(0)) == 0)

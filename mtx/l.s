@@ -351,7 +351,9 @@ tlbflushall0:
 	TLBIE	R4
 	ADD		$BIT(19), R4
 	BDNZ	tlbflushall0
+	EIEIO
 	TLBSYNC
+	SYNC
 	RETURN
 
 TEXT	tlbflush(SB), $0
