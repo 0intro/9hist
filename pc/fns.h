@@ -131,6 +131,7 @@ void	touser(void*);
 void	trapenable(int, void (*)(Ureg*, void*), void*, char*);
 void	trapinit(void);
 int	tas(void*);
+uvlong	tscticks(uvlong*);
 ulong	umbmalloc(ulong, int, int);
 void	umbfree(ulong, int);
 ulong	umbrwmalloc(ulong, int, int);

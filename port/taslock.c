@@ -182,6 +182,8 @@ iunlock(Lock *l)
 		print("iunlock: not locked: pc %luX\n", getcallerpc(&l));
 	if(!l->isilock)
 		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
+	if(islo())
+		print("iunlock while lo: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 
 	sr = l->sr;
 	l->key = 0;
