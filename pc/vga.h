@@ -42,6 +42,7 @@ typedef struct Vgac Vgac;
 struct Vgac {
 	char	*name;
 	void	(*page)(int);
+	int	(*linear)(ulong*, ulong*, ulong*);
 
 	Vgac*	link;
 };

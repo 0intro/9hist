@@ -158,9 +158,8 @@ vgacreate(Chan*, char*, int, ulong)
 }
 
 void
-vgaclose(Chan *c)
+vgaclose(Chan*)
 {
-	USED(c);
 }
 
 static int
@@ -241,6 +240,7 @@ vgactl(char *arg)
 	char *cp, *field[4];
 	Hwgc *hwgcp;
 	Vgac *vgacp;
+	ulong mem, size, align;
 
 	n = parsefields(arg, field, 4, " ");
 	if(n < 2)
@@ -322,20 +322,20 @@ vgactl(char *arg)
 	else if(strcmp(field[0], "linear") == 0){
 		if(n < 2)
 			error(Ebadarg);
-		x = strtoul(field[1], 0, 0);
+		size = strtoul(field[1], 0, 0);
 		if(n < 3)
-			y = 0;
+			align = 0;
 		else
-			y = strtoul(field[2], 0, 0);
+			align = strtoul(field[2], 0, 0);
 
 		/* see if it fits in the usual place */
-		if(x <= Footprint){
+		if(size <= Footprint){
 			screenmem = SCREENMEM;
-			if(x == 0){
+			if(size == 0){
 				footprint = Footprint;
 				footshift = Footshift;
 			} else {
-				footprint = x;
+				footprint = size;
 				for(n = 0; n < 31; n++)
 					if((1<<n) >= footprint)
 						break;
@@ -346,24 +346,29 @@ vgactl(char *arg)
 		}
 
 		/* grab new space */
-		if(y == 0){
-			if(footprint >= x)
+		if(align == 0){
+			if(footprint >= size)
 				return;
 		} else {
 			int s, e;
 
 			s = screenmem & ~KZERO;
 			e = s + footprint;
-			s = ROUND(s, y);
-			if(e >= s + x)
+			s = ROUND(s, align);
+			if(e >= s + size)
 				return;
 		}
-		y = getspace(x, y);
-		if(y == 0)
+
+		mem = 0;
+		if(vgac->linear)
+			(*vgac->linear)(&mem, &size, &align);
+		else
+			mem = getspace(size, align);
+		if(mem == 0)
 			error("not enough free address space");
-		screenmem = y;
-		gscreen.base = (void*)y;
-		footprint = x;
+		screenmem = mem;
+		gscreen.base = (void*)screenmem;
+		footprint = size;
 		for(n = 0; n < 31; n++)
 			if((1<<n) >= footprint)
 				break;
@@ -431,16 +436,14 @@ vgabwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void
-vgaremove(Chan *c)
+vgaremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void
-vgawstat(Chan *c, char *dp)
+vgawstat(Chan*, char*)
 {
-	USED(c, dp);
 	error(Eperm);
 }
 
@@ -1011,9 +1014,8 @@ screenputs(char *s, int n)
 }
 
 static void
-nopage(int page)
+nopage(int)
 {
-	USED(page);
 }
 
 static int pos;
