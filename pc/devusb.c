@@ -1689,10 +1689,10 @@ usbread(Chan *c, void *a, long n, vlong offset)
 			free(s);
 			nexterror();
 		}
-		l = snprint(s, READSTR, "%s %d %d %d\n", devstates[d->state], d->class, d->subclass, d->proto);
+		l = snprint(s, READSTR, "%s %d.%d.%d\n", devstates[d->state], d->class, d->subclass, d->proto);
 		for(i=0; i<nelem(d->ep); i++)
 			if((e = d->ep[i]) != nil)	/* TO DO: freeze e */
-				l += snprint(s+l, READSTR-l, "%2d class 0x%2.2ux subclass 0x%2.2ux proto 0x%2.2ux bytes %10lud blocks %10lud\n", i, e->class, e->subclass, e->proto, e->nbytes, e->nblocks);
+				l += snprint(s+l, READSTR-l, "%2d %ud.%ud.%ud bytes %10lud blocks %10lud\n", i, e->class, e->subclass, e->proto, e->nbytes, e->nblocks);
 		n = readstr(offset, a, n, s);
 		poperror();
 		free(s);
