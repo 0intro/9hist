@@ -510,8 +510,9 @@ mach64xxcurload(VGAscr* scr, Cursor* curs)
 		for(i = 0; i < 16; i++){
 			if(s & (1<<(15-i)))
 				m |= 0x01<<(2*i);
-			else if(c & (1<<(15-i)))
-				;
+			else if(c & (1<<(15-i))){
+				/* noting to do */
+			}
 			else
 				m |= 0x02<<(2*i);
 		}

@@ -311,10 +311,8 @@ ns16552fifo(Uart *p, int n)
 
 	/* empty buffer and interrupt conditions */
 	for(i = 0; i < 16; i++){
-		if(uartrdreg(p, Istat))
-			;
-		if(uartrdreg(p, Data))
-			;
+		uartrdreg(p, Istat);
+		uartrdreg(p, Data);
 	}
 
 	/* turn on fifo */

@@ -1905,14 +1905,16 @@ etherelnk3reset(Ether* ether)
 			ether->mbps = 100;
 			setfullduplex(port);
 		}
-		else if(anar & 0x0200)		/* 100BASE-T4 */
-			;
+		else if(anar & 0x0200){		/* 100BASE-T4 */
+			/* nothing to do */
+		}
 		else if(anar & 0x0080)		/* 100BASE-TX */
 			ether->mbps = 100;
 		else if(anar & 0x0040)		/* 10BASE-TFD */
 			setfullduplex(port);
-		else				/* 10BASE-T */
-			;
+		else{				/* 10BASE-T */
+			/* nothing to do */
+		}
 		break;
 
 	case xcvr100BaseTX:

@@ -545,8 +545,9 @@ gc82543replenish(Ctlr* ctlr)
 	rdt = ctlr->rdt;
 	while(NEXT(rdt, Nrdesc) != ctlr->rdh){
 		rdesc = &ctlr->rdba[rdt];
-		if(ctlr->rb[rdt] != nil)
-			;
+		if(ctlr->rb[rdt] != nil){
+			/* nothing to do */
+		}
 		else if((bp = iallocb(2048)) != nil){
 			ctlr->rb[rdt] = bp;
 			rdesc->addr[0] = PCIWADDR(bp->rp);
