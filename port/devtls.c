@@ -745,11 +745,11 @@ tlsrecread(TlsRec *tr)
 	consume(&tr->unprocessed, header, RecHdrLen);
 	nconsumed = RecHdrLen;
 
-	if(tr->handin == 0 && header[0] & 0x80){
+	if((tr->handin == 0) && (header[0] & 0x80)){
 		/* Cope with an SSL3 ClientHello expressed in SSL2 record format.
 			This is sent by some clients that we must interoperate
 			with, such as Java's JSSE and Microsoft's Internet Explorer. */
-		len = (get16(header) & ~0x8000) - 5;
+		len = (get16(header) & ~0x8000) - 3;
 		type = header[2];
 		ver = get16(header + 3);
 		if(type != SSL2ClientHello || len < 22)
@@ -760,7 +760,8 @@ tlsrecread(TlsRec *tr)
 		len = get16(header+3);
 	}
 	if(ver != tr->version && (tr->verset || ver < MinProtoVersion || ver > MaxProtoVersion))
-		rcvError(tr, EProtocolVersion, "invalid version in record layer");
+		rcvError(tr, EProtocolVersion, "record layer saw ver %x, not %x/%d; %d %d",
+			ver, tr->version, tr->verset, type, len);
 	if(len > MaxRecLen || len < 0)
 		rcvError(tr, ERecordOverflow, "record message too long");
 	ensure(tr, &tr->unprocessed, len);
@@ -898,7 +899,7 @@ tlsrecread(TlsRec *tr)
 			b = padblock(b, 8);
 			b->rp[0] = RHandshake;
 			b->rp[1] = HSSL2ClientHello;
-			put24(&b->rp[2], len);
+			put24(&b->rp[2], len+3);
 			b->rp[5] = SSL2ClientHello;
 			put16(&b->rp[6], ver);
 			qbwrite(tr->handq, b);
