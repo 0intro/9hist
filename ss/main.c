@@ -477,10 +477,6 @@ confinit(void)
 		conf.nswap = 16*MB/BY2PG;
 	conf.nimage = 50;
 	conf.copymode = 0;		/* copy on write */
-	conf.ipif = 8;
-	conf.ip = 64;
-	conf.arp = 32;
-	conf.frag = 32;
 	if(cpuserver)
 		conf.nproc = 500;
 }

@@ -10,10 +10,6 @@ Conftab conftab[] = {
 	{"base0", &conf.base0 },
 	{"base1", &conf.base1 },
 	{"copymode", &conf.copymode },
-	{"ipif", &conf.ipif },
-	{"ip", &conf.ip },
-	{"arp", &conf.arp },
-	{"frag", &conf.frag },
 	{"debugger", &conf.debugger },
 	{ 0, 0 },
 };

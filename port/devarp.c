@@ -66,6 +66,11 @@ Dirtab arptab[]={
 };
 #define Narptab (sizeof(arptab)/sizeof(Dirtab))
 
+enum
+{
+	Narp=	64,	/* size of arp cache */
+};
+
 /*
  *  create a 2-level directory
  */
@@ -97,10 +102,10 @@ arpreset(void)
 {
 	Arpcache *ap, *ep;
 
-	arp = xalloc(sizeof(Arpcache) * conf.arp);
+	arp = xalloc(sizeof(Arpcache) * Narp);
 	arphash = (Arpcache **)xalloc(sizeof(Arpcache *) * Arphashsize);
 
-	ep = &arp[conf.arp];
+	ep = &arp[Narp];
 	for(ap = arp; ap < ep; ap++) {
 		ap->frwd = ap+1;
 		ap->prev = ap-1;
@@ -110,7 +115,7 @@ arpreset(void)
 
 	arp[0].prev = 0;
 	arplruhead = arp;
-	ap = &arp[conf.arp-1];
+	ap = &arp[Narp-1];
 	ap->frwd = 0;
 	arplrutail = ap;
 	newqinfo(&arpinfo);
@@ -211,7 +216,7 @@ arpread(Chan *c, void *a, long n, ulong offset)
 	switch((int)(c->qid.path&~CHDIR)){
 	case arpdataqid:
 		bytes = c->offset;
-		while(bytes < conf.arp*ARP_ENTRYLEN && n) {
+		while(bytes < Narp*ARP_ENTRYLEN && n) {
 			ap = &arp[bytes/ARP_ENTRYLEN];
 			part = bytes%ARP_ENTRYLEN;
 
@@ -388,7 +393,7 @@ arpflush(void)
 {
 	Arpcache *ap, *ep;
 
-	ep = &arp[conf.arp];
+	ep = &arp[Narp];
 	for(ap = arp; ap < ep; ap++)
 		ap->status = ARP_FREE;
 }

@@ -290,7 +290,6 @@ confinit(void)
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;
 	conf.copymode = 0;			/* copy on write */
-	conf.arp = 32;
 	conf.nfloppy = 2;
 	conf.nhard = 2;
 }

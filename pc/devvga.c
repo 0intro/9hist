@@ -652,10 +652,13 @@ atipage(int page)
 	outb(extreg, 0xb2);
 	outb(extreg+1, v);
 }
+/*
+ * The following assumes that the new mode registers have been selected.
+ */
 static void
 tridentpage(int page)
 {
-	srout(0x0e, (srin(0xe)&0xf0) | page^0x02);
+	srout(0x0e, (srin(0x0e)&0xf0) | page^0x02);
 }
 static void
 tsengpage(int page)

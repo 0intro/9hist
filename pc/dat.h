@@ -76,7 +76,6 @@ struct Conf
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
-	ulong	arp;		/* Arp table size */
 	ulong	nfloppy;	/* number of floppy drives */
 	ulong	nhard;		/* number of hard drives */
 	ulong	ldepth;		/* screen depth */

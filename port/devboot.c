@@ -114,6 +114,7 @@ bootwrite(Chan *c, void *buf, long n, ulong offset)
 	case Qboot:
 		pc = *(ulong*)buf;
 		splhi();
+		icflush(0, 64*1024);
 		gotopc(pc);
 	}
 	error(Ebadarg);

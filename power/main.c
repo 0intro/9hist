@@ -519,6 +519,8 @@ confinit(void)
 	conf.npage1 = 0;
 	conf.base1 = 0;
 
+	conf.nproc = 128 + 3*i;
+
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);
 	conf.npage0 -= ktop/BY2PG;
@@ -537,14 +539,9 @@ confinit(void)
 	/*
 	 *  set minimal default values
 	 */
-	conf.nmach = 2;
-	conf.nproc = 100;
+	conf.nmach = 1;
 	conf.nswap = 262144;
 	conf.nimage = 200;
-	conf.ipif = 8;
-	conf.ip = 64;
-	conf.arp = 32;
-	conf.frag = 32;
 
 	confread();
 
