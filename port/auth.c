@@ -542,7 +542,7 @@ keyread(char *a, int n, long offset)
 {
 	if(n<DESKEYLEN || offset != 0)
 		error(Ebadarg);
-	if(!iseve())
+	if(!cpuserver || !iseve())
 		error(Eperm);
 	memmove(a, evekey, DESKEYLEN);
 	return DESKEYLEN;

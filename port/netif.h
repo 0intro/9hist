@@ -104,7 +104,3 @@ struct Etherpkt
 };
 
 extern uchar etherbcast[6];
-
-/*
- *  FDDI specific
- */

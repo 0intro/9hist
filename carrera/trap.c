@@ -544,8 +544,6 @@ notify(Ureg *ur)
 	memmove((char*)sp, up->note[0].msg, ERRLEN);
 	sp -= 3*BY2WD;
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
-	up->svr1 = ur->r1;			/* save away r1 */
-	up->svhr1 = ur->hr1;			/* save away r1 */
 	ur->r1 = (long)up->ureg;		/* arg 1 is ureg* */
 	ur->hr1 = 0;
 	if(ur->r1 < 0)
@@ -588,8 +586,6 @@ noted(Ureg **urp, ulong arg0)
 	}
 
 	memmove(*urp, up->ureg, sizeof(Ureg));
-	(*urp)->r1 = up->svr1;
-	(*urp)->hr1 = up->svhr1;
 	switch(arg0) {
 	case NCONT:
 		if(!okaddr(nur->pc, 1, 0) || !okaddr(nur->usp, BY2WD, 0)){
