@@ -233,7 +233,7 @@ hardattach(char *spec)
 		qunlock(dp);
 		poperror();
 	}
-	return devattach('w', spec);
+	return devattach('H', spec);
 }
 
 Chan*

@@ -205,7 +205,7 @@ bootargs(ulong base)
 		sprint(buf, "local!#f/fd%ddisk", atoi(cp+3));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "hd!", 3) == 0){
-		sprint(buf, "local!#w/hd%ddisk", atoi(cp+3));
+		sprint(buf, "local!#h/hd%ddisk", atoi(cp+3));
 		av[ac++] = pusharg(buf);
 	}
 
