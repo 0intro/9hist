@@ -39,6 +39,18 @@ key(int islocal, Method *mp)
 		safeoff = 1024+850;
 	} else if(strcmp(cputype, "386") == 0 || strcmp(cputype, "alpha") == 0){
 		fd = open("#S/sdC0/nvram", ORDWR);
+		if(fd < 0){
+			fd = open("#S/sdC0/9fat", ORDWR);
+			if(fd >= 0){
+				safeoff = finddosfile(fd, "plan9.nvr");
+				if(safeoff < 0){
+					close(fd);
+					fd = -1;
+				}
+print("safeoff = %d\n", safeoff);
+				safelen = 512;
+			}
+		}
 		if(fd < 0)
 			fd = open("#S/sd00/nvram", ORDWR);
 		if(fd < 0){
