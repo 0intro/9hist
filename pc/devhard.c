@@ -623,23 +623,19 @@ hardpart(Drive *dp)
 	 *  parse partition table.
 	 */
 	n = getfields(cp->buf, line, Npart+1, '\n');
-	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) != 0){
-		goto out;
-	}
-	for(i = 1; i < n; i++){
-		pp++;
-		if(getfields(line[i], field, 3, ' ') != 3){
-			break;
+	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
+		for(i = 1; i < n; i++){
+			pp++;
+			if(getfields(line[i], field, 3, ' ') != 3)
+				break;
+			strncpy(pp->name, field[0], NAMELEN);
+			pp->start = strtoul(field[1], 0, 0);
+			pp->end = strtoul(field[2], 0, 0);
+			if(pp->start > pp->end || pp->start >= dp->p[0].end)
+				break;
+			dp->npart++;
 		}
-		strncpy(pp->name, field[0], NAMELEN);
-		pp->start = strtoul(field[1], 0, 0);
-		pp->end = strtoul(field[2], 0, 0);
-		if(pp->start > pp->end || pp->start >= dp->p[0].end){
-			break;
-		}
-		dp->npart++;
 	}
-out:
 	qunlock(cp);
 	poperror();
 }

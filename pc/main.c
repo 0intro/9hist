@@ -21,7 +21,7 @@ main(void)
 	confinit();
 	screeninit();
 	printinit();
-	print("\n\n%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
+	print("%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
 	mmuinit();
 	trapinit();
 	mathinit();

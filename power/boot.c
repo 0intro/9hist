@@ -5,9 +5,6 @@
 #define DEFSYS "bit!bootes"
 #define DEFFILE "/mips/9"
 
-char	*net;
-char	*netdev;
-
 Fcall	hdr;
 char	*scmd;
 
@@ -22,21 +19,6 @@ int cfd;
 int efd;
 int setkey;
 
-typedef
-struct address {
-	char *name;
-	char *cmd;
-} Address;
-
-Address addr[] = {
-	{ "bootes", "connect 0800690203f3" },
-	{ "helix", "connect 080069020427" },
-	{ "spindle", "connect 0800690202df" },
-	{ "r70", "connect 08002b04265d" },
-	{ "fornax", "connect 00007701d2ba" },
-	{ 0 }
-};
-
 /*
  *  predeclared
  */
@@ -45,7 +27,6 @@ void	prerror(char *);
 void	error(char *);
 void	boot(int);
 int	dkdial(char *);
-int	nonetdial(char *);
 int	bitdial(char *);
 int	preamble(int);
 void	srvcreate(char*, int);
@@ -116,75 +97,6 @@ bitdial(char *arg)
 }
 
 int
-nonetdial(char *arg)
-{
-	int efd, cfd, fd;
-	Address *a;
-	static int mounted;
-
-	for(a = addr; a->name; a++){
-		if(strcmp(a->name, arg) == 0)
-			break;
-	}
-	if(a->name == 0){
-		print("can't convert nonet address to ether address\n");
-		return -1;
-	}
-
-	if(!mounted){
-		/*
-		 *  grab a lance channel, make it recognize ether type 0x900,
-		 *  and push the nonet ethernet multiplexor onto it.
-		 */
-		efd = open("#l/ether/0/ctl", ORDWR);
-		if(efd < 0){
-			prerror("opening #l/ether/0/ctl");
-			return -1;
-		}
-		if(write(efd, "connect 0x900", sizeof("connect 0x900")-1)<0){
-			close(efd);
-			prerror("connect 0x900");
-			return -1;
-		}
-		if(write(efd, "push noether", sizeof("push noether")-1)<0){
-			close(efd);
-			prerror("push noether");
-			return -1;
-		}
-		if(write(efd, "config nonet", sizeof("config nonet")-1)<0){
-			close(efd);
-			prerror("config nonet");
-			return -1;
-		}
-		mounted = 1;
-	}
-
-	/*
-	 *  grab a nonet channel and call up the file server
-	 */
-	fd = open("#nnonet/2/data", ORDWR);
-	if(fd < 0) {
-		prerror("opening #nnonet/2/data");
-		return -1;
-	}
-	cfd = open("#nnonet/2/ctl", ORDWR);
-	if(cfd < 0){
-		close(fd);
-		prerror("opening #nnonet/2/ctl");
-		return -1;
-	}
-	if(write(cfd, a->cmd, strlen(a->cmd))<0){
-		close(cfd);
-		close(fd);
-		prerror(a->cmd);
-		return -1;
-	}
-	net = "nonet";
-	netdev = "#nnonet";
-	return fd;
-}
-
-int
 dkdial(char *arg)
 {
 	int fd;
@@ -235,8 +147,6 @@ dkdial(char *arg)
 		prerror(cmd);
 		return -1;
 	}
-	net = "dk";
-	netdev = "#k";
 	return fd;
 }
 
@@ -370,10 +280,6 @@ boot(int ask)
 			fd = hotdial(&sys[4]);
 		else if(strncmp(sys, "dk!", 3) == 0)
 			fd = dkdial(&sys[3]);
-		else if(strncmp(sys, "nonet!", 6) == 0)
-			fd = nonetdial(&sys[6]);
-		else
-			fd = nonetdial(sys);
 		if(fd >= 0)
 			break;
 		print("can't connect, retrying...\n");
@@ -391,30 +297,12 @@ boot(int ask)
 	srvcreate("bootes", fd);
 
 	print("mount...");
-	if(bind("/", "/", MREPL) < 0)
-		error("bind");
 	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
 		error("mount");
 
 	settime();
 
 	print("success\n");
-
-	if(netdev){
-		char buf[64];
-		sprint(buf, "/net/%s", net);
-		if(strcmp(netdev, "#k")==0)
-			bind(netdev, "/net", MBEFORE);
-		else
-			bind(netdev, buf, MREPL);
-		bind(buf, "/net/net", MREPL);
-	}
-	if(net){
-		char buf[64];
-		sprint(buf, "/lib/netaddr.%s", net);
-		print("binding %s onto /lib/netaddr.net\n", buf);
-		bind(buf, "/lib/netaddr.net", MREPL);
-	}
 
 	if(ask){
 		execl("/mips/init", "init", "-mc", 0);

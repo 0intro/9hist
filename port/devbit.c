@@ -1324,11 +1324,19 @@ bitloadchar(GFont *f, int ci, GSubfont *subf, int si)
 	GCacheinfo *c;
 	Rectangle rect;
 	Fontchar *fi;
+	int y;
 
 	c = &f->cache[ci];
 	fi = &subf->info[si];
-	c->top = fi->top + (f->ascent-subf->ascent);
-	c->bottom = fi->bottom + (f->ascent-subf->ascent);
+	/* careful about sign extension: top and bottom are uchars */
+	y = fi->top + (f->ascent-subf->ascent);
+	if(y < 0)
+		y = 0;
+	c->top = y;
+	y = fi->bottom + (f->ascent-subf->ascent);
+	if(y < 0)
+		y = 0;
+	c->bottom = y;
 	c->width = fi->width;
 	c->left = fi->left;
 	c->x = ci*f->width;
@@ -1340,7 +1348,12 @@ bitloadchar(GFont *f, int ci, GSubfont *subf, int si)
 	gbitblt(f->b, rect.min, f->b, rect, 0);
 	rect.min.x = fi->x;
 	rect.max.x = (fi+1)->x;
+	rect.max.y = subf->height;
 	gbitblt(f->b, Pt(c->x, f->ascent-subf->ascent), subf->bits, rect, S);
+/*
+gbitblt(&gscreen, Pt(0,0), f->b, f->b->r, S);
+gbitblt(&gscreen, Pt(0,30), f->b, Rect(c->x, 0, c->x+f->width,f->height), S);
+*/
 }
 
 QLock	bitlock;

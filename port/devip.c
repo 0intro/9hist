@@ -100,6 +100,10 @@ ipattach(char *spec)
 	Chan *c;
 	int i;
 
+	/* fail if ip is not yet configured */
+	if(Ipoutput == 0)
+		error(Enoproto);
+
 	for(i = 0; protocols[i]; i++) {
 		if(strcmp(spec, protocols[i]->name) == 0) {
 			c = devattach('I', spec);

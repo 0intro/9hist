@@ -263,9 +263,13 @@ wrenpart(int dev)
 	ulong n;
 	int i;
 
-	scsiready(dev);
-	scsisense(dev, buf);
-	if (scsicap(dev, buf))
+	if(scsiready(dev)){
+		scsisense(dev, buf);
+		if(scsiready(dev))
+			print("scsi %d.%d not ready: sense 0x%2.2ux, code 0x%2.2ux\n",
+				dev>>3, dev&7, buf[2], buf[12]);
+	}
+	if(scsicap(dev, buf))
 		error(Eio);
 	dp = &wren[dev];
 	dp->drive = dev;
@@ -301,18 +305,16 @@ wrenpart(int dev)
 	 *  parse partition table.
 	 */
 	n = getfields(rawpart, line, Npart+1, '\n');
-	if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
+	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
 			pp++;
-			if(getfields(line[i], field, 3, ' ') != 3){
+			if(getfields(line[i], field, 3, ' ') != 3)
 				break;
-			}
 			strncpy(pp->name, field[0], NAMELEN);
 			pp->start = strtoul(field[1], 0, 0);
 			pp->end = strtoul(field[2], 0, 0);
-			if(pp->start > pp->end || pp->start >= dp->p[0].end){
+			if(pp->start > pp->end || pp->start >= dp->p[0].end)
 				break;
-			}
 			dp->npart++;
 		}
 	}

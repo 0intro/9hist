@@ -316,6 +316,9 @@ dkmuxopen(Queue *q, Stream *s)
 {
 	RD(q)->ptr = s;
 	WR(q)->ptr = 0;
+
+	s->opens++;		/* Hold this queue in place */
+	s->inuse++;
 }
 
 /*
