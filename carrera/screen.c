@@ -42,7 +42,7 @@ Lock	screenlock;
 
 GBitmap	gscreen =
 {
-	Screenvirt+0x00017924,
+	Screenvirt+0x00017918,
 	0,
 	512,
 	3,
@@ -456,7 +456,7 @@ hwcursmove(int x, int y)
 
 	d = DAC;
 
-	x += 379;		/* adjusted by experiment */
+	x += 371;		/* adjusted by experiment */
 	y += 11;		/* adjusted by experiment */
 	d->cr1 = 03;
 	d->cr0 = 01;

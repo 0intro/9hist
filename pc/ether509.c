@@ -445,6 +445,16 @@ tcm509(Ether *ether)
 {
 	USED(ether);
 	return 0;
+
+#ifdef notdef
+	ulong port;
+	Adapter *ap;
+
+	while(port = activate()){
+	}
+
+	return 0;
+#endif /* notdef */
 }
 
 static ulong
