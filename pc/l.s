@@ -127,7 +127,7 @@ _clearbss:
 	ADDL	$(MACHSIZE-4), SP		/* initialise stack */
 
 /*
- * Need to do one final thing to ensure a clean machine enviroment,
+ * Need to do one final thing to ensure a clean machine environment,
  * clear the EFLAGS register, which can only be done once there is a stack.
  */
 	MOVL	$0, AX
