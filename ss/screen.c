@@ -20,7 +20,19 @@ struct{
 	int	bwid;
 }out;
 
-void	(*kprofp)(ulong);
+static ulong	rep(ulong, int);
+void		(*kprofp)(ulong);
+
+/* Brooktree 458/451 */
+typedef struct	DAC DAC;
+struct DAC
+{
+	uchar	pad[16];
+	ulong	dacaddr;	/* DAC address register */
+	ulong	daccolor;	/* DAC color palette */
+	ulong	daccntrl;	/* DAC control register */
+	ulong	dacovrl;	/* DAC overlay palette */
+}*dac;
 
 GBitmap gscreen;
 
@@ -30,10 +42,11 @@ struct screens
 	int	x;
 	int	y;
 	int	ld;
+	ulong	dacaddr;
 }screens[] = {
-	{ "bwtwo", 1152, 900, 0 },
-	{ "cgsix", 1152, 900, 3 },
-	{ "cgthree", 1152, 900, 3 },
+	{ "bwtwo", 1152, 900, 0, 0x400000 },
+	{ "cgsix", 1152, 900, 3, 0x400000 },
+	{ "cgthree", 1152, 900, 3, 0x200000 },
 	0
 };
 
@@ -43,7 +56,9 @@ void
 screeninit(char *str)
 {
 	struct screens *s;
-	ulong n;
+	ulong n, r, g, b;
+	int i;
+	int havecol;
 
 	for(s=screens; s->type; s++)
 		if(strcmp(s->type, str) == 0)
@@ -70,6 +85,57 @@ screeninit(char *str)
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
+	dac = (DAC*)kmappa(FRAMEBUF+s->dacaddr, PTENOCACHE|PTEIO);
+	if(gscreen.ldepth == 3){
+		havecol = 0;	
+		if(havecol) {
+			/*
+			 * For now, just use a fixed colormap, where pixel i is
+			 * regarded as 3 bits of red, 3 bits of green, and 2 bits of blue.
+			 * Intensities are inverted so that 0 means white, 255 means black.
+			 * Exception: pixels 85 and 170 are set to intermediate grey values
+			 * so that 2-bit grey scale images will look ok on this screen.
+			 */
+			for(i = 0; i<256; i++) {
+				r = ~rep((i>>5) & 7, 3);
+				g = ~rep((i>>2) & 7, 3);
+				b = ~rep(i & 3, 2);
+				setcolor(i, r, g, b);
+			}
+			setcolor(85, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
+			setcolor(170, 0x55555555, 0x55555555, 0x55555555);
+		} else {
+dac->dacaddr = 4;
+dac->daccntrl = 0xFF;
+dac->dacaddr = 5;
+dac->daccntrl = 0x00;
+dac->dacaddr = 6;
+dac->daccntrl = 0x40;
+dac->dacaddr = 7;
+dac->daccntrl = 0x00;
+
+			dac->dacaddr = 0;
+			for(i=0; i<252; i+=4) {
+				dac->daccolor = ~rep(i,8);
+				dac->daccolor = ~rep(i,8);
+				dac->daccolor = ~rep(i,8);
+			}
+
+/*
+			for(i = 0; i<256; i++)
+				setcolor(i, ~rep(i,8), ~rep(i,8), ~rep(i,8));
+*/
+		}
+	}
+}
+
+void
+mapdump(void)
+{
+	int i;
+	dac->dacaddr = 0;
+	for(i=0; i<100; i++)
+		print("%lux ", dac->daccolor);
 }
 
 void
@@ -128,11 +194,12 @@ screenputs(char *s, int n)
 
 /*
  * Map is indexed by keyboard char, output is ASCII.
- * Gnotisms: Return sends newline and Line Feed sends carriage return.
+ * Plan 9-isms:
+ * Return sends newline and Line Feed sends carriage return.
  * Delete and Backspace both send backspace.
  * Num Lock sends delete (rubout).
  * Alt Graph is VIEW (scroll).
- * Compose builds Latin-1 characters.
+ * Compose builds Unicode characters.
  */
 uchar keymap[128] = {
 /*	00    L1    02    L2    04    F1    F2    07	*/
@@ -393,24 +460,45 @@ screenbits(void)
 void
 getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 {
+	uchar r, g, b;
 	ulong ans;
 
 	/*
 	 * The slc monochrome says 0 is white (max intensity)
 	 */
-	if(p == 0)
-		ans = ~0;
-	else
-		ans = 0;
-	*pr = *pg = *pb = ans;
+	if(1 || gscreen.ldepth == 0) {
+		if(p == 0)
+			ans = ~0;
+		else
+			ans = 0;
+		*pr = *pg = *pb = ans;
+	} else {
+		*(uchar *)&dac->dacaddr = p & 0xFF;
+		r = *(uchar *)&dac->daccolor;
+		g = *(uchar *)&dac->daccolor;
+		b = *(uchar *)&dac->daccolor;
+		*pr = (r<<24) | (r<<16) | (r<<8) | r;
+		*pg = (g<<24) | (g<<16) | (g<<8) | g;
+		*pb = (b<<24) | (b<<16) | (b<<8) | b;
+	}
 }
 
 
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
-	USED(p, r, g, b);
-	return 0;	/* can't change mono screen colormap */
+	if(1 || gscreen.ldepth == 0)
+		return 0;	/* can't change mono screen colormap */
+	else {
+		/* perhaps not reliable unless done while vertical blanking ? */
+		*(uchar *)&dac->dacaddr = p & 0xFF;
+/*
+		*(uchar *)&dac->daccolor = r >> 24;
+		*(uchar *)&dac->daccolor = g >> 24;
+		*(uchar *)&dac->daccolor = b >> 24;
+*/
+		return 1;
+	}
 }
 
 int
@@ -431,4 +519,17 @@ void
 mouseclock(void)	/* called splhi */
 {
 	mouseupdate(1);
+}
+
+/* replicate (from top) value in v (n bits) until it fills a ulong */
+static ulong
+rep(ulong v, int n)
+{
+	int o;
+	ulong rv;
+
+	rv = 0;
+	for(o = 32 - n; o >= 0; o -= n)
+		rv |= (v << o);
+	return rv;
 }

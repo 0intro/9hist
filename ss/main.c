@@ -140,6 +140,7 @@ init0(void)
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
 	print("frame buffer id %lux %s\n", conf.monitor, fbstr);
 	print("NKLUDGE %d\n", NKLUDGE);
+mapdump();
 
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
@@ -288,44 +289,69 @@ confinit(void)
 	putw4(va, PPN(EEPROM)|PTEPROBEIO);
 	memmove(idprom, (char*)(va+0x7d8), 32);
 	if(idprom[0]!=1 || (idprom[1]&0xF0)!=0x50)
-		*(ulong*)va = 0;
+		*(ulong*)va = 0;	/* not a sparcstation; die! */
 	putw4(va, INVALIDPTE);
 
-	/* map frame buffer id; we expect it to be in SBUS slot 3 */
-	putw4(va, ((FRAMEBUFID>>PGSHIFT)&0xFFFF)|PTEPROBEIO);
-	conf.monitor = 0;
-	/* if frame buffer not present, we will trap, so prepare to catch it */
-	if(setlabel(&catch) == 0){
-		conf.monitor = *(ulong*)va;
-		switch(conf.monitor){
-		case 0xFE010101:
-			strcpy(fbstr, "cgthree");
-			break;
-		case 0xFE010104:
-			strcpy(fbstr, "bwtwo");
-			break;
+	/*
+	 * Look for a frame buffer.  This isn't done the way the
+	 * ROM does it.  Instead we ask if we know the machine type
+	 * and just use the builtin frame buffer if we can.  Otherwise
+	 * we just look in slot 3 which is where it usually is.
+	 * The ROM scans the slots in a specified order and uses
+	 * the first one it finds.  Too much bother.
+	 *
+	 * If we find a frame buffer, we always use it as a console
+	 * rather than the attached terminal, if any.  This means
+	 * if you have a frame buffer you'd better have a builtin
+	 * keyboard, too.
+	 */
+	switch(idprom[1]){
+	case 0x52:	/* IPC */
+	case 0x54:	/* SLC */
+		conf.monitor = 1;
+		strcpy(fbstr, "bwtwo");
+		break;
+	case 0x57:	/* IPX */
+		conf.monitor = 1;
+		strcpy(fbstr, "cgsix");
+		break;
+	default:
+		/* map frame buffer id in SBUS slot 3 */
+		putw4(va, ((FRAMEBUFID>>PGSHIFT)&0xFFFF)|PTEPROBEIO);
+		conf.monitor = 0;
+		/* if frame buffer not present, we will trap, so prepare to catch it */
+		if(setlabel(&catch) == 0){
+			conf.monitor = *(ulong*)va;
+			switch(conf.monitor){
+			case 0xFE010101:
+				strcpy(fbstr, "cgthree");
+				break;
+			case 0xFE010104:
+				strcpy(fbstr, "bwtwo");
+				break;
+			}
+			if(fbstr[0] == 0){
+				j = *(ulong*)(va+4);
+				if(j > BY2PG-8)
+					j = BY2PG - 8;	/* -8 for safety */
+				for(i=0; i<j && fbstr[0]==0; i++)
+					switch(*(uchar*)(va+i)){
+					case 'b':
+						if(strncmp((char*)(va+i), "bwtwo", 5) == 0)
+							strcpy(fbstr, "bwtwo");
+						break;
+					case 'c':
+						if(strncmp((char*)(va+i), "cgthree", 7) == 0)
+							strcpy(fbstr, "cgthree");
+						if(strncmp((char*)(va+i), "cgsix", 5) == 0)
+							strcpy(fbstr, "cgsix");
+						break;
+					}
+			}
 		}
-		if(fbstr[0] == 0){
-			j = *(ulong*)(va+4);
-			if(j > BY2PG-8)
-				j = BY2PG - 8;	/* -8 for safety */
-			for(i=0; i<j && fbstr[0]==0; i++)
-				switch(*(uchar*)(va+i)){
-				case 'b':
-					if(strncmp((char*)(va+i), "bwtwo", 5) == 0)
-						strcpy(fbstr, "bwtwo");
-					break;
-				case 'c':
-					if(strncmp((char*)(va+i), "cgthree", 7) == 0)
-						strcpy(fbstr, "cgthree");
-					if(strncmp((char*)(va+i), "cgsix", 5) == 0)
-						strcpy(fbstr, "cgsix");
-					break;
-				}
-		}
+		catch.pc = 0;
+		putw4(va, INVALIDPTE);
 	}
-	catch.pc = 0;
-	putw4(va, INVALIDPTE);
 
 	for(sparam = sysparam; sparam->id; sparam++)
 		if(sparam->id == idprom[1])

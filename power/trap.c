@@ -161,9 +161,10 @@ trap(Ureg *ur)
 			if(ecode == FPEXC)
 				print("fp: %s\n", fpexcname(ur, fcr31, buf1));
 			dumpregs(ur);
+			dumpstack();
 			if(m->machno == 0)
 				spllo();
-			exit();
+			exit(1);
 		}
 	}
 

@@ -38,6 +38,7 @@ faultsparc(Ureg *ur)
 		dumpregs(ur);
 		panic("fault u==0 pc=%lux addr=%lux", ur->pc, addr);
 	}
+
 /*	addr &= VAMASK; /**/
 	badvaddr = addr;
 	addr &= ~(BY2PG-1);

@@ -1,3 +1,4 @@
+#define	FRAMEBUF	0xFE000000
 #define	FRAMEBUFID	0xFE000000
 #define	DISPLAYRAM	0xFE800000
 #define	EPROM		0xF6000000
@@ -89,7 +90,7 @@ typedef struct SCSIdev	SCSIdev;
 struct SCSIdev {
 	uchar	countlo;		/* byte count, low bits */
 	uchar	pad1[3];
-	uchar	counthi;		/* byte count, hi bits */
+	uchar	countmi;		/* byte count, middle bits */
 	uchar	pad2[3];
 	uchar	fifo;			/* data fifo */
 	uchar	pad3[3];
@@ -105,12 +106,20 @@ struct SCSIdev {
 			uchar	pad07[3];
 			uchar	fflags;		/* fifo flags */
 			uchar	pad08[3];
-			uchar	config;		/* configuration */
+			uchar	config;		/* RW: configuration */
 			uchar	pad09[3];
 			uchar	Reserved1;
 			uchar	pad0A[3];
 			uchar	Reserved2;
 			uchar	pad0B[3];
+			uchar	conf2;		/* RW: configuration */
+			uchar	pad0C[3];
+			uchar	conf3;		/* RW: configuration */
+			uchar	pad0D[3];
+			uchar	partid;		/* unique part id */
+			uchar	pad0E[3];
+			uchar	fbottom;	/* RW: fifo bottom */
+			uchar	pad0F[3];
 		};
 		struct {		/* write only... */
 			uchar	destid;		/* destination id */
@@ -121,12 +130,20 @@ struct SCSIdev {
 			uchar	pad17[3];
 			uchar	syncoffset;	/* synchronous xfr offset */
 			uchar	pad18[3];
-			uchar	XXX;
+			uchar	RW0;
 			uchar	pad19[3];
 			uchar	clkconf;
 			uchar	pad1A[3];
 			uchar	test;	
 			uchar	pad1B[3];
+			uchar	RW1;
+			uchar	pad1C[3];
+			uchar	RW2;
+			uchar	pad1D[3];
+			uchar	counthi;	/* byte count, hi bits */
+			uchar	pad1E[3];
+			uchar	RW3;
+			uchar	pad1F[3];
 		};
 	};
 };

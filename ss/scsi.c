@@ -47,13 +47,11 @@ scsialloc(ulong n)
 	return b;
 }
 
-/*
- *	NCR 53C90 commands
- */
+enum {
+	ResetIntDis	= 0x40,		/* config regsiter */
+	Penable		= 0x10,
 
-enum
-{
-	Dma		= 0x80,
+	Dma		= 0x80,		/* NCR 53C90 commands */
 	Nop		= 0x00,
 	Flush		= 0x01,
 	Reset		= 0x02,
@@ -73,12 +71,29 @@ struct {
 	SCSIdev *scsi;
 } ioaddr;
 
+static void
+scsibusreset(void)
+{
+	SCSIdev *dev = ioaddr.scsi;
+	int s;
+	uchar intr;
+
+	s = splhi();
+	dev->config |= ResetIntDis;
+	dev->cmd = Busreset;
+	dev->config &= ~ResetIntDis;
+	intr = dev->intr;
+	USED(intr);
+	splx(s);
+}
+
 void
 resetscsi(void)
 {
 	SCSIdev *dev;
 	DMAdev *dma;
 	KMap *k;
+	uchar intr;
 
 	k = kmappa(DMA, PTENOCACHE|PTEIO);
 	ioaddr.dma = (DMAdev*)k->va;
@@ -88,24 +103,43 @@ resetscsi(void)
 	dev = ioaddr.scsi;
 	dma = ioaddr.dma;
 
-	dev->cmd = Reset;
-	dev->cmd = Dma|Nop;			/* 2 are necessary */
-	dev->cmd = Dma|Nop;
-
-	dev->countlo = 0;
-	dev->counthi = 0;
-	dev->timeout = 146;
-	dev->syncperiod = 0;
-	dev->syncoffset = 0;
-	dev->config = 0x10|(scsiownid&7);
-	dev->cmd = Dma|Nop;
-
 	dma->csr = Dma_Reset;
 	delay(1);
 	dma->csr = Int_en;
 	dma->count = 0;
 
 	dmatype = (dma->csr>>28) & 0xF;
+
+	/*
+	 * try to determine chip type
+	dev->conf2 = 0;
+	dev->conf2 = 0x0A;
+	delay(1);
+	if((dev->conf2 & 0x0F) == 0x0A){
+		dev->conf3 = 0;
+		dev->conf3 = 0x05;
+		delay(1);
+		if(dev->conf3 == 0x05)
+			print("scsi type ESP236\n");
+		else
+			print("scsi type ESP100A\n");
+	}
+	else
+		print("scsi type NCR53C90\n");
+	 */
+
+	dev->cmd = Reset;
+	dev->cmd = Dma|Nop;			/* 2 are necessary for some chips */
+	dev->cmd = Dma|Nop;
+
+	dev->clkconf = 4;			/* BUG: 20MHz */
+	dev->timeout = 160;			/* BUG: magic */
+	dev->syncperiod = 0;
+	dev->syncoffset = 0;
+	dev->config = Penable|(scsiownid&7);
+
+	intr = dev->intr;
+	USED(intr);
 
 	putenab(getenab()|ENABDMA); /**/
 }
@@ -141,8 +175,8 @@ scsiexec(Scsi *p, int rflag)
 	dma->csr = Dma_Flush|Int_en;
 	dma->addr = (ulong)p->data.ptr;
 
-	dev->counthi = 0;
 	dev->countlo = 0;
+	dev->countmi = 0;
 	dev->cmd = Dma|Nop;
 	dev->cmd = Flush;			/* clear scsi fifo */
 
@@ -151,8 +185,8 @@ scsiexec(Scsi *p, int rflag)
 
 	dev->destid = p->target&7;
 	n = p->data.lim - p->data.ptr;
-	dev->counthi = n>>8;
 	dev->countlo = n;
+	dev->countmi = n>>8;
 	dev->cmd = Dma|Nop;
 
 	dma->csr = Int_en;
@@ -164,20 +198,6 @@ scsiexec(Scsi *p, int rflag)
 	poperror();
 	qunlock(&scsilock);
 	return p->status;
-}
-
-
-void
-scsibusreset(void)
-{
-	SCSIdev *dev = ioaddr.scsi;
-	int s;
-
-	s = splhi();
-	dev->cmd = Nop;
-	dev->cmd = Busreset;
-	dev->cmd = Nop;
-	splx(s);
 }
 
 static void
@@ -251,7 +271,7 @@ scsiintr(void)
 
 	case 0x41:	/* data transfer, if any, is finished */
 		p->status = 0x4600;
-		p->data.ptr = p->data.lim - ((dev->counthi<<8)|dev->countlo);
+		p->data.ptr = p->data.lim - ((dev->countmi<<8)|dev->countlo);
 		if((status & 0x07) != 3){
 			scsimoan("weird phase after xfr",
 				status, intr, csr);
@@ -303,12 +323,12 @@ scsidump(void)
 
 	print("\nscsi:\n");
 	print("	countlo=0x%2.2ux\n", dev->countlo);
-	print("	counthi=0x%2.2ux\n", dev->counthi);
+	print("	countmi=0x%2.2ux\n", dev->countmi);
 	print("	cmd    =0x%2.2ux\n", dev->cmd);
 	print("	status =0x%2.2ux\n", dev->status);
 	print("	intr   =0x%2.2ux\n", dev->intr);
 	print("	step   =0x%2.2ux\n", dev->step);
-	print("	fflags =0x%2.2ux\n", dev->countlo);
+	print("	fflags =0x%2.2ux\n", dev->fflags);
 	print("	config =0x%2.2ux\n", dev->config);
 	print("dma:\n");
 	print("	csr    =0x%8.8ux\n", dma->csr);

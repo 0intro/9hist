@@ -163,7 +163,7 @@ mmuinit(void)
 			putcxsegm(c, KZERO+i*BY2SEGM, i);
 
 	kmapalloc.lowpmeg = i;
-	if(PADDR(ktop) & (BY2SEGM-1))
+	if(ktop & (BY2SEGM-1))
 		kmapalloc.lowpmeg++;
 
 	/*
@@ -196,11 +196,11 @@ mmuinit(void)
 		putsegm(ROMSEGM, ROMPMEG);
 		if(c == 0){
 			pte = PTEVALID|PTEKERNEL|PTENOCACHE|
-				PTEIO|((EPROM>>PGSHIFT)&0xFFFF);
+				PTEIO|PPN(EPROM);
 			for(i=0; i<PG2ROM; i++)
-				putpmeg(IOSEGM0+i*BY2PG, pte+i);
+				putpmeg(ROMSEGM+i*BY2PG, pte+i);
 			for(; i<PG2SEGM; i++)
-				putpmeg(IOSEGM0+i*BY2PG, INVALIDPTE);
+				putpmeg(ROMSEGM+i*BY2PG, INVALIDPTE);
 		}
 		/*
 		 * Segments for IO and kmap
@@ -214,7 +214,6 @@ mmuinit(void)
 	}
 	putcontext(0);
 	NKLUDGE = ((TOPPMEG-kmapalloc.lowpmeg)/conf.ncontext);
-if(NKLUDGE>11)NKLUDGE=11;
 }
 
 void
