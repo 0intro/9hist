@@ -145,7 +145,6 @@ sdinit(void)
 			break;
 		}
 	}
-	print("sd out\n");
 }
 
 Chan*
