@@ -865,6 +865,9 @@ ataread(Chan* c, void* a, long n, vlong off)
 	}
 	pp = &dp->p[PART(c->qid.path)];
 
+	if(off < 0)
+		error(Ebadarg);
+
 	buf = smalloc(Maxxfer);
 	if(waserror()){
 		free(buf);
@@ -934,6 +937,9 @@ atawrite(Chan *c, void *a, long n, vlong off)
 		}
 	}
 	pp = &dp->p[PART(c->qid.path)];
+
+	if(off < 0)
+		error(Ebadarg);
 
 	buf = smalloc(Maxxfer);
 	if(waserror()){
