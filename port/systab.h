@@ -26,7 +26,7 @@ Syscall sysrfork;
 Syscall syswrite;
 Syscall syspipe;
 Syscall syscreate;
-Syscall sys_x3;
+Syscall syspath;
 Syscall sysbrk_;
 Syscall sysremove;
 Syscall syswstat;
@@ -66,7 +66,7 @@ Syscall *systab[]={
 	[WRITE]		syswrite,
 	[PIPE]		syspipe,
 	[CREATE]	syscreate,
-	[_X3]		sysdeath,
+	[PATH]		syspath,
 	[BRK_]		sysbrk_,
 	[REMOVE]	sysremove,
 	[WSTAT]		syswstat,
@@ -106,7 +106,7 @@ char *sysctab[]={
 	[WRITE]		"Write",
 	[PIPE]		"Pipe",
 	[CREATE]	"Create",
-	[_X3]		"_x3",
+	[PATH]		"Path",
 	[BRK_]		"Brk",
 	[REMOVE]	"Remove",
 	[WSTAT]		"Wstat",

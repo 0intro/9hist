@@ -85,6 +85,21 @@ openmode(ulong o)
 }
 
 long
+syspath(ulong *arg)
+{
+	Chan *c;
+
+	validaddr(arg[1], 1, 0);
+	if(vmemchr((char*)arg[1], '\0', arg[2]) == 0)
+		error(Ebadarg);
+
+	c = fdtochan(arg[0], -1, 0, 0);
+
+	ptpath(c->path, (char*)arg[1], arg[2]);
+	return 0;
+}
+
+long
 syspipe(ulong *arg)
 {
 	int fd[2];

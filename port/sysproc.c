@@ -12,10 +12,8 @@ int	shargs(char*, int, char**);
 long
 sysr1(ulong *arg)
 {
-	Chan *c;
-
-	c = fdtochan(arg[0], -1, 0, 0);
-	ptpath(c->path, (char*)arg[1], arg[2]);
+	xsummary();
+	print("[%s %s %d] r1 = %d\n", up->user, up->text, up->pid, arg[0]);
 	return 0;
 }
 
