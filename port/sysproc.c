@@ -16,9 +16,6 @@ sysr1(ulong *arg)
 {
 	long a;
 
-extern int devdebug;
-devdebug = !devdebug;
-
 	a = *arg;
 	if(a > 0)
 		return incref(&sysr1ref);

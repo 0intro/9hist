@@ -82,7 +82,6 @@ devdir(Chan *c, Qid qid, char *n, vlong length, char *user, long perm, Dir *db)
 /*
  * the zeroth element of the table MUST be the directory itself for ..
 */
-int devdebug;
 int
 devgen(Chan *c, char*, Dirtab *tab, int ntab, int i, Dir *dp)
 {
