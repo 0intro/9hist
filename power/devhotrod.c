@@ -25,7 +25,7 @@ ulong	testbuf[NTESTBUF];
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
  */
-#define	ENABCKSUM	0
+#define	ENABCKSUM	1
 
 typedef struct Hotrod	Hotrod;
 
@@ -278,6 +278,7 @@ hotrodread(Chan *c, void *buf, long n)
 			 *  use supplied buffer, no need to lock for reply
 			 */
 			isflush = 0;
+memset(buf, 0, n);
 			mp = &((User*)(u->p->upage->pa|KZERO))->khot;
 			if(mp->abort){	/* use reserved flush msg */
 				mp = &((User*)(u->p->upage->pa|KZERO))->fhot;
@@ -313,11 +314,21 @@ hotrodread(Chan *c, void *buf, long n)
 			if(mp->param[2] != hotsum(buf, m, mp->param[2])){
 				hp->addr->error++;
 				print("hotrod cksum err is %lux sb %lux\n",
-					hotsum(buf, n, 1), mp->param[2]);
-{int i; for(i=0; i<8; i++) print("%lux\n", ((ulong*)buf)[i]); }
+					hotsum(buf, m, 1), mp->param[2]);
+				print("addr %lux\n", ((char*)buf)+m);
+				{
+					int i;
+					ulong *p = buf;
+					for(i=2; i<m/4; i++)
+						if(p[i] != i-2)
+							print("%d sb %d %lux %lux\n", p[i], i-2, p[i], &p[i]);
+				}
 				error(Eio);
 			}
-			if(!isflush)
+			mp->abort = 0;
+			if(isflush)
+				u->khot.abort = 0;	/* flushed message's done too */
+			else
 				poperror();
 		}else{
 			/*
@@ -347,12 +358,13 @@ hotrodread(Chan *c, void *buf, long n)
 			if(mp->param[2] != hotsum((ulong*)hp->buf, m, mp->param[2])){
 				hp->addr->error++;
 				print("hotrod cksum err is %lux sb %lux\n",
-					hotsum((ulong*)hp->buf, n, 1), mp->param[2]);
+					hotsum((ulong*)hp->buf, m, 1), mp->param[2]);
 				qunlock(&hp->buflock);
 {int i; for(i=0; i<8; i++) print("%lux\n", ((ulong*)buf)[i]); }
 				error(Eio);
 			}
 			memmove(buf, hp->buf, m);
+			mp->abort = 0;
 			qunlock(&hp->buflock);
 		}
 		return m;
@@ -383,6 +395,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 			 * use supplied buffer, no need to lock for reply
 			 */
 			mp = &((User*)(u->p->upage->pa|KZERO))->khot;
+			mp->wtype = ((char*)buf)[0];
 			if(mp->abort)	/* use reserved flush msg */
 				mp = &((User*)(u->p->upage->pa|KZERO))->fhot;
 			qlock(hp);
@@ -397,6 +410,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 			 * use hotrod buffer.  lock the buffer until the reply
 			 */
 			mp = &((User*)(u->p->upage->pa|KZERO))->uhot;
+			mp->wtype = ((char*)buf)[0];
 			qlock(&hp->buflock);
 			qlock(hp);
 			memmove(hp->buf, buf, n);

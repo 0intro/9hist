@@ -98,8 +98,9 @@ struct Hotmsg
 	ulong	cmd;
 	ulong	param[5];
 	Rendez	r;
-	short	intr;			/* flag: interrupt has occurred */
-	short	abort;			/* flag: don't interrupt */
+	uchar	intr;			/* flag: interrupt has occurred */
+	uchar	abort;			/* flag: don't interrupt */
+	uchar	wtype;			/* type of last message written */
 };
 
 #define	CHDIR	0x80000000L
