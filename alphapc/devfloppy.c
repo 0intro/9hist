@@ -842,6 +842,7 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
 	 */
 delay(10);
 print("msr 0x%2.2uX\n", inb(Pmsr));
+xdmastatus(DMAchan);
 	floppywait();
 	dmaend(DMAchan);
 	poperror();

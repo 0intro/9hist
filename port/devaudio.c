@@ -711,7 +711,7 @@ audioinit(void)
 
 	sbconf.port = 0x220;
 	sbconf.dma = Dma;
-	sbconf.irq = 7;
+	sbconf.irq = IrqAUDIO;
 	if(isaconfig("audio", 0, &sbconf) == 0)
 		return;
 	if(cistrcmp(sbconf.type, "sb16") != 0 && cistrcmp(sbconf.type, "ess1688") != 0)

@@ -274,6 +274,7 @@ char *confname[] =
 {
 	"ether0",
 	"scsi0",
+	"audio0",
 
 };
 
@@ -281,6 +282,7 @@ char *confval[] =
 {
 	"type=21140",
 	"type=aic7xxx",
+	"type=sb16",
 };
 
 int	nconf = nelem(confname);

@@ -107,6 +107,36 @@ outb(dp->mc, 0);
 	return 0;
 }
 
+static void
+dmastatus(DMA *dp, int chan)
+{
+	int a, l, s;
+
+	ilock(dp);
+	outb(dp->cbp, 0);
+	a = inb(dp->addr[chan]);
+	a |= inb(dp->addr[chan])<<8;
+	a |= inb(dp->page[chan])<<16;
+	a |= inb(0x400|dp->page[chan])<<24;
+	outb(dp->cbp, 0);
+	l = inb(dp->count[chan]);
+	l |= inb(dp->count[chan])<<8;
+	s = inb(dp->cmd);
+	iunlock(dp);
+	print("addr %uX len %uX stat %uX\n", a, l, s);
+}
+
+void
+xdmastatus(int chan)
+{
+	DMA *dp;
+
+	dp = &dma[(chan>>2)&1];
+	chan = chan & 3;
+
+	dmastatus(dp, chan);
+}
+
 /*
  *  setup a dma transfer.  if the destination is not in kernel
  *  memory, allocate a page for the transfer.
@@ -174,11 +204,12 @@ dmasetup(int chan, void *va, long len, int isread)
 #ifdef tryPCI
 	outb(0x400|dp->page[chan], pa>>24);
 #endif /* tryPCI */
+	outb(dp->cbp, 0);		/* set count & address to their first byte */
 	outb(dp->count[chan], (len>>dp->shift)-1);		/* set count */
 	outb(dp->count[chan], ((len>>dp->shift)-1)>>8);
 	outb(dp->sbm, chan);		/* enable the channel */
 	iunlock(dp);
-//print("pa%lux+", pa);
+dmastatus(dp, chan);
 
 	return len;
 }
@@ -210,21 +241,13 @@ dmaend(int chan)
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
 
+dmastatus(dp, chan);
 	/*
 	 *  disable the channel
 	 */
 	ilock(dp);
 	outb(dp->sbm, 4|chan);
 	iunlock(dp);
-
-{ int i;
-outb(dp->cbp, 0);
-i = inb(dp->addr[chan]);
-i |= inb(dp->addr[chan])<<8;
-i |= inb(dp->page[chan])<<16;
-i |= inb(0x400|dp->page[chan])<<24;
-//print("X%uX+", i);
-}
 
 	xp = &dp->x[chan];
 	if(xp->len == 0 || !xp->isread)
