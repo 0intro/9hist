@@ -483,6 +483,14 @@ mpinit(void)
 	e = ((uchar*)pcmp)+pcmp->length;
 	while(p < e) switch(*p){
 
+	default:
+		print("mpinit: unknown PCMP type 0x%uX (e-p 0x%uX)\n", *p, e-p);
+		while(p < e){
+			print("%uX ", *p);
+			p++;
+		}
+		break;
+
 	case PcmpPROCESSOR:
 		if(apic = mkprocessor((PCMPprocessor*)p)){
 			/*
