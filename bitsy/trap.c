@@ -71,8 +71,10 @@ trapinit(void)
 	 */
 	doze = xspanalloc(12*sizeof(long), 16, 0);
 	memmove(doze, _doze, 12*sizeof(long));
+#ifdef notdef
 	hibernate = xspanalloc(8*sizeof(long), 16, 0);
 	memmove(hibernate, _hibernate, 8*sizeof(long));
+#endif
 	wbflush();
 
 	/* use exception vectors at 0xFFFF0000 */

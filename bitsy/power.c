@@ -14,6 +14,7 @@
  * it's only used by routines in l.s
  */
 ulong	power_state[200/4];
+ulong	resumeaddr[1];
 Rendez	powerr;
 ulong	powerflag = 0;	/* set to start power-off sequence */
 
@@ -28,6 +29,7 @@ Intrregs savedintrregs;
 #define R(p) ((Uartregs*)((p)->regs))
 
 uchar *savedtext;
+
 
 static void
 checkflash(void)
@@ -164,16 +166,20 @@ void
 deepsleep(void) {
 	static int power_pl;
 	ulong xsp, xlink, mecr;
+	extern void power_resume(void);
 
 	power_pl = splhi();
 	xlink = getcallerpc(&xlink);
+
+	*resumeaddr = (ulong) power_resume;
+//	*resumeaddr = nil;
 	/* Power down */
 	irpower(0);
 	audiopower(0);
 	screenpower(0);
 	µcpower(0);
 	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%ux\n", &xsp, xlink, power_pl);
-	dumpitall();
+//	dumpitall();
 	delay(1000);
 	uartpower(0);
 	rs232power(0);
@@ -189,7 +195,7 @@ deepsleep(void) {
 
 		/* Turn off memory auto power */
 //		memconfregs->mdrefr &= ~0x30000000;
-		memconfregs->mecr = mecr;
+//		memconfregs->mecr = mecr;
 
 		gpiorestore(gpioregs, &savedgpioregs);
 		delay(50);
@@ -206,10 +212,10 @@ deepsleep(void) {
 		delay(100);
 		xlink = getcallerpc(&xlink);
 		iprint("\nresuming execution, sp = 0x%lux, pc = 0x%lux, psw = 0x%ux\n", &xsp, xlink, splhi());
-		dumpitall();
+//		dumpitall();
 		delay(1000);
 //		irpower(1);
-		audiopower(1);
+//		audiopower(1);
 		µcpower(1);
 		screenpower(1);
 		splx(power_pl);
@@ -236,10 +242,10 @@ powerkproc(void*)
 		deepsleep();
 		xlink1 = getcallerpc(&xlink1);
 
-//		iprint("deepsleep returned, pc = 0x%lux, sp = 0x%lux\n", xlink1, &xlink);
 
 		delay(2000);
 
+//		iprint("deepsleep returned, pc = 0x%lux, sp = 0x%lux\n", xlink1, &xlink);
 		powerflag = 0;
 	}
 }
