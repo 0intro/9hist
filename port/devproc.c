@@ -38,7 +38,7 @@ Dirtab procdir[] =
 	"note",		{Qnote},	0,			0000,
 	"noteid",	{Qnoteid},	0,			0666,
 	"notepg",	{Qnotepg},	0,			0000,
-	"ns",		{Qns},		0,			0400,
+	"ns",		{Qns},		0,			0444,
 	"proc",		{Qproc},	0,			0400,
 	"regs",		{Qregs},	sizeof(Ureg),		0000,
 	"segment",	{Qsegment},	0,			0444,
@@ -71,7 +71,7 @@ int	procctlmemio(Proc*, ulong, int, void*, int);
 Chan*	proctext(Chan*, Proc*);
 Segment* txt2data(Proc*, Segment*);
 int	procstopped(void*);
-void	mntscan(Mntwalk*);
+void	mntscan(Mntwalk*, Proc*);
 
 static int
 procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
@@ -515,7 +515,7 @@ procread(Chan *c, void *va, long n, vlong off)
 
 	case Qns:
 		mw = c->aux;
-		mntscan(mw);
+		mntscan(mw, p);
 		if(mw->mh == 0)
 			return 0;
 		if(n < NAMELEN+11)
@@ -542,7 +542,7 @@ procread(Chan *c, void *va, long n, vlong off)
 }
 
 void
-mntscan(Mntwalk *mw)
+mntscan(Mntwalk *mw, Proc *p)
 {
 	Pgrp *pg;
 	Mount *t;
@@ -550,7 +550,7 @@ mntscan(Mntwalk *mw)
 	int nxt, i;
 	ulong last, bestmid;
 
-	pg = up->pgrp;
+	pg = p->pgrp;
 	rlock(&pg->ns);
 
 	nxt = 0;
