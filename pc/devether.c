@@ -711,7 +711,7 @@ wd8013receive(Ctlr *cp)
 		if(rb->owner == Interface){
 			rb->len = len;
 			if((p->data+len) >= (hw->ram+hw->size)){
-				len = hw->ram+hw->size - p->data;
+				len = (hw->ram+hw->size) - p->data;
 				memmove(rb->pkt+len,
 					&((Ring*)hw->ram)[hw->pstart],
 					(p->data+rb->len) - (hw->ram+hw->size));
