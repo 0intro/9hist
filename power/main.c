@@ -59,11 +59,6 @@ machinit(void)
 	m->stb = &stlb[n][0];
 
 	m->ledval = 0xff;
-
-	/* Setup call back ring buffer */
-	m->cbin = m->calls;
-	m->cbout = m->calls;
-	m->cbend = &m->calls[NCALLBACK];
 }
 
 void

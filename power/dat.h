@@ -118,11 +118,6 @@ struct Mach
 	Schedq	hiq;
 	Schedq	loq;
 
-	Callbk*	cbin;
-	Callbk*	cbout;
-	Callbk*	cbend;
-	Callbk	calls[NCALLBACK];
-
 	int	stack[1];
 };
 

@@ -261,7 +261,7 @@ pagepte(int type, Page **pg)
 
 	outp = *pg;
 	switch(type) {
-	case SG_TEXT:					/* Revert to demand load */
+	case SG_TEXT:				/* Revert to demand load */
 		putpage(outp);
 		*pg = 0;
 		break;
