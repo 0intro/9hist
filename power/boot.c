@@ -15,9 +15,12 @@ char	buf[4*1024];
 char	bootfile[5*NAMELEN];
 char	sys[NAMELEN];
 
+int	printcol;		/* so we can use the kernel's small print */
+
 int fd;
 int cfd;
 int efd;
+int setkey;
 
 typedef
 struct address {
@@ -26,7 +29,6 @@ struct address {
 } Address;
 
 Address addr[] = {
-	{ "ross", "connect 020701005eff" },
 	{ "bootes", "connect 0800690203f3" },
 	{ "helix", "connect 080069020427" },
 	{ "spindle", "connect 0800690202df" },
@@ -48,13 +50,16 @@ int	bitdial(char *);
 int	preamble(int);
 void	srvcreate(char*, int);
 void	settime(void);
-void	setpasswd(void);
+void	key(void);
+int	passwd(char*, int);
+int	passtokey(char*, char*, int);
 
 /*
- *  usage: 9b [-a] [server] [file]
+ *  usage: 9b [-mp] [server] [file]
  *
  *  default server is `bitbootes', default file is `/mips/9'
  */
+void
 main(int argc, char *argv[])
 {
 	int i;
@@ -71,6 +76,8 @@ main(int argc, char *argv[])
 		if(argv[0][0] == '-'){
 			if(argv[0][1] == 'm')
 				manual = 1;
+			else if(argv[0][1] == 'k')
+				setkey = 1;
 			argc--;
 			argv++;
 		} else
@@ -89,7 +96,7 @@ main(int argc, char *argv[])
 		break;
 	}
 
-	setpasswd();
+	key();
 	boot(manual);
 	for(;;){
 		if(fd > 0)
@@ -99,33 +106,6 @@ main(int argc, char *argv[])
 		fd = cfd = 0;
 		boot(1);
 	}
-}
-
-void
-setpasswd(void)
-{
-	char key[7];
-	int fd;
-
-	fd = open("#r/nvram", OREAD);
-	if(fd < 0){
-		prerror("can't open nvram");
-		return;
-	}
-	if(seek(fd, 1024+900, 0) < 0 || read(fd, key, 7) != 7){
-		close(fd);
-		prerror("can't read key from nvram");
-		return;
-	}
-	close(fd);
-	fd = open("#c/key", OWRITE);
-	if(fd < 0){
-		prerror("can't open key");
-		return;
-	}
-	if(write(fd, key, 7) != 7)
-		prerror("can't write key");
-	close(fd);
 }
 
 int
@@ -541,4 +521,105 @@ settime(void)
 	f = open("#c/time", OWRITE);
 	write(f, dirbuf, strlen(dirbuf));
 	close(f);
+}
+
+void
+key(void)
+{
+	char password[20], key[7];
+	int prompt, fd;
+
+	prompt = setkey;
+	fd = open("#r/nvram", ORDWR);
+	if(fd < 0){
+		prompt = 1;
+		prerror("can't open nvram");
+	}
+	if(prompt){
+		do
+			if(passwd(password, sizeof password) < 0){
+				prerror("can't read cons");
+				return;
+			}
+		while(!passtokey(key, password, strlen(password)));
+	}else if(seek(fd, 1024+900, 0) < 0 || read(fd, key, 7) != 7){
+		close(fd);
+		prerror("can't read key from nvram");
+	}
+	if(setkey && seek(fd, 1024+900, 0) < 0 || write(fd, key, 7) != 7){
+		close(fd);
+		prerror("can't write key to nvram");
+	}
+	close(fd);
+	fd = open("#c/key", OWRITE);
+	if(fd < 0)
+		prerror("can't open key");
+	else if(write(fd, key, 7) != 7)
+		prerror("can't write key");
+	close(fd);
+}
+
+int
+passwd(char *p, int len)
+{
+	char c;
+	int i, n, fd;
+
+	fd = open("#c/consctl", OWRITE);
+	if(fd < 0)
+		return -1;
+	write(fd, "rawon", 5);
+ Prompt:		
+	print("password: ");
+	n = 0;
+	for(;;){
+		do{
+			i = read(0, &c, 1);
+			if(i < 0){
+				close(fd);
+				return -1;
+			}
+		}while(i == 0);
+		switch(c){
+		case '\n':
+			p[n] = '\0';
+			close(fd);
+			print("\n");
+			return 0;
+		case '\b':
+			if(n > 0)
+				n--;
+			break;
+		case 'u' - 'a' + 1:		/* cntrl-u */
+			print("\n");
+			goto Prompt;
+		default:
+			if(n < len - 1)
+				p[n++] = c;
+			break;
+		}
+	}
+}
+
+int
+passtokey(char *key, char *p, int n)
+{
+	uchar t[10];
+	int c;
+
+	memset(t, ' ', sizeof t);
+	if(n > 10 || n < 5)
+		return 0;
+	strncpy((char*)t, p, n);
+	if(n >= 9){
+		c = p[8] & 0xf;
+		if(n == 10)
+			c += p[9] << 4;
+		for(n = 0; n < 8; n++)
+			if(c & (1 << n))
+				t[n] -= ' ';
+	}
+	for(n = 0; n < 7; n++)
+		key[n] = (t[n] >> n) + (t[n+1] << (8 - (n+1)));
+	return 1;
 }
