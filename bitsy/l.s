@@ -672,120 +672,76 @@ loop:
 
 TEXT power_down(SB), $-4
 
-	/* disable clock switching */
-	MCR   	CpPWR, 0, R0, C(CpTest), C(0x2), 2
-
-	/* Adjust memory timing before lowering CPU clock
-	 * Clock speed ajdustment without changing memory
-	 * timing makes CPU hang in some cases
-	 */
-        MOVW	$(MEMCONFREGS+0x1c),R0
-        MOVW	(R0),R1				/* mdrefr */
-        ORR		$(1<<22), R1			/* set K1DB2 */
-        MOVW	R1,(R0)
-	
-	/* delay 90us and set CPU PLL to lowest speed */
-	/* fixes resume problem on high speed SA1110 */
+	TEXT	sa1100_power_off<>+0(SB),$8
+	MOVW	resetregs+0(SB),R7
+	MOVW	gpioregs+0(SB),R6
+	MOVW	memconfregs+0(SB),R5
+	MOVW	powerregs+0(SB),R3
+	MOVW	0x1c(R5),R1
+	ORR		$0x30400000,R1
+	MOVW	R1,refr-4(SP)
+	MOVW	$0x80000003,R2
+	MOVW	R2,0xc(R3)
+	MOVW	$15,R2
+	MOVW	R2,0x4(R7)
+	MOVW	$7,R2
+	MOVW	R2,0x10(R3)
+	MOVW	$0,R2
+	MOVW	R2,0x18(R3)
+	MOVW	$sa1100_power_resume+0(SB),R2
+	MOVW	R2,0x8(R3)
+	MOVW	$0,R2
+	MOVW	R2,0x4(R6)
+	MOVW	0x1c(R5),R2
+	ORR		$0x400000,R2
+	MOVW	R2,0x1c(R5)
 	MOVW	$(90*206),R0
-d1:
-	SUB		$1,R0
-	BNE		d1
-
-	MOVW	$(POWERREGS+0x14),R0
-	MOVW	$0,R1
-	MOVW	R1,(R0)				/* clear PPCR */
-
+l13:	SUB		$1,R0
+	BGT		l13
+	MOVW	powerregs+0(SB),R3
+	MOVW	$0,R2
+	MOVW	R2,20(R3)
 	MOVW	$(90*206),R0
-d2:
-	SUB		$1,R0
-	BNE		d2
+l14:	SUB		$1,R0
+	BGT		l14
+	MOVW	powerregs+0(SB),R5
+	MOVW	refr-4(SP),R4
+	AND		$(~0xfff0),R4
+	ORR		$0x80000000,R4,R6
+	AND		$(~0x80100000),R6,R11
 
+	MOVW	memconfregs+0(SB),R3
+	MOVW	(R3),R12
+	AND		$(~0x30003),R12
 
-/* setup up register contents for jump to page containing SA1110 SDRAM controller bug fix suspend code
- *
- * r0 points to MSC0 register
- * r1 points to MSC1 register
- * r2 points to MSC2 register
- * r3 is MSC0 value
- * r4 is MSC1 value
- * r5 is MSC2 value
- * r6 points to MDREFR register
- * r7 is first MDREFR value
- * r8 is second MDREFR value
- * r9 is pointer to MDCNFG register
- * r10 is MDCNFG value
- * r11 is third MDREFR value
- * r12 is pointer to PMCR register
- * r13 is PMCR value (1)
- *
- */
+	MOVW	0x10(R3),R2
+	AND		$0xfffcfffc,R2
+	MOVW	R2,0x10(R3)
+	MOVW	0x14(R3),R2
+	AND		$0xfffcfffc,R2
+	MOVW	R2,0x14(R3)
+	MOVW	0x2c(R3),R2
+	AND		$0xfffcfffc,R2
+	MOVW	R2,0x2c(R3)
 
-	MOVW	$(MEMCONFREGS+0x10),R0
-	MOVW	$(MEMCONFREGS+0x14),R1
-	MOVW	$(MEMCONFREGS+0x2c),R2
-
-	MOVW	(R0),R3
-	BIC		$0x00030003,R3		/* MSC_RT fields */
-
-	MOVW	(R1),R4
-	BIC		$0x00030003,R4		/* MSC_RT fields */
-
-	MOVW	(R2),R5
-	BIC		$0x00030003,R5		/* MSC_RT fields */
-
-	MOVW	$(MEMCONFREGS+0x1c),R6
-
-	MOVW	(R6),R7
-	BIC		$0x0000FFF0,R7		/* DRI 0 .. 11 */
-	ORR		$(1<<31),R7,R8		/* prepare to set self refresh */
-
-	MOVW	$(MEMCONFREGS+0x0),R9
-	MOVW	(R9),R10
-	BIC		$(0x00030003),R10		/* clear DE0 ⋯ DE3 */
-
-	BIC		$(1<<31 | 1<<20),R8,R11	/* self-refresh and e1pin */
-
-	MOVW	$(POWERREGS+0x0),R12
-	MOVW	$1,R13				/* sleep force bit */
-
-	MOVW	R0,R0
-	MOVW	R0,R0
-	MOVW	R0,R0
-	MOVW	R0,R0
-	MOVW	R0,R0
-	MOVW	R0,R0
-	MOVW	R0,R0
-	/* Fall through */
-
-/*	.align 5	Needs to be on a cache line boundary? */
-	TEXT	sdram_controller_fix(SB),$0
-
-	/* Step 1 clear RT field of all MSCx registers */
-	MOVW	R3,(R0)
-	MOVW	R4,(R1)
-	MOVW	R5,(R2)
-
-	/* Step 2 clear DRI field in MDREFR */
-	MOVW	R7,(R6)
-
-	/* Step 3 set SLFRSH bit in MDREFR */
-	MOVW	R8,(R6)
-
-	/* Step 4 clear DE bis in MDCNFG */
-	MOVW	R10,(R9)
-
-	/* Step 5 clear DRAM refresh control register */
-	MOVW	R11,(R6)
-
-	/* Wow, now the hardware suspend request pins can be used, that makes them functional for  */
-	/* about 7 ns out of the	entire time that the CPU is running! */
-
-	/* Step 6 set force sleep bit in PMCR */
-
-	MOVW	R13,(R12)
+	MOVW	$1,R2
+	MOVW	R4,0x1c(R3)
+//	MOVW	R6,0x1c(R3)
+//	MOVW	R12,(R3)
+//	MOVW	R11,0x1c(R3)
+	MOVW	R2,0(R5)
 
 slloop:
 	B		slloop			/* loop waiting for sleep */
+
+TEXT	coma(SB), $-4
+	MOVW	$1,R1
+	MOVW	$(MEMCONFREGS+0x1c),R2
+	MOVW	$(POWERREGS+0x0),R3
+//	MOVW	R0,(R2)
+	MOVW	R1,(R3)
+comaloop:
+	B		comaloop
 
 /* The first MCR instruction of this function needs to be on a cache-line
  * boundary; to make this happen, it will be copied (in trap.c).

@@ -271,7 +271,6 @@ sysopen(ulong *arg)
 	if(fd < 0)
 		error(Enofd);
 	poperror();
-if(strstr(up->text, "syscall")!=0) pprint("open %s ref count %d\n", c2name(c), c->ref); // BUG
 	return fd;
 }
 

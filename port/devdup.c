@@ -23,7 +23,7 @@ dupgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	if(s == 0)
 		return 0;
 	s--;
-	if(s > 2*fgrp->maxfd)
+	if(s/2 > fgrp->maxfd)
 		return -1;
 	if((f=fgrp->fd[s/2]) == nil)
 		return 0;

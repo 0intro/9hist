@@ -178,9 +178,11 @@ sa1100_power_off(void)
 	memconfregs->msc0 &= ~0x30003;
 	memconfregs->msc1 &= ~0x30003;
 	memconfregs->msc2 &= ~0x30003;
+	refr &= ~0xfff0;
 	memconfregs->mdrefr = refr;	/* Clear dri 0 ⋯ 11 */
 	refr |= 1<<REFR_slfrsh;
-//	memconfregs->mdrefr = refr;	/* Set selfrefresh */
+
+	memconfregs->mdrefr = refr;	/* Set selfrefresh */
 	powerregs->pmcr = PCFR_suspend;
 	for(;;);
 }
@@ -259,7 +261,8 @@ deepsleep(void) {
 	}
 	cacheflush();
 	delay(100);
-	sa1100_power_off();
+	power_down();
+//	sa1100_power_off();
 	/* no return */
 }
 

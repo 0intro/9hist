@@ -34,8 +34,6 @@ void
 devdir(Chan *c, Qid qid, char *n, vlong length, char *user, long perm, Dir *db)
 {
 	db->name = n;
-	if(c->flag&CMSG)
-		qid.type |= QTMOUNT;
 	db->qid = qid;
 	db->type = devtab[c->type]->dc;
 	db->dev = c->dev;

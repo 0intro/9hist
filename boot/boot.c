@@ -99,16 +99,15 @@ boot(int argc, char *argv[])
 		fatal("can't connect to file server");
 	if(getenv("srvold9p"))
 		fd = old9p(fd);
+	if(!islocal && !ishybrid){
+		if(cfs)
+			fd = (*cfs)(fd);
+	}
 	print("version...");
 	buf[0] = '\0';
 	n = fversion(fd, 0, buf, sizeof buf);
 	if(n < 0)
 		fatal("can't init 9P");
-	print("(%.*s)...", n, buf);
-	if(!islocal && !ishybrid){
-		if(cfs)
-			fd = (*cfs)(fd);
-	}
 	srvcreate("boot", fd);
 
 	/*
@@ -151,24 +150,6 @@ boot(int argc, char *argv[])
 	}
 	close(fd);
 	setenv("rootdir", rp);
-
-	/*
-	 *  if a local file server exists and it's not
-	 *  running, start it and mount it onto /n/kfs
-	 */
-	if(0 && access("#s/kfs", 0) < 0){	/* BUG: DISABLED UNTIL KFS SUPPORTS 9P2000 */
-		for(mp = method; mp->name; mp++){
-			if(strcmp(mp->name, "local") != 0)
-				continue;
-			(*mp->config)(mp);
-			fd = (*mp->connect)();
-			if(fd < 0)
-				break;
-			mount(fd, -1, "/n/kfs", MAFTER|MCREATE, "") ;
-			close(fd);
-			break;
-		}
-	}
 
 	settime(islocal, afd);
 	swapproc();

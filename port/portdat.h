@@ -261,6 +261,7 @@ struct Mnt
 	ulong	id;		/* Multiplexer id for channel check */
 	Mnt	*list;		/* Free list */
 	int	flags;		/* cache */
+	int	msize;		/* data + IOHDRSZ */
 	char	*version;			/* 9P version */
 	Queue	*q;		/* input queue */
 };

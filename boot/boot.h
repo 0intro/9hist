@@ -6,6 +6,11 @@ struct Method
 	int	(*connect)(void);
 	char	*arg;
 };
+enum
+{
+	Statsz=	256,
+	Nbarg=	16,
+};
 
 extern void	authentication(int);
 extern char*	bootdisk;
@@ -20,11 +25,7 @@ extern void	(*pword)(int, Method*);
 extern char	sys[];
 extern uchar	hostkey[];
 extern char	username[];
-extern uchar	statbuf[STATMAX];
-enum
-{
-	Nbarg=	16,
-};
+extern uchar	statbuf[Statsz];
 extern int	bargc;
 extern char	*bargv[Nbarg];
 

@@ -110,7 +110,9 @@ mntversion(Chan *c, char *version, int msize, int returnlen)
 
 	/* defaults */
 	if(msize == 0)
-		msize = MAXRPC-IOHDRSZ;
+		msize = MAXRPC;
+	if(msize > c->iounit && c->iounit != 0)
+		msize = c->iounit;
 	v = version;
 	if(v == nil || v[0] == '\0')
 		v = VERSION9P;
@@ -190,9 +192,6 @@ mntversion(Chan *c, char *version, int msize, int returnlen)
 		error("nonsense value of msize in fversion");
 	if(strncmp(f.version, v, strlen(f.version)) != 0)
 		error("bad 9P version returned from server");
-	c->iounit = f.msize;
-	if(c->iounit == 0)
-		c->iounit = MAXRPC;
 
 	/* now build Mnt associated with this connection */
 	lock(&mntalloc);
@@ -208,9 +207,11 @@ mntversion(Chan *c, char *version, int msize, int returnlen)
 	}
 	m->list = mntalloc.list;
 	mntalloc.list = m;
+	m->version = nil;
 	kstrdup(&m->version, f.version);
 	m->id = mntalloc.id++;
 	m->q = qopen(10*MAXRPC, 0, nil, nil);
+	m->msize = f.msize;
 	unlock(&mntalloc);
 
 	poperror();	/* msg */
@@ -262,7 +263,7 @@ mntauth(Chan *c, char *spec)
 		nexterror();
 	}
 
-	r = mntralloc(0, m->c->iounit);
+	r = mntralloc(0, m->msize);
 
 	if(waserror()) {
 		mntfree(r);
@@ -324,7 +325,7 @@ mntattach(char *muxattach)
 		nexterror();
 	}
 
-	r = mntralloc(0, m->c->iounit);
+	r = mntralloc(0, m->msize);
 
 	if(waserror()) {
 		mntfree(r);
@@ -394,7 +395,7 @@ mntwalk(Chan *c, Chan *nc, char **name, int nname)
 
 	alloc = 0;
 	m = mntchk(c);
-	r = mntralloc(c, m->c->iounit);
+	r = mntralloc(c, m->msize);
 	if(nc == nil){
 		nc = devclone(c);
 		/*
@@ -462,7 +463,7 @@ mntstat(Chan *c, uchar *dp, int n)
 	if(n < BIT16SZ)
 		error(Eshortstat);
 	m = mntchk(c);
-	r = mntralloc(c, m->c->iounit);
+	r = mntralloc(c, m->msize);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
@@ -496,7 +497,7 @@ mntopencreate(int type, Chan *c, char *name, int omode, ulong perm)
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc(c, m->c->iounit);
+	r = mntralloc(c, m->msize);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
@@ -514,6 +515,8 @@ mntopencreate(int type, Chan *c, char *name, int omode, ulong perm)
 	c->offset = 0;
 	c->mode = openmode(omode);
 	c->iounit = r->reply.iounit;
+	if(c->iounit > m->msize-IOHDRSZ)
+		c->iounit = m->msize-IOHDRSZ;
 	c->flag |= COPEN;
 	poperror();
 	mntfree(r);
@@ -543,7 +546,7 @@ mntclunk(Chan *c, int t)
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc(c, m->c->iounit);
+	r = mntralloc(c, m->msize);
 	if(waserror()){
 		mntfree(r);
 		nexterror();
@@ -566,6 +569,8 @@ muxclose(Mnt *m)
 		mntfree(q);
 	}
 	m->id = 0;
+	free(m->version);
+	m->version = nil;
 	mntpntfree(m);
 }
 
@@ -611,7 +616,7 @@ mntwstat(Chan *c, uchar *dp, int n)
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc(c, m->c->iounit);
+	r = mntralloc(c, m->msize);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
@@ -692,7 +697,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 	if(c->qid.type & QTDIR)
 		cache = 0;
 	for(;;) {
-		r = mntralloc(c, m->c->iounit);
+		r = mntralloc(c, m->msize);
 		if(waserror()) {
 			mntfree(r);
 			nexterror();
@@ -702,10 +707,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 		r->request.offset = off;
 		r->request.data = uba;
 		nr = n;
-		if(nr > m->c->iounit-IOHDRSZ)
-			nr = m->c->iounit-IOHDRSZ;
-		if(c->iounit != 0 && nr > c->iounit)
-			nr = c->iounit;
+		if(nr > m->msize-IOHDRSZ)
+			nr = m->msize-IOHDRSZ;
 		r->request.count = nr;
 		mountrpc(m, r);
 		nreq = r->request.count;
@@ -776,7 +779,7 @@ mountio(Mnt *m, Mntrpc *r)
 			mntflushfree(m, r);
 			nexterror();
 		}
-		r = mntflushalloc(r, m->c->iounit);
+		r = mntflushalloc(r, m->msize);
 	}
 
 	lock(m);
@@ -786,9 +789,9 @@ mountio(Mnt *m, Mntrpc *r)
 	unlock(m);
 
 	/* Transmit a file system rpc */
-	if(m->c->iounit == 0)
-		panic("iounit");
-	n = convS2M(&r->request, r->rpc, m->c->iounit);
+	if(m->msize == 0)
+		panic("msize");
+	n = convS2M(&r->request, r->rpc, m->msize);
 	if(n < 0)
 		panic("bad message type in mountio");
 	if(devtab[m->c->type]->write(m->c, r->rpc, n, 0) != n)
@@ -994,7 +997,7 @@ mntflushfree(Mnt *m, Mntrpc *r)
 }
 
 Mntrpc*
-mntralloc(Chan *c, ulong iounit)
+mntralloc(Chan *c, ulong msize)
 {
 	Mntrpc *new;
 
@@ -1010,28 +1013,28 @@ mntralloc(Chan *c, ulong iounit)
 		 * The header is split from the data buffer as
 		 * mountmux may swap the buffer with another header.
 		 */
-		new->rpc = mallocz(iounit, 0);
+		new->rpc = mallocz(msize, 0);
 		if(new->rpc == nil){
 			free(new);
 			unlock(&mntalloc);
 			exhausted("mount rpc buffer");
 		}
-		new->rpclen = iounit;
+		new->rpclen = msize;
 		new->request.tag = mntalloc.rpctag++;
 	}
 	else {
 		mntalloc.rpcfree = new->list;
 		mntalloc.nrpcfree--;
-		if(new->rpclen < iounit){
+		if(new->rpclen < msize){
 			free(new->rpc);
-			new->rpc = mallocz(iounit, 0);
+			new->rpc = mallocz(msize, 0);
 			if(new->rpc == nil){
 				free(new);
 				mntalloc.nrpcused--;
 				unlock(&mntalloc);
 				exhausted("mount rpc buffer");
 			}
-			new->rpclen = iounit;
+			new->rpclen = msize;
 		}
 	}
 	mntalloc.nrpcused++;

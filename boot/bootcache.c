@@ -2,7 +2,7 @@
 #include <libc.h>
 #include <../boot/boot.h>
 
-uchar statbuf[STATMAX];
+uchar statbuf[Statsz];
 
 int
 cache(int fd)
@@ -65,7 +65,7 @@ cache(int fd)
 		if(fflag)
 			execl("/cfs", "bootcfs", "-rs", "-f", partition, 0);
 		else
-			execl("/cfs", "bootcfs", "-ds", "-f", partition, 0);
+			execl("/cfs", "bootcfs", "-s", "-f", partition, 0);
 		break;
 	default:
 		close(p[0]);
