@@ -91,8 +91,7 @@ udpconnect(Conv *c, char **argv, int argc)
 static int
 udpstate(Conv *c, char *state, int n)
 {
-	USED(c);
-	return snprint(state, n, "%s", "Datagram");
+	return snprint(state, n, "%s", c->inuse?"Open":"Closed");
 }
 
 static char*
