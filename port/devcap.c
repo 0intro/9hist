@@ -192,7 +192,7 @@ capwrite(Chan *c, void *va, long n, vlong)
 	Caphash *p;
 	char *cp;
 	uchar hash[Hashlen];
-	char *key, *user;
+	char *key, *from, *to;
 	char err[256];
 
 	switch((ulong)c->qid.path){
@@ -214,22 +214,32 @@ capwrite(Chan *c, void *va, long n, vlong)
 		memmove(cp, va, n);
 		cp[n] = 0;
 
-		user = cp;
-		key = strchr(cp, '@');
+		from = cp;
+		key = strrchr(cp, '@');
 		if(key == nil)
 			error(Eshort);
 		*key++ = 0;
 
-		hmac_sha1((uchar*)user, strlen(user), (uchar*)key, strlen(key), hash, nil);
+		hmac_sha1((uchar*)from, strlen(from), (uchar*)key, strlen(key), hash, nil);
 
 		p = remcap(hash);
 		if(p == nil){
-			snprint(err, sizeof err, "invalid capability %s@%s", user, key);
+			snprint(err, sizeof err, "invalid capability %s@%s", from, key);
 			error(err);
 		}
 
+		/* if a from user is supplied, make sure it matches */
+		to = strchr(from, '@');
+		if(to == nil){
+			to = from;
+		} else {
+			*to++ = 0;
+			if(strcmp(from, up->user) != 0)
+				error("capability must match user");
+		}
+
 		/* set user id */
-		kstrdup(&up->user, user);
+		kstrdup(&up->user, to);
 		up->basepri = PriNormal;
 
 		free(p);

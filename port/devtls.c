@@ -164,7 +164,7 @@ static TlsErrs tlserrs[] = {
 	{EDecodeError,			EIllegalParameter,		EDecodeError,			1, "error decoding message"},
 	{EDecryptError,			EIllegalParameter,		EDecryptError,			1, "error decrypting message"},
 	{EExportRestriction,		EHandshakeFailure,		EExportRestriction,		1, "export restriction violated"},
-	{EProtocolVersion,		EIllegalParameter,		EProtocolVersion,		1, "protocol version not supported"},
+	{EProtocolVersion,		EIllegalParameter,		EProtocolVersion,		0, "protocol version not supported"},
 	{EInsufficientSecurity,	EHandshakeFailure,		EInsufficientSecurity,	1, "stronger security routines required"},
 	{EInternalError,			EHandshakeFailure,		EInternalError,			1, "internal error"},
 	{EUserCanceled,		ECloseNotify,			EUserCanceled,			0, "handshake canceled by user"},
