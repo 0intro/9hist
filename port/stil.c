@@ -152,6 +152,8 @@ iloput(Queue *q, Block *bp)
 	ih = (Ilhdr *)(bp->rptr);
 
 	/* Ip fields */
+	ih->frag[0] = 0;
+	ih->frag[1] = 0;
 	hnputl(ih->src, Myip);
 	hnputl(ih->dst, ipc->dst);
 	ih->proto = IP_ILPROTO;
@@ -292,7 +294,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 			ic = &new->ilctl;
 			ic->state = Ilsyncee;
 			initseq += TK2MS(MACHP(0)->ticks);
-			ic->start = initseq;
+			ic->start = initseq & 0xffffff;
 			ic->next = ic->start+1;
 			ic->recvd = 0;
 			ic->rstart = nhgetl(ih->ilid);
@@ -467,7 +469,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 void
 ilrexmit(Ilcb *ic)
 {
-	Block *nb;
+	Block *nb, *bp;
 	Ilhdr *h;
 
 	nb = 0;
@@ -750,7 +752,7 @@ ilstart(Ipconv *ipc, int type, int window)
 
 
 	initseq += TK2MS(MACHP(0)->ticks);
-	ic->start = initseq;
+	ic->start = initseq & 0xffffff;
 	ic->next = ic->start+1;
 	ic->recvd = 0;
 	ic->window = window;

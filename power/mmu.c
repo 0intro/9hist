@@ -156,9 +156,7 @@ void
 flushmmu(void)
 {
 	splhi();
-	/* easiest is to forget what pid we had.... */
-	memset(u->p->pidonmach, 0, sizeof u->p->pidonmach);
-	/* ....then get a new one by trying to map our stack */
+	u->p->newtlb = 1;
 	mapstack(u->p);
 	spllo();
 }

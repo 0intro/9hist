@@ -429,6 +429,8 @@ udpstoput(Queue *q, Block *bp)
 	ptcllen = dlen + (UDP_HDRSIZE-UDP_PHDRSIZE);
 	uh->Unused = 0;
 	uh->udpproto = IP_UDPPROTO;
+	uh->frag[0] = 0;
+	uh->frag[1] = 0;
 	hnputs(uh->udpplen, ptcllen);
 	hnputl(uh->udpdst, ipc->dst);
 	hnputl(uh->udpsrc, Myip);

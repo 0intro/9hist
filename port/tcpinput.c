@@ -798,6 +798,8 @@ copyb(Block *bp, int count)
 		memmove(nb->wptr, bp->rptr, l);
 		nb->wptr += l;
 		count -= l;
+		if(bp->flags & S_DELIM)
+			nb->flags |= S_DELIM;
 		*p = nb;
 		p = &nb->next;
 		bp = bp->next;
@@ -810,10 +812,12 @@ copyb(Block *bp, int count)
 			panic("copyb.2");
 		memset(nb->wptr, 0, count);
 		nb->wptr += count;
+		nb->flags |= S_DELIM;
 		*p = nb;
 	}
 	if(blen(head) == 0)
 		print("copyb: zero length\n");
+
 	return head;
 }
 
@@ -964,6 +968,8 @@ htontcp(Tcp *tcph, Block *data, Tcphdr *ph)
 	
 	h = (Tcphdr *)(data->rptr);
 	h->proto = IP_TCPPROTO;
+	h->frag[0] = 0;
+	h->frag[1] = 0;
 	hnputs(h->tcplen, hdrlen + dlen);
 	hnputs(h->tcpsport, tcph->source);
 	hnputs(h->tcpdport, tcph->dest);
