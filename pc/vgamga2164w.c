@@ -31,8 +31,11 @@ mga2164wenable(VGAscr* scr)
 		return;
 
 	p = pcimatch(nil, 0x102B, 0x051B);
-	if(p == nil)
-		return;
+	if(p == nil) {
+		p = pcimatch(nil, 0x102B, 0x051F);
+		if(p == nil)
+			return;
+	}
 
 	scr->storage = upamalloc(p->mem[1].bar & ~0x0F, p->mem[1].size, 0);
 	if(scr->storage == 0)
