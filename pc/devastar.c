@@ -11,7 +11,20 @@
 /*
  *  Stargate's Avanstar serial board.  There are ISA, EISA, microchannel
  *  versions.  We only handle the ISA one.
+ *
+ *  At the expense of performance, I've tried to be careful about
+ *  endian-ness to make this convertable to other ISA bus machines.
+ *  However, xchngus() is in assembler and will have to be translated.
  */
+#define LENDIAN 1
+
+/* unsigned short little endian representation */
+#ifdef LENDIAN
+#define LEUS(x) (x)
+#else
+#define LEUS(x) ( (((x)<<8)&0xff00) | (((x)>>8)&0xff) )
+#endif LENDIAN
+
 typedef struct Astar Astar;
 typedef struct Astarchan Astarchan;
 
@@ -37,9 +50,12 @@ enum
 
 	Maxcard=	8,
 	Pramsize=	64*1024,	/* size of program ram */
-	Footshift=	14,		/* footprint of card mem in ISA space */
-	Footprint=	1<<Footshift,
+	Pageshift=	14,		/* footprint of card mem in ISA space */
+	Pagesize=	1<<Pageshift,
+	Pagemask=	Pagesize-1,
 };
+
+#define APAGE(x) ((x)>>Pageshift)
 
 /* IRQ codes */
 static int isairqcode[16] =
@@ -60,9 +76,9 @@ struct GCB
 	ushort	avail;		/* available buffer space */
 	ushort	type;		/* board type */
 	ushort	cpvers;		/* control program version */
-	ushort	ccbc;		/* control channel block count */
-	ushort	ccbo;		/* control channel block offset */
-	ushort	ccbc;		/* control channel block size */
+	ushort	ccbn;		/* control channel block count */
+	ushort	ccboff;		/* control channel block offset */
+	ushort	ccbsz;		/* control channel block size */
 	ushort	cmd2;		/* command word 2 */
 	ushort	status2;	/* status word 2 */
 	ushort	errserv;	/* comm error service request 'X' */
@@ -146,10 +162,7 @@ enum
 	Cb115200=	0xff01,
 
 	/* CCB.format fields */
-	C5bit=		0<<0,	/* data bits */
-	C6bit=		0<<1,
-	C7bit=		0<<2,
-	C8bit=		0<<3,
+	Clenmask=	3<<0,	/* data bits */
 	C1stop=		0<<2,	/* stop bits */
 	C2stop=		1<<2,
 	Cnopar=		0<<3,	/* parity */
@@ -157,6 +170,7 @@ enum
 	Cevenpar=	3<<3,
 	Cmarkpar=	5<<3,
 	Cspacepar=	7<<3,
+	Cparmask=	7<<3,
 	Cnormal=	0<<6,	/* normal mode */
 	Cecho=		1<<6,	/* echo mode */
 	Clloop=		2<<6,	/* local loopback */
@@ -220,11 +234,15 @@ struct Astar
 	ISAConf;
 	int		id;		/* from plan9.ini */
 	int		nchan;		/* number of channels */
-	Rendez		r;
 	Astarchan	*c;		/* channels */
 	int		ramsize;	/* 16k or 256k */
-	GCB		*gbc;		/* board comm area */
-	char		*addr;		/* memory area */
+	int		memsize;	/* size of memory currently mapped */
+	int		page;		/* page currently mapped */
+	GCB		*gbc;		/* global board comm area */
+	uchar		*addr;		/* base of memory area */
+	int		running;
+
+	Rendez		r;		/* when waiting for board */
 };
 
 /* host per channel info */
@@ -233,13 +251,14 @@ struct Astarchan
 	QLock;
 
 	Astar	*a;	/* controller */
-	CCB	*ccb;	/* control block */
+	CCB	*ccb;	/* channel control block */
 	int	perm;
 	int	opens;
 
 	/* buffers */
 	Queue	*iq;
 	Queue	*oq;
+	Rendez	r;
 };
 
 Astar *astar[Maxcard];
@@ -260,6 +279,24 @@ enum
 
 static int astarsetup(Astar*);
 
+/*
+ *  Only 16k maps into ISA space
+ */
+void
+setpage(Astar *a, ulong offset)
+{
+	int i;
+
+	i = APAGE(offset);
+	if(i == a->page)
+		return;
+	outb(a->port+ISActl2, ISAmen|i);
+	a->page = i;
+}
+
+/*
+ *  generate the astar directory entries
+ */
 int
 astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 {
@@ -355,6 +392,7 @@ astarreset(void)
 		if(a->irq == 0)
 			a->irq = 15;
 		a->id = i;
+		a->page = -1;
 
 		if(astarsetup(a) < 0){
 			xfree(a);
@@ -377,8 +415,8 @@ astarprobe(int port)
 	if(port < 0)
 		return 0;
 
-	c = inb(port + ISAid);
-	c1 = inb(port + ISAid);
+	c = inb(port+ISAid);
+	c1 = inb(port+ISAid);
 	return (c == ISAid0 && c1 == ISAid1)
 		|| (c == ISAid1 && c1 == ISAid0);
 }
@@ -407,7 +445,7 @@ astarsetup(Astar *a)
 	}
 
 	/* set memory address */
-	outb(a->port + ISAmaddr, (a->mem>>12) & 0xfc);
+	outb(a->port+ISAmaddr, (a->mem>>12) & 0xfc);
 	a->gbc = (GCB*)(KZERO | a->mem);
 	a->addr = (char*)(KZERO | a->mem);
 
@@ -479,18 +517,18 @@ astarclose(Chan *c)
 		qlock(a);
 		if(--a->opens == 0){
 			/* take board out of download mode and enable IRQ */
-			outb(a->port + ISActl1, ISAien|isairqcode[a->irq]);
+			outb(a->port+ISActl1, ISAien|isairqcode[a->irq]);
 
 			/* enable ISA access to first 16k */
-			outb(a->port + ISActl2, ISAmen|0);
+			outb(a->port+ISActl2, ISAmen|0);
 
 			/* wait for program ready */
 			for(i = 0; i < 21; i++){
-				if(inb(a->port + ISActl1) & ISApr)
+				if(inb(a->port+ISActl1) & ISApr)
 					break;
 				tsleep(&r, return0, 0, 500);
 			}
-			if((inb(a->port + ISActl1) & ISApr) == 0)
+			if((inb(a->port+ISActl1) & ISApr) == 0)
 				print("astar%d program not ready\n", a->id);
 		}
 		qunlock(a);
@@ -498,147 +536,362 @@ astarclose(Chan *c)
 	}
 }
 
+static long
+memread(Astar *a, uchar *to, long n, ulong offset)
+{
+	uchar *from, *e;
+	int i, rem;
+
+	if(offset+n > a->memsize){
+		if(offset >= a->memsize)
+			return 0;
+		n = a->memsize - offset;
+	}
+
+	if(waserror()){
+		qunlock(a);
+		nexterror();
+	}
+	qlock(a);
+
+	for(rem = n; rem > 0; rem -= i){
+
+		/* map in right piece of memory */
+		setpage(a, offset);
+		i = offset&Pagemask;
+		to = a->addr + i;
+		i = Pagesize - i;
+		if(i > rem)
+			i = rem;
+		
+		/* byte at a time so endian doesn't matter */
+		for(e = from + i; from < e;)
+			*to++ = *from++;
+	}
+
+	qunlock(a);
+	poperror();
+	return n;
+}
+
+static long
+bctlread(Chan *c, void *buf, long n, ulong offset)
+{
+	char s[128];
+
+	sprint(s, "id %4.4ux ctl1 %2.2ux ctl2 %2.2ux maddr %2.2ux stat %4.4ux",
+		(inb(a->port+ISAid)<<8)|inb(a->port+ISAid),
+		inb(a->port+ISActl1), inb(a->port+ISActl2), 
+		inb(a->port+ISAmaddr),
+		(inb(a->port+ISAstat2)<<8)|inb(a->port+ISAstat1));
+	return readstr(offset, buf, n, s);
+}
+
 long
 astarread(Chan *c, void *buf, long n, ulong offset)
 {
-	int i;
-	Astar *a;
-	char *to, *from, *e;
-	char status[128];
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, buf, n, 0, 0, astargen);
 
 	switch(TYPE(c->qid.path)){
 	case Qmem:
-		a = astar[BOARD(c->qid.path)];
-		if(offset+n > Pramsize){
-			if(offset >= Pramsize)
-				return 0;
-			n = Pramsize - offset;
-		}
-
-		if(waserror()){
-			qunlock(a);
-			nexterror();
-		}
-		qlock(a);
-		from = buf;
-		while(n > 0){
-			/* map in right piece of memory */
-			outb(a->port + ISActl2, ISAmen|(offset>>Footshift));
-			i = offset%Footprint;
-			to = a->addr + i;
-			i = Footprint - i;
-			if(i > n)
-				i = n;
-			
-			/* byte at a time so endian doesn't matter */
-			for(e = from + i; from < e;)
-				*to++ = *from++;
-
-			n -= i;
-		}
-		qunlock(a);
-		poperror();
-		break;
+		return memread(astar[BOARD(c->qid.path)], buf, n, offset);
 	case Qbctl:
-		a = astar[BOARD(c->qid.path)];
-		sprint(status, "id %2.2ux%2.2ux ctl1 %2.2ux ctl2 %2.2ux maddr %2.2ux stat %2.2ux%2.2ux",
-			inb(a->port+ISAid), inb(a->port+ISAid),
-			inb(a->port+ISActl1), inb(a->port+ISActl2), 
-			inb(a->port+ISAmaddr),
-			inb(a->port+ISAstat2), inb(a->port+ISAstat1));
-		n = readstr(offset, buf, n, status);
-		break;
+		return bctlread(astar[BOARD(c->qid.path)], buf, n, offset);
 	}
 
 	return 0;
 }
 
+static long
+memwrite(Astar *a, uchar *from, long n, ulong offset)
+{
+	uchar *to, *e;
+	int i, rem;
+
+	if(offset+n > a->memsize){
+		if(offset >= a->memsize)
+			return 0;
+		n = a->memsize - offset;
+	}
+
+	if(waserror()){
+		qunlock(a);
+		nexterror();
+	}
+	qlock(a);
+
+	for(rem = n; rem > 0; rem -= i){
+
+		/* map in right piece of memory */
+		setpage(a, offset);
+		i = offset&Pagemask;
+		from = a->addr + i;
+		i = Pagesize - i;
+		if(i > rem)
+			i = rem;
+		
+		/* byte at a time so endian doesn't matter */
+		for(e = from + i; from < e;)
+			*to++ = *from++;
+	}
+
+	qunlock(a);
+	poperror();
+	return n;
+}
+
+/*
+ *  setup a channel
+ */
+static void
+chansetup(Astar *a, Astarchan *ac, void *ccb)
+{
+	ac->a = a;
+	ac->ccb = ccb;
+	ac->iq = qopen(4*1024, 0, 0, 0);
+	ac->oq = qopen(4*1024, 0, astarkick, p);
+}
+
+/*
+ *  start control progarm
+ */
+static void
+startcp(Astar *a)
+{
+	int n, i, sz;
+	uchar *x;
+	CCB *ccb;
+
+	if(a->running)
+		error(Eio);
+
+	/* take board out of download mode and enable IRQ */
+	outb(a->port+ISActl1, ISAien|isairqcode[a->irq]|ISAnotdl);
+	a->memsize = a->ramsize;
+
+	/* wait for control program to signal life */
+	for(i = 0; i < 21; i++){
+		if(inb(a->port+ISActl1) & ISApr)
+			break;
+		tsleep(&a->r, return0, 0, 500);
+	}
+	if((inb(a->port+ISActl1) & ISApr) == 0){
+		print("astar%d program not ready\n", a->id);
+		error(Eio);
+	}
+
+	setpage(a, 0);
+	i = LEUS(a->gcb->type);
+	switch(i){
+	default:
+		print("astar%d wrong board type %ux\n", a->id, i);
+		error(Eio);
+	case 0xc:
+		break;
+	}
+
+	/* check assumptions */
+	n = LEUS(a->gcb->ccbn);
+	if(n != 8 && n != 16){
+		print("astar%d had %d channels?\n", a->id, i);
+		error(Eio);
+	}
+	x = a->addr + LEUS(a->gcb->ccboff);
+	sz = LEUS(a->gcb->ccbsz);
+	if(x+n*sz > a->addr+Pagesize){
+		print("astar%d ccb's not in 1st page\n", a->id);
+		error(Eio);
+	}
+	for(i = 0; i < n; i++){
+		ccb = (CCB*)(x + i*sz);
+		if(APAGE(LEUS(ccb->inbase)) != APAGE(LEUS(ccb->inlim)) ||
+		   APAGE(LEUS(ccb->outbase)) != APAGE(LEUS(ccb->outlim))){
+			print("astar%d chan buffer spans pages\n", a->id);
+			error(Eio);
+		}
+	}
+
+	/* setup the channels */
+	a->running = 1;
+	a->nchan = i;
+	a->c = xalloc(a->nchan * sizeof(Astarchan));
+	for(i = 0; i < a->nchan; i++){
+		chansetup(a, &a->c[i], (CCB*)x);
+		x += sz;
+	}
+}
+
+static long
+bctlwrite(Astar *a, char *msg)
+{
+	int i;
+	uchar c;
+
+	if(waserror()){
+		qunlock(a);
+		nexterror();
+	}
+	qlock(a);
+
+	if(strncmp(cmsg, "download", 8) == 0){
+		if(a->running)
+			error(Eio);
+
+		/* put board in download mode */
+		c = inb(a->port+ISActl1);
+		outb(a->port+ISActl1, c & ~ISAnotdl);
+		a->memsize = Pramsize;
+
+		/* enable ISA access to first 16k */
+		outb(a->port+ISActl2, ISAmen);
+
+	} else if(strncmp(cmsg, "run", 3) == 0){
+		if(a->running)
+			error(Eio);
+		startcp(a);
+
+	} else
+		error(Ebadarg);
+
+	qunlock(a);
+	poperror();
+	return n;
+}
+
+/*
+ *  change channel parameters
+ */
+void
+astarctl(Astarchan *ac, char *cmd)
+{
+	int i, n;
+	int command;
+
+	/* let output drain for a while */
+	for(i = 0; i < 16 && qlen(ac->oq); i++)
+		tsleep(&ac->r, qlen, ac->oq, 125);
+
+	if(strncmp(cmd, "break", 5) == 0)
+		cmd = "k";
+
+	command = 0;
+	n = atoi(cmd+1);
+	switch(*cmd){
+	case 'B':
+	case 'b':
+		switch(n){
+		case 76800:
+			ac->ccb->baud = LEUS(Cb76800);
+			break;
+		case 115200:
+			ac->ccb->baud = LEUS(Cb115200);
+			break;
+		default:
+			ac->ccb->baud = LEUS(n);
+			break;
+		}
+		command = Cconfall;
+		break;
+	case 'D':
+	case 'd':
+		break;
+	case 'f':
+	case 'F':
+		qflush(ac->oq);
+		break;
+	case 'H':
+	case 'h':
+		qhangup(ac->iq);
+		qhangup(ac->oq);
+		break;
+	case 'L':
+	case 'l':
+		n -= 5;
+		if(n < 0 || n > 3)
+			error(Ebadarg);
+		n |= LEUS(ac->ccb->format) & ~Clenmask;
+		ac->ccb->format = LEUS(n);
+		command = Cconfall;
+		break;
+	case 'm':
+	case 'M':
+		n = LEUS(ac->ccb->format) | Cobeycts;
+		ac->ccb->proto = LEUS(n);
+		command = Cconfall;
+		break;
+	case 'n':
+	case 'N':
+		qnoblock(p->oq, n);
+		break;
+	case 'P':
+	case 'p':
+		switch(*(cmd+1)){
+		case 'e':
+			n = Cevenpar;
+			break;
+		case 'o':
+			n = Coddpar;
+			break;
+		default:
+			n = Cnopar;
+			break;
+		}
+		n |= LEUS(ac->ccb->format) & ~Cparmask;
+		ac->ccb->format = LEUS(n);
+		command = Cconfall;
+		break;
+	case 'K':
+	case 'k':
+		break;
+	case 'R':
+	case 'r':
+		break;
+	case 'Q':
+	case 'q':
+		qsetlimit(ac->iq, n);
+		qsetlimit(ac->oq, n);
+		break;
+	case 'X':
+	case 'x':
+		n = LEUS(ac->ccb->format) | Cobeyxon;
+		ac->ccb->proto = LEUS(n);
+		command = Cconfall;
+		break;
+	}
+}
+
+
 long
 astarwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	Astar *a;
-	char *to, *from, *e;
-	int i;
+	Astarchan *ac;
 	char cmsg[32];
 
 	if(c->qid.path & CHDIR)
 		error(Eperm);
 
+	a = astar[BOARD(c->qid.path)];
 	switch(TYPE(c->qid.path)){
 	case Qmem:
-		a = astar[BOARD(c->qid.path)];
-		if(offset+n > Pramsize){
-			if(offset >= Pramsize)
-				return 0;
-			n = Pramsize - offset;
-		}
-
-		if(waserror()){
-			qunlock(a);
-			nexterror();
-		}
-		qlock(a);
-		to = buf;
-		while(n > 0){
-			/* map in right piece of memory */
-			outb(a->port + ISActl2, ISAmen|(offset>>Footshift));
-			i = offset%Footprint;
-			from = a->addr + i;
-			i = Footprint - i;
-			if(i > n)
-				i = n;
-			
-			/* byte at a time so endian doesn't matter */
-			for(e = from + i; from < e;)
-				*to++ = *from++;
-
-			n -= i;
-		}
-		qunlock(a);
-		poperror();
-		break;
+		return memwrite(a, buf, n, offset);
 	case Qbctl:
 		if(n > sizeof cmsg)
 			n = sizeof(cmsg) - 1;
 		memmove(cmsg, buf, n);
 		cmsg[n] = 0;
-
-		if(waserror()){
-			qunlock(a);
-			nexterror();
-		}
-		qlock(a);
-		if(strncmp(cmsg, "download", 8) == 0){
-			/* put board in download mode */
-			outb(a->port + ISActl1, ISAdl);
-
-			/* enable ISA access to first 16k */
-			outb(a->port + ISActl2, ISAmen);
-
-		} else if(strncmp(cmsg, "run", 3) == 0){
-			/* take board out of download mode and enable IRQ */
-			outb(a->port + ISActl1, ISAien|isairqcode[a->irq]);
-
-			/* enable ISA access to first 16k */
-			outb(a->port + ISActl2, ISAmen);
-
-			/* wait for control program to signal life */
-			for(i = 0; i < 21; i++){
-				if(inb(a->port + ISActl1) & ISApr)
-					break;
-				tsleep(&a->r, return0, 0, 500);
-			}
-			if((inb(a->port + ISActl1) & ISApr) == 0)
-				print("astar%d program not ready\n", a->id);
-
-		} else
-			error(Ebadarg);
-		qunlock(a);
-		poperror();
-		break;
+		return bctlwrite(a, cmsg);
+	case Qdata:
+		ac = a->c + CHAN(c->qid.path);
+		return qwrite(ac->oq, buf, n);
+	case Qctl:
+		if(n > sizeof cmsg)
+			n = sizeof(cmsg) - 1;
+		memmove(cmsg, buf, n);
+		cmsg[n] = 0;
+		return astarctl(a, msg);
 	}
 
 	return 0;
@@ -664,3 +917,4 @@ astarwstat(Chan *c, char *dp)
 	USED(c, dp);
 	error(Eperm);
 }
+
