@@ -28,11 +28,19 @@ typedef struct {
 
 	ulong	dp8390;			/* I/O address of 8390 */
 	ulong	data;			/* I/O data port if no shared memory */
-	uchar	nxtpkt;			/* software bndry */
+
+	uchar	nxtpkt;			/* receive: software bndry */
+	uchar	busy;			/* transmit: busy */
 	uchar	tstart;			/* 8390 ring addresses */
 	uchar	pstart;
 	uchar	pstop;
 } Dp8390;
+
+#define Dp8390BufSz	256
+
+extern int dp8390reset(Ether*);
+extern void dp8390getea(Ether*);
+extern void dp8390setea(Ether*);
 
 #define NEXT(x, l)	(((x)+1)%(l))
 #define	HOWMANY(x, y)	(((x)+((y)-1))/(y))

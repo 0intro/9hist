@@ -220,13 +220,19 @@ write(Ether *ether, void *buf, long n)
 	ulong port;
 
 	port = ether->port;
+
+	qlock(&ether->tlock);
+	if(waserror()) {
+		qunlock(&ether->tlock);
+		nexterror();
+	}
+
 	ether->tlen = n;
 	len = ROUNDUP(ether->tlen, 4);
 	tsleep(&ether->tr, istxfifo, ether, 10000);
-	if(len+4 > ins(port+TxFreeBytes)){
+	if(len+4 > ins(port+TxFreeBytes))
 		print("ether509: transmitter jammed\n");
-		return 0;
-	}
+
 	/*
 	 * We know there's room, copy the packet to the FIFO.
 	 * To save copying the packet into a local buffer just
@@ -240,6 +246,10 @@ write(Ether *ether, void *buf, long n)
 	outss(port+Fifo, buf, Eaddrlen/2);
 	outss(port+Fifo, ether->ea, Eaddrlen/2);
 	outss(port+Fifo, (uchar*)buf+2*Eaddrlen, (len-2*Eaddrlen)/2);
+
+	poperror();
+	qunlock(&ether->tlock);
+
 	return n;
 }
 

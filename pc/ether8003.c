@@ -57,61 +57,18 @@ static int intrmap[] = {
 	9, 3, 5, 7, 10, 11, 15, 4,
 };
 
-static void*
-read(Ctlr *ctlr, void *to, ulong from, ulong len)
-{
-	/*
-	 * In this case, 'from' is an index into the shared memory.
-	 */
-	memmove(to, (void*)(ctlr->card.mem+from), len);
-	return to;
-}
-
-static void*
-write(Ctlr *ctlr, ulong to, void *from, ulong len)
-{
-	/*
-	 * In this case, 'to' is an index into the shared memory.
-	 */
-	memmove((void*)(ctlr->card.mem+to), from, len);
-	return (void*)to;
-}
-
-static void
-watch(Ctlr *ctlr)
-{
-	uchar msr;
-	int s;
-
-	s = splhi();
-	msr = inb(ctlr->card.port+Msr);
-	/*
-	 * If the card has reset itself,
-	 * start again.
-	 */
-	if((msr & Menb) == 0){
-		delay(100);
-
-		dp8390reset(ctlr);
-		etherinit();
-
-		wakeup(&ctlr->tr);
-		wakeup(&ctlr->rr);
-	}
-	splx(s);
-}
-
 /*
  * Get configuration parameters, enable memory.
  * There are opportunities here for buckets of code.
  * We'll try to resist.
  */
-int
-wd8003reset(Ctlr *ctlr)
+static int
+reset(Ether *ether)
 {
 	int i;
 	uchar ic[8], sum;
-	ulong wd8003;
+	ulong port;
+	Dp8390 *dp8390;
 
 	/*
 	 * Set up the software configuration.
@@ -119,27 +76,15 @@ wd8003reset(Ctlr *ctlr)
 	 * Defaults are set for the dumb 8003E which can't be
 	 * autoconfigured.
 	 */
-	if(ctlr->card.port == 0)
-		ctlr->card.port = 0x280;
-	if(ctlr->card.irq == 0)
-		ctlr->card.irq = 3;
-	if(ctlr->card.mem == 0)
-		ctlr->card.mem = 0xD0000;
-	if(ctlr->card.size == 0)
-		ctlr->card.size = 8*1024;
+	if(ether->port == 0)
+		ether->port = 0x280;
+	if(ether->irq == 0)
+		ether->irq = 3;
+	if(ether->mem == 0)
+		ether->mem = 0xD0000;
+	if(ether->size == 0)
+		ether->size = 8*1024;
 
-	ctlr->card.reset = wd8003reset;
-	ctlr->card.attach = dp8390attach;
-	ctlr->card.mode = dp8390mode;
-	ctlr->card.read = read;
-	ctlr->card.write = write;
-	ctlr->card.receive = dp8390receive;
-	ctlr->card.transmit = dp8390transmit;
-	ctlr->card.intr = dp8390intr;
-	ctlr->card.watch = watch;
-	ctlr->card.ram = 1;
-
-	wd8003 = ctlr->card.port;
 	/*
 	 * Look for the interface. We read the LAN address ROM
 	 * and validate the checksum - the sum of all 8 bytes
@@ -147,16 +92,21 @@ wd8003reset(Ctlr *ctlr)
 	 * While we're at it, get the (possible) interface chip
 	 * registers, we'll use them to check for aliasing later.
 	 */
+	port = ether->port;
 	sum = 0;
-	for(i = 0; i < sizeof(ctlr->ea); i++){
-		ctlr->ea[i] = inb(wd8003+Lar+i);
-		sum += ctlr->ea[i];
-		ic[i] = inb(wd8003+i);
+	for(i = 0; i < sizeof(ether->ea); i++){
+		ether->ea[i] = inb(port+Lar+i);
+		sum += ether->ea[i];
+		ic[i] = inb(port+i);
 	}
-	sum += inb(wd8003+Id);
-	sum += inb(wd8003+Cksum);
+	sum += inb(port+Id);
+	sum += inb(port+Cksum);
 	if(sum != 0xFF)
 		return -1;
+
+	ether->private = malloc(sizeof(Dp8390));
+	dp8390 = ether->private;
+	dp8390->ram = 1;
 
 	/*
 	 * Check for old, dumb 8003E, which doesn't have an interface
@@ -167,10 +117,9 @@ wd8003reset(Ctlr *ctlr)
 	 * 8003EBT, 8003S, 8003SH or 8003WT, we don't care), in which
 	 * case the default irq gets used.
 	 */
-	if(memcmp(&ctlr->ea[1], &ic[1], 5) == 0){
+	if(memcmp(&ether->ea[1], &ic[1], 5) == 0){
 		memset(ic, 0, sizeof(ic));
-		ic[Msr] = (((ulong)ctlr->card.mem)>>13) & 0x3F;
-		ctlr->card.watch = 0;
+		ic[Msr] = (((ulong)ether->mem)>>13) & 0x3F;
 	}
 	else{
 		/*
@@ -178,65 +127,64 @@ wd8003reset(Ctlr *ctlr)
 		 * the 83C584 interface chip, but has 2 real registers, write Gp2 and if
 		 * it reads back the same, it's not an 8013EBT.
 		 */
-		outb(wd8003+Gp2, 0xAA);
-		inb(wd8003+Msr);				/* wiggle bus */
-		if(inb(wd8003+Gp2) != 0xAA){
+		outb(port+Gp2, 0xAA);
+		inb(port+Msr);				/* wiggle bus */
+		if(inb(port+Gp2) != 0xAA){
 			memset(ic, 0, sizeof(ic));
-			ic[Msr] = (((ulong)ctlr->card.mem)>>13) & 0x3F;
-			ctlr->card.watch = 0;
+			ic[Msr] = (((ulong)ether->mem)>>13) & 0x3F;
 		}
 		else
-			ctlr->card.irq = intrmap[((ic[Irr]>>5) & 0x3)|(ic[Icr] & 0x4)];
+			ether->irq = intrmap[((ic[Irr]>>5) & 0x3)|(ic[Icr] & 0x4)];
 
 		/*
 		 * Check if 16-bit card.
 		 * If Bit16 is read/write, then we have an 8-bit card.
 		 * If Bit16 is set, we're in a 16-bit slot.
 		 */
-		outb(wd8003+Icr, ic[Icr]^Bit16);
-		inb(wd8003+Msr);				/* wiggle bus */
-		if((inb(wd8003+Icr) & Bit16) == (ic[Icr] & Bit16)){
-			ctlr->card.bit16 = 1;
+		outb(port+Icr, ic[Icr]^Bit16);
+		inb(port+Msr);				/* wiggle bus */
+		if((inb(port+Icr) & Bit16) == (ic[Icr] & Bit16)){
+			dp8390->bit16 = 1;
 			ic[Icr] &= ~Bit16;
 		}
-		outb(wd8003+Icr, ic[Icr]);
+		outb(port+Icr, ic[Icr]);
 
-		if(ctlr->card.bit16 && (inb(wd8003+Icr) & Bit16) == 0)
-			ctlr->card.bit16 = 0;
+		if(dp8390->bit16 && (inb(port+Icr) & Bit16) == 0)
+			dp8390->bit16 = 0;
 	}
 
-	ctlr->card.mem = KZERO|((ic[Msr] & 0x3F)<<13);
-	if(ctlr->card.bit16)
-		ctlr->card.mem |= (ic[Laar] & 0x1F)<<19;
+	ether->mem = KZERO|((ic[Msr] & 0x3F)<<13);
+	if(dp8390->bit16)
+		ether->mem |= (ic[Laar] & 0x1F)<<19;
 	else
-		ctlr->card.mem |= 0x80000;
+		ether->mem |= 0x80000;
 
 	if(ic[Icr] & (1<<3))
-		ctlr->card.size = 32*1024;
-	if(ctlr->card.bit16)
-		ctlr->card.size <<= 1;
+		ether->size = 32*1024;
+	if(dp8390->bit16)
+		ether->size <<= 1;
 
 	/*
 	 * Set the DP8390 ring addresses.
 	 */
-	ctlr->card.dp8390 = wd8003+0x10;
-	ctlr->card.tstart = 0;
-	ctlr->card.pstart = HOWMANY(sizeof(Etherpkt), Dp8390BufSz);
-	ctlr->card.pstop = HOWMANY(ctlr->card.size, Dp8390BufSz);
+	dp8390->dp8390 = port+0x10;
+	dp8390->tstart = 0;
+	dp8390->pstart = HOWMANY(sizeof(Etherpkt), Dp8390BufSz);
+	dp8390->pstop = HOWMANY(ether->size, Dp8390BufSz);
 
 	/*
 	 * Enable interface RAM, set interface width.
 	 */
-	outb(wd8003+Msr, ic[Msr]|Menb);
-	if(ctlr->card.bit16)
-		outb(wd8003+Laar, ic[Laar]|L16en|M16en|ZeroWS16);
+	outb(port+Msr, ic[Msr]|Menb);
+	if(dp8390->bit16)
+		outb(port+Laar, ic[Laar]|L16en|M16en|ZeroWS16);
 
 	/*
 	 * Finally, init the 8390 and set the
 	 * ethernet address.
 	 */
-	dp8390reset(ctlr);
-	dp8390setea(ctlr);
+	dp8390reset(ether);
+	dp8390setea(ether);
 
 	return 0;
 }
