@@ -797,7 +797,7 @@ setraddrport(Conv* c, char* str)
 	c->rport = atoi(p);
 	p = strchr(p, '!');
 	if(p){
-		if(strcmp(p, "!r") == 0)
+		if(strstr(p, "!r") != nil)
 			c->restricted = 1;
 	}
 	return nil;

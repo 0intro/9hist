@@ -100,6 +100,9 @@ struct Ilcb			/* Control block */
 	ulong	qt[Nqt+1];	/* state table for query messages */
 	int	qtx;		/* ... index into qt */
 
+	/* if set, fasttimeout causes a connection request to terminate after 4*Iltickms */
+	int	fasttimeout;
+
 	/* timers */
 	ulong	lastxmit;	/* time of last xmit */
 	ulong	lastrecv;	/* time of last recv */
@@ -210,7 +213,7 @@ void	ilfreeq(Ilcb*);
 void	ilrexmit(Ilcb*);
 void	ilbackoff(Ilcb*);
 void	ilsettimeout(Ilcb*);
-char*	ilstart(Conv*, int);
+char*	ilstart(Conv*, int, int);
 void	ilackproc(void*);
 void	iloutoforder(Conv*, Ilhdr*, Block*);
 void	iliput(Proto*, uchar*, Block*);
@@ -229,11 +232,13 @@ static char*
 ilconnect(Conv *c, char **argv, int argc)
 {
 	char *e;
+	int fast;
 
+	fast = argc > 1 && strstr(argv[1], "!fasttimeout") != nil;
 	e = Fsstdconnect(c, argv, argc);
 	if(e != nil)
 		return e;
-	return ilstart(c, IL_CONNECT);
+	return ilstart(c, IL_CONNECT, fast);
 }
 
 static int
@@ -267,7 +272,7 @@ ilannounce(Conv *c, char **argv, int argc)
 	e = Fsstdannounce(c, argv, argc);
 	if(e != nil)
 		return e;
-	e = ilstart(c, IL_LISTEN);
+	e = ilstart(c, IL_LISTEN, 0);
 	if(e != nil)
 		return e;
 	Fsconnected(c, nil);
@@ -496,7 +501,6 @@ ilackto(Ilcb *ic, ulong ackto, Block *bp)
 		bp->list = nil;
 		ic->unackedbytes -= blocklen(bp);
 		freeblist(bp);
-		ic->rexmit = 0;
 		ilsettimeout(ic);
 	}
 	qunlock(&ic->ackq);
@@ -1092,6 +1096,9 @@ ilbackoff(Ilcb *ic)
 		pt = MaxTimeout;
 	ic->timeout = msec + pt;
 
+	if(ic->fasttimeout)
+		ic->timeout = msec+Iltickms;
+
 	ic->rexmit++;
 }
 
@@ -1206,6 +1213,7 @@ ilcbinit(Ilcb *ic)
 	ic->rxtot = 0;
 	ic->rxquery = 0;
 	ic->qtx = 1;
+	ic->fasttimeout = 0;
 
 	/* timers */
 	ic->delay = DefRtt<<LogAGain;
@@ -1217,7 +1225,7 @@ ilcbinit(Ilcb *ic)
 }
 
 char*
-ilstart(Conv *c, int type)
+ilstart(Conv *c, int type, int fasttimeout)
 {
 	Ilcb *ic;
 	Ilpriv *ipriv;
@@ -1242,6 +1250,13 @@ ilstart(Conv *c, int type)
 		return nil;
 
 	ilcbinit(ic);
+
+	if(fasttimeout){
+		/* timeout if we can't connect quickly */
+		ic->fasttimeout = 1;
+		ic->timeout = msec+Iltickms;
+		ic->rexmit = MaxRexmit - 4;
+	};
 
 	switch(type) {
 	default:
