@@ -405,39 +405,61 @@ mfreeseg(Segment *s, ulong start, int pages)
 	}
 }
 
+int
+isoverlap(Proc *p, ulong va, int len)
+{
+	int i;
+	Segment *ns;
+	ulong newtop;
+
+	newtop = va+len;
+	for(i = 0; i < NSEG; i++) {
+		ns = p->seg[i];
+		if(ns == 0)
+			continue;	
+		if((newtop > ns->base && newtop <= ns->top) ||
+		   (va >= ns->base && va < ns->top))
+			return 1;
+	}
+	return 0;
+}
+
 ulong
 segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 {
-	Segment *s, *ns;
-	Physseg *ps;
-	ulong newtop;
 	int i, sno;
+	Segment *s;
+	Physseg *ps;
 
 	USED(p);
-	if((va&KZERO) == KZERO)			/* BUG: Only ok for now */
+	if(va != 0 && (va&KZERO) == KZERO)	/* BUG: Only ok for now */
 		error(Ebadarg);
 
 	validaddr((ulong)name, 1, 0);
 	vmemchr(name, 0, ~0);
 
 	for(sno = 0; sno < NSEG; sno++)
-		if(up->seg[sno] == 0 && sno != ESEG)
+		if(p->seg[sno] == 0 && sno != ESEG)
 			break;
 
 	if(sno == NSEG)
 		error(Enovmem);
 
-	va = va&~(BY2PG-1);
 	len = PGROUND(len);
-	newtop = va+len;
-	for(i = 0; i < NSEG; i++) {
-		ns = up->seg[i];
-		if(ns == 0)
-			continue;	
-		if((newtop > ns->base && newtop <= ns->top) ||
-		   (va >= ns->base && va < ns->top))
-			error(Esoverlap);
+
+	/* Find a hole in the address space */
+	if(va == 0) {
+		va = p->seg[SSEG]->base - len;
+		for(i = 0; i < 20; i++) {
+			if(isoverlap(p, va, len) == 0)
+				break;
+			va -= len;
+		}
 	}
+
+	va = va&~(BY2PG-1);
+	if(isoverlap(p, va, len))
+		error(Esoverlap);
 
 	for(ps = physseg; ps->name; ps++)
 		if(strcmp(name, ps->name) == 0)
@@ -453,9 +475,9 @@ found:
 
 	s = newseg(attr, va, len/BY2PG);
 	s->pseg = ps;
-	up->seg[sno] = s;
+	p->seg[sno] = s;
 
-	return 0;
+	return va;
 }
 
 void
