@@ -842,7 +842,7 @@ w_timer(void* arg)
 		// lack of documentation I cannot know.
 
 		if (csr_ins(ctlr, WR_EvSts)&WEvs)
-				w_intr(ether);
+			w_intr(ether);
 
 		if (tick % 10 == 0) {
 			if (ctlr->txtmout && --ctlr->txtmout == 0){
