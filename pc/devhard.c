@@ -41,6 +41,7 @@ enum
 	Qdir=		0,
 
 	Maxxfer=	4*1024,		/* maximum transfer size/cmd */
+	Maxread=	1024,		/* maximum transfer size/read */
 	Npart=		8+2,		/* 8 sub partitions, disk, and partition */
 };
 #define PART(x)		((x)&0xF)
@@ -458,6 +459,8 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 	start = start / dp->bytes;
 	if(len > Maxxfer)
 		len = Maxxfer;
+	if(cmd == Cread && len > Maxread)
+		len = Maxread;
 	len = (len + dp->bytes - 1) / dp->bytes;
 
 	/*

@@ -42,7 +42,7 @@ convS2M(Fcall *f, char *ap)
 
 	case Tauth:
 		SHORT(fid);
-		STRING(client, sizeof(f->client));
+		STRING(uname, sizeof(f->uname));
 		STRING(chal, 8+NAMELEN);
 		break;
 
@@ -252,7 +252,7 @@ convM2S(char *ap, Fcall *f, int n)
 
 	case Tauth:
 		SHORT(fid);
-		STRING(client, sizeof(f->client));
+		STRING(uname, sizeof(f->uname));
 		STRING(chal, 8+NAMELEN);
 		break;
 
