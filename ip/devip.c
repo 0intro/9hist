@@ -224,7 +224,7 @@ ipwalk(Chan* c, char* name)
 			c->qid = (Qid){QID(0, 0, Qtopdir)|CHDIR, 0};
 			break;
 		case Qconvdir:
-			c->qid = (Qid){QID(0, 0, Qprotodir)|CHDIR, 0};
+			c->qid = (Qid){QID(PROTO(c->qid), 0, Qprotodir)|CHDIR, 0};
 			break;
 		default:
 			panic("ipwalk %lux", c->qid.path);

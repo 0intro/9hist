@@ -4,9 +4,9 @@
  * of smarts, unfortunately they're not all in the right place.
  * To do:
  *	the PCI scanning code could be made common to other adapters;
- *	auto-negotiation;
- *	full-duplex;
- *	optionally use memory-mapped registers.
+ *	auto-negotiation, full-duplex;
+ *	optionally use memory-mapped registers;
+ *	detach for PCI reset problems (also towards loadable drivers).
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -21,6 +21,7 @@
 
 enum {
 	Nrfd		= 64,		/* receive frame area */
+	Ncb		= 64,		/* maximum control blocks queued */
 
 	NullPointer	= 0xFFFFFFFF,	/* 82557 NULL pointer */
 };
@@ -132,16 +133,14 @@ enum {					/* field */
 };
 
 enum {					/* count */
-	RfdF		= 0x00004000,
-	RfdEOF		= 0x00008000,
+	RfdF		= 0x4000,
+	RfdEOF		= 0x8000,
 };
 
 typedef struct Cb Cb;
 typedef struct Cb {
-	Cb*	next;
-	Block*	bp;
-
-	int	command;
+	ushort	status;
+	ushort	command;
 	ulong	link;
 	union {
 		uchar	data[24];	/* CbIAS + CbConfigure */
@@ -156,51 +155,59 @@ typedef struct Cb {
 			ushort	pad;
 		};
 	};
+
+	Block*	bp;
+	Cb*	next;
 } Cb;
 
 enum {					/* action command */
-	CbOK		= 0x00002000,	/* DMA completed OK */
-	CbC		= 0x00008000,	/* execution Complete */
+	CbU		= 0x1000,	/* transmit underrun */
+	CbOK		= 0x2000,	/* DMA completed OK */
+	CbC		= 0x8000,	/* execution Complete */
 
-	CbNOP		= 0x00000000,
-	CbIAS		= 0x00010000,	/* Individual Address Setup */
-	CbConfigure	= 0x00020000,
-	CbMAS		= 0x00030000,	/* Multicast Address Setup */
-	CbTransmit	= 0x00040000,
-	CbDump		= 0x00060000,
-	CbDiagnose	= 0x00070000,
-	CbCommand	= 0x00070000,	/* mask */
+	CbNOP		= 0x0000,
+	CbIAS		= 0x0001,	/* Individual Address Setup */
+	CbConfigure	= 0x0002,
+	CbMAS		= 0x0003,	/* Multicast Address Setup */
+	CbTransmit	= 0x0004,
+	CbDump		= 0x0006,
+	CbDiagnose	= 0x0007,
+	CbCommand	= 0x0007,	/* mask */
 
-	CbSF		= 0x00080000,	/* Flexible-mode CbTransmit */
+	CbSF		= 0x0008,	/* Flexible-mode CbTransmit */
 
-	CbI		= 0x20000000,	/* Interrupt after completion */
-	CbS		= 0x40000000,	/* Suspend after completion */
-	CbEL		= 0x80000000,	/* End of List */
+	CbI		= 0x2000,	/* Interrupt after completion */
+	CbS		= 0x4000,	/* Suspend after completion */
+	CbEL		= 0x8000,	/* End of List */
 };
 
 enum {					/* CbTransmit count */
-	CbEOF		= 0x00008000,
+	CbEOF		= 0x8000,
 };
 
 typedef struct Ctlr {
+	Lock	slock;			/* attach */
+	int	state;
+
 	int	port;
-	uchar	configdata[24];
 
 	Lock	rlock;			/* registers */
+	int	command;		/* last command issued */
 
-	Lock	rfdlock;		/* receive side */
-	Block*	rfdhead;
+	Block*	rfdhead;		/* receive side */
 	Block*	rfdtail;
 	int	nrfd;
 
-	Lock	cbqlock;		/* transmit side */
-	Cb*	cbqhead;
-	Cb*	cbqtail;
-	int	cbqbusy;
-
-	Lock	cbplock;		/* pool of free Cb's */
-	Cb*	cbpool;
-
+	Lock	cblock;			/* transmit side */
+	int	action;
+	uchar	configdata[24];
+	int	threshold;
+	int	ncb;
+	Cb*	cbr;
+	Cb*	cbhead;
+	Cb*	cbtail;
+	int	cbq;
+	int	cbqmax;
 
 	Lock	dlock;			/* dump statistical counters */
 	ulong	dump[17];
@@ -239,6 +246,53 @@ static uchar configdata[24] = {
 #define csr16w(c, r, w)	(outs((c)->port+(r), (ushort)(w)))
 #define csr32w(c, r, l)	(outl((c)->port+(r), (ulong)(l)))
 
+static void
+command(Ctlr* ctlr, int c, int v)
+{
+	ilock(&ctlr->rlock);
+
+	/*
+	 * Only back-to-back CUresume can be done
+	 * without waiting for any previous command to complete.
+	 * This should be the common case.
+	 */
+	if(c == CUresume && ctlr->command == CUresume){
+		csr8w(ctlr, CommandR, c);
+		iunlock(&ctlr->rlock);
+		return;
+	}
+
+	while(csr8r(ctlr, CommandR))
+		;
+
+	switch(c){
+
+	case CUstart:
+	case LoadDCA:
+	case LoadCUB:
+	case RUstart:
+	case LoadHDS:
+	case LoadRUB:
+		csr32w(ctlr, General, v);
+		break;
+
+	/*
+	case CUnop:
+	case CUresume:
+	case DumpSC:
+	case ResetSA:
+	case RUresume:
+	case RUabort:
+	 */
+	default:
+		break;
+	}
+	csr8w(ctlr, CommandR, c);
+	ctlr->command = c;
+
+	iunlock(&ctlr->rlock);
+}
+
 static Block*
 rfdalloc(ulong link)
 {
@@ -257,112 +311,18 @@ rfdalloc(ulong link)
 	return bp;
 }
 
-static Cb*
-cballoc(Ctlr* ctlr, int command)
-{
-	Cb *cb;
-
-	ilock(&ctlr->cbplock);
-	if(cb = ctlr->cbpool){
-		ctlr->cbpool = cb->next;
-		iunlock(&ctlr->cbplock);
-		cb->next = 0;
-		cb->bp = 0;
-	}
-	else{
-		iunlock(&ctlr->cbplock);
-		cb = smalloc(sizeof(Cb));
-	}
-
-	cb->command = command;
-	cb->link = NullPointer;
-
-	return cb;
-}
-
-static void
-cbfree(Ctlr* ctlr, Cb* cb)
-{
-	ilock(&ctlr->cbplock);
-	cb->next = ctlr->cbpool;
-	ctlr->cbpool = cb;
-	iunlock(&ctlr->cbplock);
-}
-
-static void
-custart(Ctlr* ctlr)
-{
-	if(ctlr->cbqhead == 0){
-		ctlr->cbqbusy = 0;
-		return;
-	}
-	ctlr->cbqbusy = 1;
-
-	ilock(&ctlr->rlock);
-	while(csr8r(ctlr, CommandR))
-		;
-	csr32w(ctlr, General, PADDR(&ctlr->cbqhead->command));
-	csr8w(ctlr, CommandR, CUstart);
-	iunlock(&ctlr->rlock);
-}
-
-static void
-action(Ctlr* ctlr, Cb* cb)
-{
-	Cb* tail;
-
-	cb->command |= CbEL;
-
-	ilock(&ctlr->cbqlock);
-	if(ctlr->cbqhead){
-		tail = ctlr->cbqtail;
-		tail->next = cb;
-		tail->link = PADDR(&cb->command);
-		tail->command &= ~CbEL;
-	}
-	else
-		ctlr->cbqhead = cb;
-	ctlr->cbqtail = cb;
-
-	if(!ctlr->cbqbusy)
-		custart(ctlr);
-	iunlock(&ctlr->cbqlock);
-}
-
 static void
 attach(Ether* ether)
 {
-	int status;
 	Ctlr *ctlr;
 
 	ctlr = ether->ctlr;
-	ilock(&ctlr->rlock);
-	status = csr16r(ctlr, Status);
-	if((status & RUstatus) == RUidle){
-		while(csr8r(ctlr, CommandR))
-			;
-		csr32w(ctlr, General, PADDR(ctlr->rfdhead->rp));
-		csr8w(ctlr, CommandR, RUstart);
+	lock(&ctlr->slock);
+	if(ctlr->state == 0){
+		command(ctlr, RUstart, PADDR(ctlr->rfdhead->rp));
+		ctlr->state = 1;
 	}
-	iunlock(&ctlr->rlock);
-}
-
-static void
-configure(Ctlr* ctlr, int promiscuous)
-{
-	Cb *cb;
-
-	cb = cballoc(ctlr, CbConfigure);
-	memmove(cb->data, ctlr->configdata, sizeof(ctlr->configdata));
-	if(promiscuous)
-		cb->data[15] |= 0x01;
-	action(ctlr, cb);
-}
-
-static void
-promiscuous(void* arg, int on)
-{
-	configure(((Ether*)arg)->ctlr, on);
+	unlock(&ctlr->slock);
 }
 
 static long
@@ -376,17 +336,13 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	ctlr = ether->ctlr;
 	lock(&ctlr->dlock);
 
-	ctlr->dump[16] = 0;
-
-	ilock(&ctlr->rlock);
-	while(csr8r(ctlr, CommandR))
-		;
-	csr8w(ctlr, CommandR, DumpSC);
-	iunlock(&ctlr->rlock);
-
 	/*
-	 * Wait for completion status, should be 0xA005.
+	 * Start the command then
+	 * wait for completion status,
+	 * should be 0xA005.
 	 */
+	ctlr->dump[16] = 0;
+	command(ctlr, DumpSC, 0);
 	while(ctlr->dump[16] == 0)
 		;
 
@@ -420,7 +376,9 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	len += snprint(p+len, READSTR-len, "receive resource errors: %lud\n", dump[12]);
 	len += snprint(p+len, READSTR-len, "receive overrun errors: %lud\n", dump[13]);
 	len += snprint(p+len, READSTR-len, "receive collision detect errors: %lud\n", dump[14]);
-	snprint(p+len, READSTR-len, "receive short frame errors: %lud\n", dump[15]);
+	len += snprint(p+len, READSTR-len, "receive short frame errors: %lud\n", dump[15]);
+	snprint(p+len, READSTR-len, "cbqmax: %lud\n", ctlr->cbqmax);
+ctlr->cbqmax = 0;
 
 	n = readstr(offset, a, n, p);
 	free(p);
@@ -429,28 +387,98 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 }
 
 static void
-transmit(Ether* ether)
+txstart(Ether* ether)
 {
 	Ctlr *ctlr;
 	Block *bp;
 	Cb *cb;
 
-	bp = qget(ether->oq);
-	if(bp == nil)
-		return;
+	ctlr = ether->ctlr;
+	while(ctlr->cbq < (ctlr->ncb-1)){
+		cb = ctlr->cbhead->next;
+		if(ctlr->action == 0){
+			bp = qget(ether->oq);
+			if(bp == nil)
+				break;
+
+			cb->command = CbS|CbSF|CbTransmit;
+			cb->tbd = PADDR(&cb->tba);
+			cb->count = 0;
+			cb->threshold = ctlr->threshold;
+			cb->number = 1;
+			cb->tba = PADDR(bp->rp);
+			cb->bp = bp;
+			cb->tbasz = BLEN(bp);
+		}
+		else if(ctlr->action == CbConfigure){
+			cb->command = CbS|CbConfigure;
+			memmove(cb->data, ctlr->configdata, sizeof(ctlr->configdata));
+			ctlr->action = 0;
+		}
+		else if(ctlr->action == CbIAS){
+			cb->command = CbS|CbIAS;
+			memmove(cb->data, ether->ea, Eaddrlen);
+			ctlr->action = 0;
+		}
+		else{
+			print("#l%d: action 0x%uX\n", ether->ctlrno, ctlr->action);
+			ctlr->action = 0;
+			break;
+		}
+		cb->status = 0;
+
+		ctlr->cbhead->command &= ~CbS;
+		ctlr->cbhead = cb;
+		ctlr->cbq++;
+	}
+	command(ctlr, CUresume, 0);
+
+	if(ctlr->cbq > ctlr->cbqmax)
+		ctlr->cbqmax = ctlr->cbq;
+}
+
+static void
+configure(Ether* ether, int promiscuous)
+{
+	Ctlr *ctlr;
 
 	ctlr = ether->ctlr;
+	ilock(&ctlr->cblock);
+	if(promiscuous){
+		ctlr->configdata[6] |= 0x80;		/* Save Bad Frames */
+		ctlr->configdata[6] &= ~0x40;		/* !Discard Overrun Rx Frames */
+		ctlr->configdata[7] &= ~0x01;		/* !Discard Short Rx Frames */
+		ctlr->configdata[15] |= 0x01;		/* Promiscuous mode */
+		ctlr->configdata[18] &= ~0x01;		/* (!Padding enable?), !stripping enable */
+		ctlr->configdata[21] |= 0x08;		/* Multi Cast ALL */
+	}
+	else{
+		ctlr->configdata[6] &= ~0x80;
+		ctlr->configdata[7] |= 0x01;
+		ctlr->configdata[15] &= ~0x01;
+		ctlr->configdata[18] |= 0x01;		/* 0x03? */
+		ctlr->configdata[21] &= ~0x08;
+	}
+	ctlr->action = CbConfigure;
+	txstart(ether);
+	iunlock(&ctlr->cblock);
+}
 
-	cb = cballoc(ctlr, CbSF|CbTransmit);
-	cb->bp = bp;
-	cb->tbd = PADDR(&cb->tba);
-	cb->count = 0;
-	cb->threshold = 2;
-	cb->number = 1;
-	cb->tba = PADDR(bp->rp);
-	cb->tbasz = BLEN(bp);
+static void
+promiscuous(void* arg, int on)
+{
+	configure(arg, on);
+}
 
-	action(ctlr, cb);
+static void
+transmit(Ether* ether)
+{
+	Ctlr *ctlr;
+
+	ctlr = ether->ctlr;
+	ilock(&ctlr->cblock);
+	txstart(ether);
+	iunlock(&ctlr->cblock);
 }
 
 static void
@@ -535,27 +563,31 @@ interrupt(Ureg*, void* arg)
 		}
 
 		if(status & StatRNR){
-			lock(&ctlr->rlock);
-			while(csr8r(ctlr, CommandR))
-				;
-			csr8w(ctlr, CommandR, RUresume);
-			unlock(&ctlr->rlock);
-
+			command(ctlr, RUresume, 0);
 			status &= ~StatRNR;
 		}
 
 		if(status & StatCNA){
-			lock(&ctlr->cbqlock);
-			while(cb = ctlr->cbqhead){
-				if(!(cb->command & CbC))
+			lock(&ctlr->cblock);
+
+			cb = ctlr->cbtail;
+			while(ctlr->cbq){
+				if(!(cb->status & CbC))
 					break;
-				ctlr->cbqhead = cb->next;
-				if(cb->bp)
+				if(cb->bp){
 					freeb(cb->bp);
-				cbfree(ctlr, cb);
+					cb->bp = nil;
+				}
+				if((cb->status & CbU) && ctlr->threshold < 0xE0)
+					ctlr->threshold++;
+
+				ctlr->cbq--;
+				cb = cb->next;
 			}
-			custart(ctlr);
-			unlock(&ctlr->cbqlock);
+			ctlr->cbtail = cb;
+
+			txstart(ether);
+			unlock(&ctlr->cblock);
 
 			status &= ~StatCNA;
 		}
@@ -596,7 +628,26 @@ ctlrinit(Ctlr* ctlr)
 	rfd->field |= RfdS;
 	ctlr->rfdhead = ctlr->rfdhead->next;
 
+	/*
+	 * Create a ring of control blocks for the
+	 * transmit side.
+	 */
+	ilock(&ctlr->cblock);
+	ctlr->cbr = malloc(ctlr->ncb*sizeof(Cb));
+	for(i = 0; i < ctlr->ncb; i++){
+		ctlr->cbr[i].status = CbC|CbOK;
+		ctlr->cbr[i].command = CbS|CbNOP;
+		ctlr->cbr[i].link = PADDR(&ctlr->cbr[NEXT(i, ctlr->ncb)].status);
+		ctlr->cbr[i].next = &ctlr->cbr[NEXT(i, ctlr->ncb)];
+	}
+	ctlr->cbhead = ctlr->cbr;
+	ctlr->cbtail = ctlr->cbr;
+	ctlr->cbq = 0;
+
 	memmove(ctlr->configdata, configdata, sizeof(configdata));
+	ctlr->threshold = 8;
+
+	iunlock(&ctlr->cblock);
 }
 
 static int
@@ -718,7 +769,6 @@ reset(Ether* ether)
 	Adapter *ap;
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
-	Cb *cb;
 	static int scandone;
 
 	if(scandone == 0){
@@ -749,7 +799,7 @@ reset(Ether* ether)
 
 	/*
 	 * Allocate a controller structure and start to initialise it.
-	 * Perform a software reset after which need to ensure busmastering
+	 * Perform a software reset after which should ensure busmastering
 	 * is still enabled. The EtherExpress PRO/100B appears to leave
 	 * the PCI configuration alone (see the 'To do' list above) so punt
 	 * for now.
@@ -762,25 +812,16 @@ reset(Ether* ether)
 	ilock(&ctlr->rlock);
 	csr32w(ctlr, Port, 0);
 	delay(1);
-
-	while(csr8r(ctlr, CommandR))
-		;
-	csr32w(ctlr, General, 0);
-	csr8w(ctlr, CommandR, LoadRUB);
-
-	while(csr8r(ctlr, CommandR))
-		;
-	csr8w(ctlr, CommandR, LoadCUB);
-
-	while(csr8r(ctlr, CommandR))
-		;
-	csr32w(ctlr, General, PADDR(ctlr->dump));
-	csr8w(ctlr, CommandR, LoadDCA);
 	iunlock(&ctlr->rlock);
 
+	command(ctlr, LoadRUB, 0);
+	command(ctlr, LoadCUB, 0);
+	command(ctlr, LoadDCA, PADDR(ctlr->dump));
+
 	/*
-	 * Initialise the receive frame and configuration areas.
+	 * Initialise the receive frame, transmit ring and configuration areas.
 	 */
+	ctlr->ncb = Ncb;
 	ctlrinit(ctlr);
 
 	/*
@@ -817,9 +858,12 @@ reset(Ether* ether)
 	}
 
 	/*
-	 * Load the chip configuration
+	 * Load the chip configuration and start it off.
 	 */
-	configure(ctlr, 0);
+	if(ether->oq == 0)
+		ether->oq = qopen(256*1024, 1, 0, 0);
+	configure(ether, 0);
+	command(ctlr, CUstart, PADDR(&ctlr->cbr->status));
 
 	/*
 	 * Check if the adapter's station address is to be overridden.
@@ -835,10 +879,10 @@ reset(Ether* ether)
 		}
 	}
 
-	cb = cballoc(ctlr, CbIAS);
-	memmove(cb->data, ether->ea, Eaddrlen);
-	action(ctlr, cb);
-
+	ilock(&ctlr->cblock);
+	ctlr->action = CbIAS;
+	txstart(ether);
+	iunlock(&ctlr->cblock);
 
 	/*
 	 * Linkage to the generic ethernet driver.

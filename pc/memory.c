@@ -399,7 +399,7 @@ upainit(void)
 		return;
 
 	pa = addr;
-	pae = pa+(64*MB);
+	pae = pa+(8*MB);
 	while(pa < pae){
 		va = KADDR(pa);
 		table = &((ulong*)m->pdb)[PDX(va)];
