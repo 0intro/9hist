@@ -147,14 +147,16 @@ iallocb(int size)
 	int n;
 
 	if(ialloc.bytes > conf.ialloc){
-		iprint("iallocb: limited %d/%d\n", ialloc.bytes, conf.ialloc);
+		print("iallocb: limited %d/%d\n",
+			ialloc.bytes, conf.ialloc);
 		return 0;
 	}
 
 	n = sizeof(Block) + size + (BY2V-1);
 	b = mallocz(n+Hdrspc, 0);
 	if(b == nil){
-		iprint("iallocb: no memory %d/%d\n", ialloc.bytes, conf.ialloc);
+		print("iallocb: no memory %d/%d\n",
+			ialloc.bytes, conf.ialloc);
 		return nil;
 	}
 	memset(b, 0, sizeof(Block));
@@ -1227,6 +1229,15 @@ qhangup(Queue *q, char *msg)
 	/* wake up readers/writers */
 	wakeup(&q->rr);
 	wakeup(&q->wr);
+}
+
+/*
+ *  return non-zero if the q is hungup
+ */
+int
+qisclosed(Queue *q)
+{
+	return q->state & Qclosed;
 }
 
 /*

@@ -409,12 +409,17 @@ ipopen(Chan* c, int omode)
 
 		nc = nil;
 		while(nc == nil) {
+			/* give up if we got a hangup */
+			if(qisclosed(cv->rq))
+				error("listen hungup");
+
 			qlock(&cv->listenq);
 			if(waserror()) {
 				qunlock(&cv->listenq);
 				nexterror();
 			}
 
+			/* wait for a connect */
 			sleep(&cv->listenr, incoming, cv);
 
 			lock(cv);

@@ -774,7 +774,7 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from)
 
 	/* no state for this addr/port, create some */
 	if(r == nil){
-		if(generation == 0)
+		while(generation == 0)
 			generation = rand();
 		DPRINT("from %s new state %lud for %I!%ud\n", 
 		        from, generation, addr, port);
@@ -834,7 +834,7 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 
 	/* make sure we're not talking to a new remote side */
 	if(r->rcvgen != sgen){
-		if(seq != 1)
+		if(seq != 0 && seq != 1)
 			return -1;
 
 		/* new connection */

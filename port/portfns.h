@@ -224,6 +224,7 @@ void		qflush(Queue*);
 int		qfull(Queue*);
 Block*		qget(Queue*);
 void		qhangup(Queue*, char*);
+int		qisclosed(Queue*);
 void		qinit(void);
 int		qiwrite(Queue*, void*, int);
 int		qlen(Queue*);

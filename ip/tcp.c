@@ -567,6 +567,8 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 
 	if(tcb->state == Syn_sent)
 		Fsconnected(s, reason);
+	if(s->state == Announced)
+		wakeup(&s->listenr);
 
 	qhangup(s->rq, reason);
 	qhangup(s->wq, reason);
