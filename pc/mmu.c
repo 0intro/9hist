@@ -377,7 +377,7 @@ ulong
 getisa(ulong addr, int len, int align)
 {
 	int i;
-	ulong os, s, e;
+	long os, s, e;
 
 	lock(&isaalloc);
 	os = s = e = 0;
@@ -386,7 +386,7 @@ getisa(ulong addr, int len, int align)
 		if(s == 0)
 			continue;
 		e = isaalloc.e[i];
-		if(addr && addr >= s && addr < isaalloc.e[i])
+		if(addr && addr >= s && addr < e)
 			break;
 		if(align > 0)
 			s = ((s + align - 1)/align)*align;

@@ -117,7 +117,6 @@ enum
 };
 struct I82365
 {
-	QLock;
 	int	type;
 	int	dev;
 	int	nslot;
@@ -130,6 +129,7 @@ static int ncontroller;
 /* a Slot slot */
 struct Slot
 {
+	Lock;
 	int	ref;
 
 	I82365	*cp;		/* controller for this slot */
@@ -168,6 +168,7 @@ struct Slot
 	ulong	otherwait;
 
 	/* memory maps */
+	QLock	mlock;		/* lock down the maps */
 	int	time;
 	PCMmap	mmap[Nmap];
 };
@@ -322,10 +323,11 @@ getmap(Slot *pp, ulong offset, int attr)
 		pp->gotmem = 1;
 
 		/* grab ISA address space for memory maps */
-		for(i = 0; i < Nmap; i++)
+		for(i = 0; i < Nmap; i++){
 			pp->mmap[i].isa = getisa(0, Mchunk, BY2PG);
-		if(pp->mmap[i].isa == 0)
-			panic("getmap");
+			if(pp->mmap[i].isa == 0)
+				panic("getmap");
+		}
 	}
 
 	/* look for a map that starts in the right place */
@@ -368,19 +370,19 @@ getmap(Slot *pp, ulong offset, int attr)
 static void
 increfp(Slot *pp)
 {
-	qlock(pp->cp);
+	lock(pp);
 	if(pp->ref++ == 0)
 		slotena(pp);
-	qunlock(pp->cp);
+	unlock(pp);
 }
 
 static void
 decrefp(Slot *pp)
 {
-	qlock(pp->cp);
+	lock(pp);
 	if(pp->ref-- == 1)
 		slotdis(pp);
-	qunlock(pp->cp);
+	unlock(pp);
 }
 
 char*
@@ -653,7 +655,6 @@ pcmread(int dev, int attr, void *a, long n, ulong offset)
 	pp = slot + dev;
 	if(pp->memlen < offset)
 		return 0;
-	qlock(pp->cp);
 	ac = a;
 	if(pp->memlen < offset + n)
 		n = pp->memlen - offset;
@@ -670,7 +671,6 @@ pcmread(int dev, int attr, void *a, long n, ulong offset)
 		offset += i;
 		ac += i;
 	}
-	qunlock(pp->cp);
 	return n;
 }
 
@@ -687,7 +687,11 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 		return devdirread(c, a, n, 0, 0, pcmgen);
 	case Qmem:
 	case Qattr:
+		qlock(&pp->mlock);
 		n = pcmread(DEV(c), p==Qattr, a, n, offset);
+		qunlock(&pp->mlock);
+		if(n < 0)
+			error(Eio);
 		break;
 	case Qctl:
 		cp = buf;
@@ -734,7 +738,6 @@ pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 	pp = slot + dev;
 	if(pp->memlen < offset)
 		return 0;
-	qlock(pp->cp);
 	ac = a;
 	if(pp->memlen < offset + n)
 		n = pp->memlen - offset;
@@ -749,7 +752,6 @@ pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 		offset += i;
 		ac += i;
 	}
-	qunlock(pp->cp);
 	return n;
 }
 
@@ -766,7 +768,11 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 		pp = slot + DEV(c);
 		if(pp->occupied == 0 || pp->enabled == 0)
 			error(Eio);
+		qlock(&pp->mlock);
 		n = pcmwrite(pp->dev, p == Qattr, a, n, offset);
+		qunlock(&pp->mlock);
+		if(n < 0)
+			error(Eio);
 		break;
 	default:
 		error(Ebadusefd);
