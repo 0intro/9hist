@@ -462,6 +462,8 @@ mpstartap(Apic* apic)
 void
 mpinit(void)
 {
+	int ncpu;
+	char *cp;
 	PCMP *pcmp;
 	uchar *e, *p;
 	Apic *apic, *bpapic;
@@ -562,11 +564,22 @@ mpinit(void)
 	/*
 	 * Initialise the application processors.
 	 */
+	if(cp = getconf("*ncpu")){
+		ncpu = strtol(cp, 0, 0);
+		if(ncpu < 1)
+			ncpu = 1;
+	}
+	else
+		ncpu = MaxAPICNO;
 	memmove((void*)APBOOTSTRAP, apbootstrap, sizeof(apbootstrap));
 	for(apic = mpapic; apic <= &mpapic[MaxAPICNO]; apic++){
+		if(ncpu <= 1)
+			break;
 		if((apic->flags & (PcmpBP|PcmpEN)) == PcmpEN
-		&& apic->type == PcmpPROCESSOR)
+		&& apic->type == PcmpPROCESSOR){
 			mpstartap(apic);
+			ncpu--;
+		}
 	}
 
 	/*
@@ -631,17 +644,31 @@ mpintrenablex(Vctl* v, int tbdf)
 			continue;
 
 		/*
-		 * Check not already enabled. This is a bad thing as it implies
-		 * the same device is requesting the same interrupt to be
-		 * enabled multiple times. The RDT read here is safe for now
-		 * as currently interrupts are never disabled once enabled.
+		 * Check if already enabled. Multifunction devices may share
+		 * INT[A-D]# so, if already enabled, check the polarity matches
+		 * and the trigger is level.
+		 *
+		 * Should check the devices differ only in the function number,
+		 * but that can wait for the planned enable/disable rewrite.
+		 * The RDT read here is safe for now as currently interrupts
+		 * are never disabled once enabled.
 		 */
 		apic = aintr->apic;
 		ioapicrdtr(apic, aintr->intr->intin, 0, &lo);
 		if(!(lo & ApicIMASK)){
-			print("mpintrenable: multiple enable irq%d, tbdf %uX\n",
-				v->irq, tbdf);
-			return -1;
+			vno = lo & 0xFF;
+			n = mpintrinit(bus, aintr->intr, vno, v->irq);
+			n |= ApicLOGICAL;
+			if(n != lo || !(n & ApicLEVEL)){
+				print("mpintrenable: multiple botch irq%d, tbdf %uX, lo %8.8uX, n %8.8uX\n",
+					v->irq, tbdf, lo, n);
+				return -1;
+			}
+
+			v->isr = lapicisr;
+			v->eoi = lapiceoi;
+
+			return vno;
 		}
 
 		/*

@@ -731,6 +731,9 @@ sromr(Ctlr* ctlr, int r)
 			data = csr32r(ctlr, 19);
 		}while((data & 0x80000000) && --i);
 
+		if(ctlr->sromsz == 0)
+			ctlr->sromsz = 6;
+
 		return csr32r(ctlr, 9) & 0xFFFF;
 	}
 
@@ -781,7 +784,6 @@ reread:
 
 	if(ctlr->sromsz == 0){
 		ctlr->sromsz = 8-size;
-		ctlr->srom = malloc((1<<ctlr->sromsz)*sizeof(ushort));
 		goto reread;
 	}
 
@@ -1234,10 +1236,11 @@ srom(Ctlr* ctlr)
 	 * 'Digital Semiconductor 21X4 Serial ROM Format, Version 4.05,
 	 * 2-Mar-98'. Only the 2114[03] are handled, support for other
 	 * controllers can be added as needed.
-	 * Do a dummy read first to get the size
-	 * and allocate ctlr->srom.
+	 * Do a dummy read first to get the size and allocate ctlr->srom.
 	 */
 	sromr(ctlr, 0);
+	if(ctlr->srom == nil)
+		ctlr->srom = malloc((1<<ctlr->sromsz)*sizeof(ushort));
 	for(i = 0; i < (1<<ctlr->sromsz); i++){
 		x = sromr(ctlr, i);
 		ctlr->srom[2*i] = x;
