@@ -62,7 +62,7 @@ sdaddpart(SDunit* unit, char* name, ulong start, ulong end)
 					partno = i;
 				break;
 			}
-			if(strcmp(name, pp->name) == 0){
+			if(strncmp(name, pp->name, NAMELEN) == 0){
 				if(pp->start == start && pp->end == end)
 					return;
 				error(Ebadctl);
@@ -110,6 +110,8 @@ sddelpart(SDunit* unit,  char* name)
 	}
 	if(i >= SDnpart)
 		error(Ebadctl);
+	if(strncmp(up->user, pp->user, NAMELEN) && !iseve())
+		error(Eperm);
 	if(pp->nopen)
 		error(Einuse);
 	pp->valid = 0;
@@ -156,6 +158,9 @@ sdinitpart(SDunit* unit)
 		 * Use partitions passed from boot program,
 		 * e.g.
 		 *	sdC0=dos 63 123123/plan9 123123 456456
+		 * This happens before /boot sets hostname so the
+		 * partitions will have the null-string for user.
+		 * The gen functions patch it up.
 		 */
 		for(p = getconf(unit->name); p != nil; p = q){
 			if(q = strchr(p, '/'))
@@ -332,6 +337,8 @@ sd2gen(Chan* c, int i, Dir* dp)
 		pp = &unit->part[PART(c->qid)];
 		l = (pp->end - pp->start) * (vlong)unit->secsize;
 		q = (Qid){QID(UNIT(c->qid), PART(c->qid), Qpart), c->qid.vers};
+		if(pp->user[0] == '\0')
+			strncpy(pp->user, eve, NAMELEN);
 		devdir(c, q, pp->name, l, pp->user, pp->perm, dp);
 		return 1;
 	}	
@@ -404,6 +411,8 @@ sdgen(Chan* c, Dirtab*, int, int s, Dir* dp)
 		}
 		l = (pp->end - pp->start) * (vlong)unit->secsize;
 		q = (Qid){QID(UNIT(c->qid), i, Qpart), c->qid.vers};
+		if(pp->user[0] == '\0')
+			strncpy(pp->user, eve, NAMELEN);
 		devdir(c, q, pp->name, l, pp->user, pp->perm, dp);
 		qunlock(&unit->ctl);
 		return 1;
@@ -605,7 +614,8 @@ sdbio(Chan* c, int write, char* a, long len, vlong off)
 	offset = off%unit->secsize;
 	if(write){
 		if(offset || (len%unit->secsize)){
-			if((l = unit->dev->ifc->bio(unit, 0, 0, b, nb, bno)) < 0)
+			l = unit->dev->ifc->bio(unit, 0, 0, b, nb, bno);
+			if(l < 0)
 				error(Eio);
 			if(l < (nb*unit->secsize)){
 				nb = l/unit->secsize;
@@ -615,7 +625,8 @@ sdbio(Chan* c, int write, char* a, long len, vlong off)
 			}
 		}
 		memmove(b+offset, a, len);
-		if((l = unit->dev->ifc->bio(unit, 0, 1, b, nb, bno)) < 0)
+		l = unit->dev->ifc->bio(unit, 0, 1, b, nb, bno);
+		if(l < 0)
 			error(Eio);
 		if(l < offset)
 			len = 0;
@@ -623,7 +634,8 @@ sdbio(Chan* c, int write, char* a, long len, vlong off)
 			len = l - offset;
 	}
 	else {
-		if((l = unit->dev->ifc->bio(unit, 0, 0, b, nb, bno)) < 0)
+		l = unit->dev->ifc->bio(unit, 0, 0, b, nb, bno);
+		if(l < 0)
 			error(Eio);
 		if(l < offset)
 			len = 0;
@@ -872,7 +884,7 @@ sdwstat(Chan* c, char* dp)
 	pp = &unit->part[PART(c->qid)];
 	if(!pp->valid)
 		error(Enonexist);
-	if(strcmp(up->user, pp->user) && !iseve())
+	if(strncmp(up->user, pp->user, NAMELEN) && !iseve())
 		error(Eperm);
 
 	convM2D(dp, &d);
