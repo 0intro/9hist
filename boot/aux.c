@@ -71,14 +71,12 @@ fatal(char *s)
 }
 
 int
-readenv(char *name, char *buf, int len)
+readfile(char *name, char *buf, int len)
 {
 	int f, n;
-	char ename[2*NAMELEN];
 
-	sprint(ename, "#e/%s", name);
 	buf[0] = 0;
-	f = open(ename, OREAD);
+	f = open(name, OREAD);
 	if(f < 0)
 		return -1;
 	n = read(f, buf, len-1);
@@ -146,11 +144,18 @@ outin(char *prompt, char *def, int len)
 	return n;
 }
 
+/*
+ *  get second word of the terminal environment variable.   If it
+ *  ends in "boot", get work of that part.
+ */
 void
 getconffile(char *conffile, char *terminal)
 {
 	char *p, *q;
+	char *s;
+	int n;
 
+	s = conffile;
 	*conffile = 0;
 	p = terminal;
 	if((p = strchr(p, ' ')) == 0 || p[1] == ' ' || p[1] == 0)
@@ -160,4 +165,10 @@ getconffile(char *conffile, char *terminal)
 		;
 	while(p < q)
 		*conffile++ = *p++;
+	*conffile = 0;
+
+	/* dump a trailig boot */
+	n = strlen(s);
+	if(n > 4 && strcmp(s + n - 4, "boot") == 0)
+		*(s+n-4) = 0;
 }

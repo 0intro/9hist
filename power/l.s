@@ -93,8 +93,8 @@ TEXT	newstart(SB), $0
 
 TEXT	firmware(SB), $0
 
-	MOVW	$(PROM+0x18), R1 /**/
-/*	MOVW	$(PROM+0x00), R1 /**/
+	SLL	$3, R1
+	ADD	$PROM, R1
 	JMP	(R1)
 
 TEXT	splhi(SB), $0

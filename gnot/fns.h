@@ -15,6 +15,7 @@ void	duartstarttimer(void);
 void	duartstoptimer(void);
 #define	evenaddr(x)	/* 68020 doesn't care */
 void	fault68020(Ureg*, FFrame*);
+void	firmware(void);
 #define	flushapage(x)
 void	flushcpucache(void);
 #define	flushpage(x) if(x)

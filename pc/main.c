@@ -390,11 +390,6 @@ procrestore(Proc *p)
 {
 }
 
-void
-firmware(void)
-{
-	panic("firmware");
-}
 
 /*
  *  the following functions all are slightly different from

@@ -40,6 +40,10 @@ boot(int argc, char *argv[])
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
 
+/*	for(fd = 0; fd < argc; fd++)
+		print("%s ", argv[fd]);
+	print("\n");/**/
+
 	ARGBEGIN{
 	case 'a':
 		aflag = 1;
@@ -62,8 +66,8 @@ boot(int argc, char *argv[])
 		break;
 	}ARGEND
 
-	readenv("cputype", cputype, sizeof(cputype));
-	readenv("terminal", terminal, sizeof(cputype));
+	readfile("#e/cputype", cputype, sizeof(cputype));
+	readfile("#e/terminal", terminal, sizeof(cputype));
 	getconffile(conffile, terminal);
 
 	/*

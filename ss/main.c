@@ -307,9 +307,3 @@ lancesetup(Lance *lp)
 	lp->ltp = lp->lrp+lp->nrrb;
 	lp->tp = lp->rp+lp->nrrb;
 }
-
-void
-firmware(void)
-{
-	systemreset();
-}

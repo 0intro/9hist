@@ -67,7 +67,6 @@ Block*	expandb(Block*, int);
 int	fault(ulong, int);
 void	fdclose(int, int);
 Chan*	fdtochan(int, int, int);
-void	firmware(void);
 int	fixfault(Segment*, ulong, int, int);
 void	flowctl(Queue*, Block*);
 void	flushmmu(void);

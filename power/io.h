@@ -110,3 +110,10 @@ struct INTVEC {
 #define	RTC		(NVRAM+0x3ff8)
 
 #define SBEADDR		((ulong *)(UNCACHED|0x1F080000))
+
+#define       PROM_RESET      0   /* run diags, check bootmode, reinit */
+#define       PROM_EXEC       1   /* load new program image */
+#define       PROM_RESTART    2   /* re-enter monitor command loop */
+#define       PROM_REINIT     3   /* re-init monitor, then cmd loop */
+#define       PROM_REBOOT     4   /* check bootmode, no config */
+#define       PROM_AUTOBOOT   5   /* autoboot the system */

@@ -36,7 +36,7 @@ extern void	newkernel(void);
 extern void	nop(int);
 extern int	outin(char*, char*, int);
 extern int	plumb(char*, char*, int*, char*);
-extern int	readenv(char*, char*, int);
+extern int	readfile(char*, char*, int);
 extern int	sendmsg(int, char*);
 extern void	session(int);
 extern void	setenv(char*, char*);

@@ -19,14 +19,14 @@ int _argc; char **_argv; char **_env;
 /*
  *  arguments passed to initcode
  */
-char argbuf[512];
+char argbuf[128];
 int argsize;
 
 /*
- *  environment passed to any kernel started by this kernel
+ *  environment variables extracted from NVRAM
  */
-char envbuf[64];
-char *env[2];
+char consname[NAMELEN];
+char diskless[NAMELEN];
 
 /*
  *  configuration file read by boot program
@@ -44,8 +44,8 @@ main(void)
 	machinit();
 	active.exiting = 0;
 	active.machs = 1;
-	confinit();
 	arginit();
+	confinit();
 	lockinit();
 	printinit();
 	duartspecial(0, &printq, &kbdq, 9600);
@@ -61,7 +61,6 @@ main(void)
 	streaminit();
 	swapinit();
 	pageinit();
-print("userinit\n");
 	userinit();
 	launchinit();
 	schedinit();
@@ -204,7 +203,6 @@ void
 init0(void)
 {
 	int i;
-	ulong *sp;
 	Chan *c;
 
 	m->proc = u->p;
@@ -228,8 +226,7 @@ init0(void)
 	}
 
 	kproc("alarm", alarmkproc, 0);
-	sp = (ulong*)(USTKTOP - argsize);
-	touser(sp);
+	touser((uchar*)(USTKTOP - sizeof(argbuf)));
 }
 
 FPsave	initfp;
@@ -279,13 +276,11 @@ userinit(void)
 	p->seg[SSEG] = s;
 	pg = newpage(1, 0, USTKTOP-BY2PG);
 	segpage(s, pg);
-
-	memmove((ulong*)(pg->pa|KZERO|(BY2PG-argsize)), 
-		argbuf + sizeof(argbuf) - argsize, argsize);
-
-	av = (char **)(pg->pa|KZERO|(BY2PG-argsize));
-	for(i = 0; i < _argc; i++)
-		av[i] += (char *)USTKTOP - (argbuf + sizeof(argbuf));
+	k = kmap(pg);
+	for(av = (char**)argbuf; *av; av++)
+		*av += (USTKTOP - sizeof(argbuf)) - (ulong)argbuf;
+	memmove((uchar*)VA(k) + BY2PG - sizeof(argbuf), argbuf, sizeof argbuf);
+	kunmap(k);
 
 	/*
 	 * Text
@@ -377,7 +372,7 @@ exit(void)
 	for(i=0; i<2000000; i++)
 		;
 	duartenable0();
-	firmware();
+	firmware(conf.cntrlp ? PROM_AUTOBOOT : PROM_REINIT);
 }
 
 typedef struct Conftab {
@@ -599,59 +594,68 @@ confinit(void)
  *  copy arguments passed by the boot kernel (or ROM) into a temporary buffer.
  *  we do this because the arguments are in memory that may be allocated
  *  to processes or kernel buffers.
+ *
+ *  also grab any environment variables that might be useful
  */
-#define IPADDRENV "netaddr="
+struct{
+	char	*name;
+	char	*val;
+}bootenv[] = {
+	{"netaddr=",	sysname},
+	{"console=",	consname},
+	{"diskless=",	diskless},
+};
+char *sp;
+
+char *
+pusharg(char *p)
+{
+	int n;
+
+	n = strlen(p)+1;
+	sp -= n;
+	memmove(sp, p, n);
+	return sp;
+}
+
 void
 arginit(void)
 {
 	int i, n;
-	int nbytes;
-	int ssize;
-	char *p;
-	char **argv;
-	char *charp;
+	char **av;
 
 	/*
-	 *  get the system name from the environment
+	 *  get boot env variables
 	 */
-	strcpy(envbuf, IPADDRENV);
-	for(argv = _env; *argv; argv++){
-		if(strncmp(*argv, IPADDRENV, sizeof(IPADDRENV)-1)==0){
-			strcat(envbuf, (*argv) + sizeof(IPADDRENV)-1);
-			break;
-		}
-	}
-	env[0] = envbuf;
-	env[1] = 0;
+	if(*sysname == 0)
+		for(av = _env; *av; av++)
+			for(i=0; i < sizeof bootenv/sizeof bootenv[0]; i++){
+				n = strlen(bootenv[i].name);
+				if(strncmp(*av, bootenv[i].name, n) == 0){
+					strncpy(bootenv[i].val, (*av)+n, NAMELEN);
+					bootenv[i].val[NAMELEN-1] = '\0';
+					break;
+				}
+			}
 
 	/*
-	 *  trim arguments to make them fit in the buffer (argv[0] is sysname)
+	 *  pack args into buffer
 	 */
-	nbytes = 0;
-	_argv[0] = sysname;
+	av = (char**)argbuf;
+	sp = argbuf + sizeof(argbuf);
 	for(i = 0; i < _argc; i++){
-		n = strlen(_argv[i]) + 1;
-		ssize = BY2WD*(i+2) + ((nbytes+n+(BY2WD-1)) & ~(BY2WD-1));
-		if(ssize > sizeof(argbuf))
-			break;
-		nbytes += n;
+		if(i && *(_argv[i]) != '-')
+			diskless[0] = 0;
+		av[i] = pusharg(_argv[i]);
 	}
-	_argc = i;
-	ssize = BY2WD*(i+1) + ((nbytes+(BY2WD-1)) & ~(BY2WD-1));
 
 	/*
-	 *  copy arguments into the buffer
+	 *  if no boot method is specified, look for
+	 *  a default in the diskless environment variable
 	 */
-	argv = (char**)(argbuf + sizeof(argbuf) - ssize);
-	charp = (char*)(argbuf + sizeof(argbuf) - nbytes);
-	for(i=0; i<_argc; i++){
-		argv[i] = charp;
-		n = strlen(_argv[i]) + 1;
-		memmove(charp, _argv[i], n);
-		charp += n;
-	}
-	_argv = argv;
-	argsize = ssize;
+	if(diskless[0] > '1')
+		av[i++] = pusharg(diskless);
+	av[i] = 0;
 }
 
 /*

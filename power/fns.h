@@ -20,6 +20,7 @@ void	duartxmit(int);
 void	evenaddr(ulong);
 void	faultmips(Ureg*, int, int);
 ulong	fcr31(void);
+void	firmware(int);
 void	flushmmu(void);
 #define	flushpage(s)	icflush((void*)(s), BY2PG)
 void	gettlb(int, ulong*);
