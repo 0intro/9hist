@@ -36,7 +36,7 @@ enum
 	CacheSize=	(CacheHash+CacheLook-1),
 	CacheTimeout=	5*60,		// timeout for cache entry in seconds
 
-	TcpMssMax = 1400,			// max desirable Tcp MSS value
+	TcpMssMax = 1360,			// max desirable Tcp MSS value
 
 };
 
