@@ -13,7 +13,7 @@ typedef	struct Drive		Drive;
 typedef	struct Controller	Controller;
 typedef struct Type		Type;
 
-#define DPRINT if(floppydebug)kprint
+#define DPRINT if(floppydebug)print
 int floppydebug;
 
 /* bits in the registers */

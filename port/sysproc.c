@@ -397,7 +397,6 @@ sysexec(ulong *arg)
 	/*
 	 *  '/' processes are higher priority (hack to make /ip more responsive).
 	 */
-	up->nice = NiceNormal;
 	if(devchar[tc->type] == L'/') {
 		up->nice = NiceRoot;
 		up->pri = 0;

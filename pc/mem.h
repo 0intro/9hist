@@ -119,5 +119,6 @@
  *  flag register bits that we care about
  */
 #define IFLAG	0x200
+#define IE	0x200
 
 #define getpgcolor(a)	0

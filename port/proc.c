@@ -29,7 +29,6 @@ typedef struct
 	int	n;
 } Schedq;
 
-int	nrdy;
 Schedq	runq;
 int	priconst[NiceMax];
 
@@ -107,14 +106,21 @@ sched(void)
 int
 anyready(void)
 {
-	return nrdy;
+	return runq.n;
 }
 
 int
 anyhigher(void)
 {
+	Proc *p;
+	int pri;
 
-	return nrdy;
+	pri = up->pri;
+	for(p=runq.head; p; p=p->rnext)
+		if(p->pri < pri)
+			if(p->wired == 0 || p->wired == m)
+				return runq.n;
+	return 0;
 }
 
 void
@@ -132,7 +138,6 @@ ready(Proc *p)
 		runq.head = p;
 	runq.tail = p;
 	runq.n++;
-	nrdy++;
 	p->state = Ready;
 	unlock(&runq);
 	splx(s);
@@ -200,7 +205,6 @@ found:
 	bp->rnext = 0;
 
 	runq.n--;
-	nrdy--;
 
 	if(bp->state != Ready)
 		print("runproc %s %d %s\n", bp->text, bp->pid, statename[bp->state]);
@@ -769,7 +773,7 @@ procdump(void)
 			print(" %d(%d)", p->pid, p->pri);
 		print("\n");
 	}
-	print("nrdy %d\n", nrdy);
+	print("nrdy %d\n", runq.n);
 }
 
 void
@@ -849,15 +853,16 @@ procctl(Proc *p)
 		state = p->psstate;
 		p->psstate = "Stopped";
 		/* free a waiting debugger */
+		spllo();
 		qlock(&p->debug);
 		if(p->pdbg) {
 			wakeup(&p->pdbg->sleep);
 			p->pdbg = 0;
 		}
 		qunlock(&p->debug);
+		splhi();
 		p->state = Stopped;
 		sched();		/* sched returns spllo() */
-		splhi();
 		p->psstate = state;
 		return;
 	}
@@ -964,7 +969,7 @@ accounttime(void)
 	pri = nrun;
 	nrun = 0;
 
-	pri = (nrdy+pri)*1000;
+	pri = (runq.n+pri)*1000;
 	m->load = (m->load*19+pri)/20;
 
 	/*

@@ -97,7 +97,7 @@ int	xchgw(ushort*, int);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
-#define getcallerpc(x)	(*(ulong*)(x))
+#define getcallerpc(x)	(((ulong*)(&x))[-1])
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))
 #define PADDR(a)	((ulong)(a)&~KZERO)
 
@@ -123,3 +123,5 @@ Block*	iallocb(int);
 void*	ifroute(ulong);
 ulong	ifunroute(ulong);
 void	parseip(char*, char*);
+
+#define	dcflush(a, b)

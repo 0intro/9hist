@@ -466,9 +466,9 @@ syscall(Ureg *ur, void *arg)
 	 */
 	ur->ax = ret;
 
-	splhi();
 	if(up->scallnr == NOTED)
 		noted(ur, *(ulong*)(sp+BY2WD));
+	splhi();
 
 	if(up->scallnr!=RFORK && (up->procctl || up->nnote))
 		notify(ur);
@@ -556,7 +556,7 @@ noted(Ureg *ur, ulong arg0)
 	if(!up->notified) {
 		qunlock(&up->debug);
 		pprint("call to noted() when not notified\n");
-		return;
+		pexit("Suicide", 0);
 	}
 	up->notified = 0;
 
@@ -571,15 +571,15 @@ noted(Ureg *ur, ulong arg0)
 
 	nur->flags = (up->svflags&0xffffff00) | (nur->flags&0xff);
 	memmove(ur, nur, sizeof(Ureg));
+	qunlock(&up->debug);
+
 	switch(arg0){
 	case NCONT:
 		if(!okaddr(nur->pc, 1, 0) || !okaddr(nur->usp, BY2WD, 0)){
 			pprint("suicide: trap in noted\n");
-			qunlock(&up->debug);
 			pexit("Suicide", 0);
 		}
-		qunlock(&up->debug);
-		return;
+		break;
 
 	default:
 		pprint("unknown noted arg 0x%lux\n", arg0);
@@ -589,7 +589,6 @@ noted(Ureg *ur, ulong arg0)
 	case NDFLT:
 		if(up->lastnote.flag == NDebug)
 			pprint("suicide: %s\n", up->lastnote.msg);
-		qunlock(&up->debug);
 		pexit(up->lastnote.msg, up->lastnote.flag!=NDebug);
 	}
 }
