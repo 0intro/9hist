@@ -455,50 +455,94 @@ static int
 mga4xxscroll(VGAscr* scr, Rectangle r_dst, Rectangle r_src)
 {
 	uchar * 	mga;
-	ulong	pitch;
-	ulong	w, h, start, end, y;
+	ulong	pitch, y;
+ 	ulong 	width, height, start, end, scandir;
+	int 		ydir;
  
 	/* Two-operand Bitblts */
 	if(scr->io == 0)
 		return 0;
+
 	mga = KADDR(scr->io);
 
 	pitch = Dx(scr->gscreen->r);
 
 	mgawrite32(mga, DWGCTL, 0);
-	h = Dy(r_src);
-	w = Dx(r_src);
-	y = r_dst.min.y;
 
-	if ((r_dst.min.y < r_src.min.y) || 
-	    ((r_dst.min.y == r_src.min.y) && (r_dst.min.x <= r_src.min.y))) {
-		mga_fifo(2);
-		mgawrite32(mga, DWGCTL, DWG_BITBLT | DWG_SHIFTZERO | 
-						DWG_SGNZERO | DWG_BFCOL | DWG_REPLACE);
-		mgawrite32(mga, AR5, pitch);
-		w--;
-		start = r_src.min.y*pitch+r_src.min.x;
-		end = start+w;
-	} else {
-		mga_fifo(3);
-		mgawrite32(mga, DWGCTL, DWG_BITBLT | DWG_SHIFTZERO | 
-						DWG_BFCOL | DWG_REPLACE);
-		mgawrite32(mga, SGN, 5);
-		mgawrite32(mga, AR5, (-pitch) & 0x3ffff);
-		w--;
-		end = (r_src.min.y+h-1)*pitch+r_src.min.x;
-		start = end+w;
-		y += h-1;
+ 	scandir 	= 0;
+
+	height 	= abs(Dy(r_src));
+	width 	= abs(Dx(r_src));
+
+	assert(height == abs(Dy(r_dst)));
+	assert(width == abs(Dx(r_dst)));
+
+	if ((r_src.min.y == r_dst.min.y) && (r_src.min.x == r_dst.min.x))
+	{
+		if (0) 
+			print("move x,y to x,y !\n");
+		return 1;
 	}
+
+	ydir = 1;
+	if (r_dst.min.y > r_src.min.y)
+	{
+		if (0) 
+			print("ydir = -1\n");
+		ydir = -1;
+		scandir |= 4;	// Blit UP
+	}
+
+	if (r_dst.min.x > r_src.min.x)
+	{
+		if (0) 
+			print("xdir = -1\n");
+		scandir |= 1;	// Blit Left
+	}
+
+	mga_fifo(4);
+	if (scandir)
+	{
+ 		mgawrite32(mga, DWGCTL, DWG_BITBLT | DWG_SHIFTZERO | 
+			DWG_SGNZERO | DWG_BFCOL | DWG_REPLACE);
+		mgawrite32(mga, SGN, scandir);
+	} else
+	{
+		mgawrite32(mga, DWGCTL, DWG_BITBLT | DWG_SHIFTZERO | 
+			DWG_BFCOL | DWG_REPLACE);
+ 	}
+	mgawrite32(mga, AR5, ydir * pitch);
+
+	width--;
+	start = end = r_src.min.x + (r_src.min.y * pitch);
+	if ((scandir & 1) == 1)
+	{
+		start += width;
+	} else
+	{
+		end += width;
+	}
+
+	y = r_dst.min.y;
+	if ((scandir & 4) == 4)
+	{
+		start += (height - 1) * pitch;
+		end += (height - 1) * pitch;
+		y += (height - 1);
+	}
+
 	mga_fifo(4);
 	mgawrite32(mga, AR0, end);
 	mgawrite32(mga, AR3, start);
-	mgawrite32(mga, FXBNDRY, ((r_dst.min.x+w)<<16) | r_dst.min.x);
-	mgawrite32(mga, YDST, y);
-	mgawrite32(mga, YLEN + GO, h);
+	mgawrite32(mga, FXBNDRY, ((r_dst.min.x+width)<<16) | r_dst.min.x);
+	mgawrite32(mga, YDSTLEN + GO, (y << 16) | height);
+ 
+	if (1)
+	{
+		while (mgaread32(mga, STATUS) & 0x00010000)
+			;
+	}
 
-	while (mgaread32(mga, STATUS) & 0x00010000)
-		;
 	return 1;
 }
 
