@@ -366,7 +366,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 		if(offset+n > STATSIZE)
 			n = STATSIZE - offset;
 		j = sprint(statbuf, "%-27s %-27s %-11s ",
-			p->text, p->pgrp->user, p->psstate ? p->psstate : statename[p->state]);
+			p->text, p->user, p->psstate ? p->psstate : statename[p->state]);
 		for(i=0; i<6; i++){
 			l = p->time[i];
 			if(i == TReal)

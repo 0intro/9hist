@@ -1190,7 +1190,7 @@ qlook(Stream *s, char *name)
  *	pop			-- pop a line discipline
  *	look ldname		-- look for a line discipline
  *
- *  This routing is entrered with s->wrlock'ed and must unlock.
+ *  This routing is entered with s->wrlock'ed and must unlock.
  */
 static long
 streamctlwrite(Chan *c, void *a, long n)

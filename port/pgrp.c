@@ -310,8 +310,6 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	Mhead **h, **e, *f, **l, *mh;
 	Mount *n, *m, **link;
 
-	memmove(to->user, from->user, NAMELEN);
-
 	rlock(&from->ns);
 
 	e = &from->mnthash[MNTHASH];

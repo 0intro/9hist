@@ -2,13 +2,43 @@
 #include "/sys/src/libc/9syscall/sys.h"
 
 typedef long Syscall(ulong*);
-Syscall sysbind, sysbrk_, syschdir, sysclose, syscreate, sysdeath;
-Syscall	sysdup, syserrstr, sysexec, sysexits, sysfork, sysforkpgrp;
-Syscall	sysfstat, sysfwstat, sysgetpid, sysmount, sysnoted;
-Syscall	sysnotify, sysopen, syspipe, sysr1, sysread, sysremove, sysseek;
-Syscall syssleep, sysstat, syswait, syswrite, syswstat, sysalarm, syssegbrk;
-Syscall syssegattach, syssegdetach, syssegfree, syssegflush;
-Syscall sysrendezvous, sysrfork, sysunmount;
+
+Syscall sysr1;
+Syscall syserrstr;
+Syscall sysbind;
+Syscall syschdir;
+Syscall sysclose;
+Syscall sysdup;
+Syscall sysalarm;
+Syscall sysexec;
+Syscall sysexits;
+Syscall sysfork;
+Syscall sysforkpgrp;
+Syscall sysfstat;
+Syscall syssegbrk;
+Syscall sysmount;
+Syscall sysopen;
+Syscall sysread;
+Syscall sysseek;
+Syscall syssleep;
+Syscall sysstat;
+Syscall syswait;
+Syscall syswrite;
+Syscall syspipe;
+Syscall syscreate;
+Syscall sysrfork;
+Syscall sysbrk_;
+Syscall sysremove;
+Syscall syswstat;
+Syscall sysfwstat;
+Syscall sysnotify;
+Syscall sysnoted;
+Syscall syssegattach;
+Syscall syssegdetach;
+Syscall syssegfree;
+Syscall syssegflush;
+Syscall sysrendezvous;
+Syscall sysunmount;
 
 Syscall *systab[]={
 	[SYSR1]		sysr1,

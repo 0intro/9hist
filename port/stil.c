@@ -17,11 +17,19 @@ static 	int 	initseq = 25000;
 static	Rendez	ilackr;
 char	*ilstate[] = { "Closed", "Syncer", "Syncee", "Established", "Listening", "Closing" };
 
+enum
+{
+	Slowtime = 20,
+	Fasttime = 1,
+};
+
 void	ilrcvmsg(Ipconv*, Block*);
 void	ilackproc(void*);
 void	ilsendctl(Ipconv*, Ilhdr*, int, int);
 void	ilackq(Ilcb*, Block*);
 void	ilprocess(Ipconv*, Ilhdr*, Block*);
+void	ilpullup(Ipconv*);
+void	ilhangup(Ipconv*);
 
 void
 ilopen(Queue *q, Stream *s)
@@ -181,7 +189,7 @@ ilackto(Ilcb *ic, ulong ackto)
 	while(ic->unacked) {
 		h = (Ilhdr *)ic->unacked->rptr;
 		if(ackto < nhgetl(h->ilack))
-			break;	
+			break;
 		bp = ic->unacked;
 		ic->unacked = bp->list;
 		bp->list = 0;
@@ -276,13 +284,13 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 {
 	Block *nb;
 	Ilcb *ic;
-	Ilhdr *oh;
-	ulong id, ack, oid, dlen;
+	ulong id, ack, dlen;
 
 	id = nhgetl(h->ilid);
 	ack = nhgetl(h->ilack);
 	ic = &s->ilctl;
 
+	ic->timeout = 0;
 	/* Active transition machine - this tracks connection state */
 	switch(ic->state) {
 	case Ilsyncee:	
@@ -301,6 +309,7 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 			ic->recvd = id+1;
 			ilsendctl(s, 0, Ilack, 1);
 			ic->state = Ilestablished;
+			ilpullup(s);
 		}
 		break;
 	case Ilclosing:
@@ -308,12 +317,20 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		ic->state = Ilclosed;
 		/* No break */
 	case Ilclosed:
-		goto hungup;
+		ilhangup(s);
+		freeb(bp);
+		return;
 	}
 
 	/* Passive actions based on packet type */
 	switch(h->iltype) {
-	default:
+	case Ilstate:
+		if(ic->unacked) {
+			nb = copyb(ic->unacked, blen(ic->unacked));
+			PUTNEXT(Ipoutput, nb);	
+		}
+		else
+			ilsendctl(s, 0, Ilack, 1);
 		freeb(bp);
 		break;
 	case Ilack:
@@ -342,45 +359,68 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 				s->ilctl.recvd++;
 				bp->rptr += IL_EHSIZE+IL_HDRSIZE;
 				PUTNEXT(s->readq, bp);
+				ilpullup(s);
 			}
 		}
 		break;
 	case Ilclose:
 		ic->state = Ilclosing;
-	hungup:
-		if(s->readq) {
-			nb = allocb(0);
-			nb->type = M_HANGUP;
-			nb->flags |= S_DELIM;
-			PUTNEXT(s->readq, nb);
-		}
+		ilhangup(s);
+		/* No break */
+	default:
 		freeb(bp);
-	}
-
-	/* Since recvd may have changed we can process out of order packets */
-	if(ic->state == Ilestablished && s->readq) {
-		while(ic->outoforder) {
-			bp = ic->outoforder;
-			oh = (Ilhdr*)bp->rptr;
-			oid = nhgetl(oh->ilid);
-			if(oid > ic->recvd)
-				break;
-			if(oid < ic->recvd) {
-				ic->outoforder = bp->list;
-				freeb(bp);
-			}
-			if(oid == ic->recvd) {
-				ic->recvd++;
-				ic->outoforder = bp->list;
-				bp->list = 0;
-				dlen = nhgets(oh->illen)-IL_HDRSIZE;
-				bp = btrim(bp, IL_EHSIZE+IL_HDRSIZE, dlen);
-				PUTNEXT(s->readq, bp);
-			}
-		}
+		break;
 	}
 }
 
+void
+ilhangup(Ipconv *s)
+{
+	Block *nb;
+
+	if(s->readq) {
+		nb = allocb(0);
+		nb->type = M_HANGUP;
+		nb->flags |= S_DELIM;
+		PUTNEXT(s->readq, nb);
+	}
+}
+
+void
+ilpullup(Ipconv *s)
+{
+	Ilcb *ic;
+	Ilhdr *oh;
+	ulong oid, dlen;
+	Block *bp;
+
+	if(s->readq == 0)
+		return;
+
+	ic = &s->ilctl;
+	if(ic->state != Ilestablished)
+		return;
+
+	while(ic->outoforder) {
+		bp = ic->outoforder;
+		oh = (Ilhdr*)bp->rptr;
+		oid = nhgetl(oh->ilid);
+		if(oid > ic->recvd)
+			break;
+		if(oid < ic->recvd) {
+			ic->outoforder = bp->list;
+			freeb(bp);
+		}
+		if(oid == ic->recvd) {
+			ic->recvd++;
+			ic->outoforder = bp->list;
+			bp->list = 0;
+			dlen = nhgets(oh->illen)-IL_HDRSIZE;
+			bp = btrim(bp, IL_EHSIZE+IL_HDRSIZE, dlen);
+			PUTNEXT(s->readq, bp);
+		}
+	}
+}
 
 void
 iloutoforder(Ipconv *s, Ilhdr *h, Block *bp)
@@ -391,22 +431,22 @@ iloutoforder(Ipconv *s, Ilhdr *h, Block *bp)
 	uchar *lid;
 
 	ic = &s->ilctl;
+	bp->list = 0;
 	if(ic->outoforder == 0) {
 		ic->outoforder = bp;
-		bp->list = 0;
+		return;
 	}
-	else {
-		id = nhgetl(h->id);
-		l = &ic->outoforder;
-		for(f = *l; f; f = f->list) {
-			lid = ((Ilhdr*)(bp->rptr))->ilid;
-			if(id > nhgetl(lid))
-				break;
-			l = &f->list;
-		}
-		bp->list = *l;
-		*l = bp;
+
+	id = nhgetl(h->id);
+	l = &ic->outoforder;
+	for(f = *l; f; f = f->list) {
+		lid = ((Ilhdr*)(bp->rptr))->ilid;
+		if(id > nhgetl(lid))
+			break;
+		l = &f->list;
 	}
+	bp->list = *l;
+	*l = bp;
 }
 
 void
@@ -460,6 +500,7 @@ void
 ilackproc(void *a)
 {
 	Ipconv *base, *end, *s;
+	Ilcb *ic;
 	Block *bp, *np;
 
 	base = (Ipconv*)a;
@@ -468,14 +509,30 @@ ilackproc(void *a)
 	for(;;) {
 		tsleep(&ilackr, return0, 0, 100);
 		for(s = base; s < end; s++) {
-/* Decide if we have to do the action !! */
-			switch(s->ilctl.state) {
+			ic = &s->ilctl;
+			switch(ic->state) {
 			case Ilclosed:
 			case Illistening:
+				break;
 			case Ilclosing:
-			case Ilsyncer:
+				break;
 			case Ilsyncee:
+			case Ilsyncer:
+				ilsendctl(s, 0, Ilsync, 1);
+				if(++ic->timeout == Slowtime) {
+					ilhangup(s);
+					ic->state = Ilclosed;
+					s->dst = 0;
+					s->pdst = 0;
+					ic->timeout = 0;
+				}
+				break;
 			case Ilestablished:
+				if(++ic->timeout == Fasttime) {
+					if(ic->lastack < ic->recvd)
+						ilsendctl(s, 0, Ilstate, 1);
+					ic->timeout = 0;
+				}
 				break;
 			}
 		}
@@ -490,6 +547,7 @@ ilstart(Ipconv *ipc, int type, int window)
 	if(ic->state != Ilclosed)
 		return;
 
+	ic->timeout = 0;
 	ic->unacked = 0;
 	ic->outoforder = 0;
 	initseq += TK2MS(MACHP(0)->ticks);

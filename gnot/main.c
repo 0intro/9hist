@@ -149,7 +149,7 @@ userinit(void)
 	p->fgrp = newfgrp();
 
 	strcpy(p->text, "*init*");
-	strcpy(p->pgrp->user, "bootes");
+	strcpy(p->user, "bootes");
 	strcpy(user, "bootes");
 	p->fpstate = FPinit;
 

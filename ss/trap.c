@@ -250,7 +250,8 @@ notify(Ureg *ur)
 		memmove((char*)sp, u->note[0].msg, ERRLEN);
 		sp -= 3*BY2WD;
 		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
-		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* */
+		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* (compat) */
+		ur->r7 = (ulong)u->ureg;		/* arg 1 is ureg* */
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 		ur->usp = sp;
 		ur->pc = (ulong)u->notify;
@@ -358,10 +359,6 @@ syscall(Ureg *aur)
 			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 			msg = "sys: odd stack";
 			goto Bad;
-		}
-		if(((ulong*)ur->pc)[-2] == 0x82206004){	/* new calling convention: look for ADD $-4, SP */
-			pprint("old system call linkage\n");
-			sp += BY2WD;
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, ((1+MAXSYSARG)*BY2WD), 0);

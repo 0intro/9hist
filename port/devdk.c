@@ -1045,7 +1045,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 */
 	if(strchr(addr, '\n'))
 		error(Ebadarg);
-	if(strlen(addr)+strlen(u->p->pgrp->user)+2 >= sizeof(dialstr))
+	if(strlen(addr)+strlen(u->p->user)+2 >= sizeof(dialstr))
 		error(Ebadarg);
 	strcpy(dialstr, addr);
 	bang = strchr(dialstr, '!');
@@ -1059,7 +1059,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 		t_val = T_SRV;
 		d_val = D_DIAL;
 		strcat(dialstr, "\n");
-		strcat(dialstr, u->p->pgrp->user);
+		strcat(dialstr, u->p->user);
 		strcat(dialstr, "\n");
 		break;
 	case Announce:

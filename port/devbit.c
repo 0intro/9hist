@@ -497,8 +497,12 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		p = va;
 		for(y=miny; y<maxy; y++){
 			q = (uchar*)gaddr(&gscreen, Pt(0, y));
-			for(x=0; x<l; x++)
-				*p++ = K2U(*q++);
+			if(flipping)
+				for(x=0; x<l; x++)
+					*p++ = ~K2U(*q++);
+			else
+				for(x=0; x<l; x++)
+					*p++ = K2U(*q++);
 			n += l;
 		}
 		break;

@@ -53,7 +53,7 @@ struct Rendez
 
 struct QLock
 {
-	Lock	use;			/* to use object */
+	Lock	use;			/* to access Qlock structure */
 	Proc	*head;			/* next process waiting for object */
 	Proc	*tail;			/* last process waiting for object */
 	int	locked;			/* flag */
@@ -258,8 +258,8 @@ struct Mhead
 
 enum{
 	NUser,				/* note provided externally */
-	NExit,				/* process should exit */
-	NDebug,				/* process should hang */
+	NExit,				/* deliver note quietly */
+	NDebug,				/* print debug message */
 };
 
 struct Note
@@ -372,7 +372,6 @@ struct Pgrp
 	Pgrp	*next;			/* free list */
 	int	index;			/* index in pgrp table */
 	ulong	pgrpid;
-	char	user[NAMELEN];
 	QLock	debug;			/* single access via devproc.c */
 	RWlock	ns;			/* Namespace many read/one write lock */
 	Mhead	*mnthash[MNTHASH];
@@ -489,6 +488,7 @@ struct Proc
 	Label	sched;
 	Mach	*mach;			/* machine running this proc */
 	char	text[NAMELEN];
+	char	user[NAMELEN];
 	Proc	*rnext;			/* next process in run queue */
 	Proc	*qnext;			/* next process on queue for a QLock */
 	QLock	*qlock;			/* address of qlock being queued for DEBUG */

@@ -436,8 +436,8 @@ consopen(Chan *c, int omode)
 	case Quser:
 		if(omode==(OWRITE|OTRUNC)){
 			/* truncate? */
-			if(strcmp(u->p->pgrp->user, "bootes") == 0)	/* BUG */
-				u->p->pgrp->user[0] = 0;
+			if(strcmp(u->p->user, "bootes") == 0)	/* BUG */
+				u->p->user[0] = 0;
 			else
 				error(Eperm);
 		}
@@ -586,7 +586,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return n;
 
 	case Quser:
-		return readstr(offset, buf, n, u->p->pgrp->user);
+		return readstr(offset, buf, n, u->p->user);
 
 	case Qnull:
 		return 0;
@@ -719,14 +719,14 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Quser:
-		if(u->p->pgrp->user[0])		/* trying to overwrite /dev/user */
+		if(u->p->user[0])		/* trying to overwrite /dev/user */
 			error(Eperm);
 		if(offset >= NAMELEN-1)
 			return 0;
 		if(offset+n >= NAMELEN-1)
 			n = NAMELEN-1 - offset;
-		memmove(u->p->pgrp->user+offset, a, n);
-		u->p->pgrp->user[offset+n] = 0;
+		memmove(u->p->user+offset, a, n);
+		u->p->user[offset+n] = 0;
 		break;
 
 	case Qcputime:

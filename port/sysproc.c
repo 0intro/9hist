@@ -14,7 +14,7 @@ long	rfork(ulong);
 long
 sysr1(ulong *arg)
 {
-	print("[%s %s %d] r1 = %d\n", u->p->pgrp->user, u->p->text, u->p->pid, arg[0]);
+	print("[%s %s %d] r1 = %d\n", u->p->user, u->p->text, u->p->pid, arg[0]);
 	return 0;
 }
 
@@ -128,6 +128,7 @@ rfork(ulong flag)
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
 	memmove(p->text, u->p->text, NAMELEN);
+	memmove(p->user, u->p->user, NAMELEN);
 	/*
 	 *  since the bss/data segments are now shareable,
 	 *  any mmu info about this process is now stale
@@ -288,9 +289,6 @@ sysexec(ulong *arg)
 
 	memmove(p->text, elem, NAMELEN);
 
-	if(waserror())
-		pexit("fatal exec error", 0);
-
 	/*
 	 * Committed.  Free old memory. Special segments are maintained accross exec
 	 */
@@ -340,7 +338,6 @@ sysexec(ulong *arg)
 	relocateseg(s, TSTKTOP-USTKTOP);
 
 	close(tc);
-	poperror();
 
 	/*
 	 *  At this point, the mmu contains info about the old address
@@ -477,8 +474,6 @@ sysforkpgrp(ulong *arg)
 	mask = arg[0];
 	if(mask == FPall)
 		mask = FPnote|FPenv|FPnamespc;
-
-	memmove(pg->user, u->p->pgrp->user, NAMELEN);
 
 	if(mask & FPnamespc)
 		pgrpcpy(pg, u->p->pgrp);

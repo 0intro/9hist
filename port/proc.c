@@ -649,8 +649,7 @@ procdump(void)
 		p = procalloc.arena+i;
 		if(p->state != Dead){
 			print("%d:%s %s upc %lux %s ut %ld st %ld r %lux qpc %lux\n",
-				p->pid, p->text, 
-				p->pgrp ? p->pgrp->user : "pgrp=0", p->pc, 
+				p->pid, p->text, p->user, p->pc, 
 				statename[p->state], p->time[0], p->time[1], p->r, p->qlockpc);
 		}
 	}
@@ -708,15 +707,15 @@ kproc(char *name, void (*func)(void *), void *arg)
 	}
 
 	user = "bootes";
+	strcpy(p->user, user);
 	if(kpgrp == 0){
 		kpgrp = newpgrp();
-		strcpy(kpgrp->user, user);
 	}
 	p->pgrp = kpgrp;
 	incref(kpgrp);
 
-	if(u->p->pgrp->user[0] != '\0')
-		user = u->p->pgrp->user;
+	if(u->p->user[0] != '\0')
+		user = u->p->user;
 	sprint(p->text, "%s.%.6s", name, user);
 
 	p->nchild = 0;

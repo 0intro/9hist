@@ -128,8 +128,7 @@ vmereset(void)
 	else
 		noforce = 0;
 	MODEREG->resetforce = (1<<1) | noforce;
-	for(i=0; i<1000000; i++)
-		;
+	delay(140);
 	MODEREG->resetforce = noforce;
 }
 
@@ -259,7 +258,7 @@ userinit(void)
 	p->fgrp = newfgrp();
 
 	strcpy(p->text, "*init*");
-	strcpy(p->pgrp->user, "bootes");
+	strcpy(p->user, "bootes");
 	savefpregs(&initfp);
 	p->fpstate = FPinit;
 

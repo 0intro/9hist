@@ -98,10 +98,10 @@ Chan*
 rtcopen(Chan *c, int omode)
 {
 	if(c->qid.path==Qrtc && (omode&(OWRITE|OTRUNC)))
-	if(strcmp(u->p->pgrp->user, "bootes") != 0)	/* BUG */
+	if(strcmp(u->p->user, "bootes") != 0)	/* BUG */
 		error(Eperm);
 	if(c->qid.path == Qnvram)
-	if(strcmp(u->p->pgrp->user, "bootes") != 0)	/* BUG */
+	if(strcmp(u->p->user, "bootes") != 0)	/* BUG */
 		error(Eperm);
 	return devopen(c, omode, rtcdir, NRTC, devgen);
 }

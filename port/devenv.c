@@ -156,8 +156,8 @@ envcreate(Chan *c, char *name, int omode, ulong perm)
 	if(ne)
 		e = ne;
 	else if(eg->nenv == conf.npgenv){
-		print("out of egroup envs\n");
 		qunlock(&eg->ev);
+		print("out of egroup envs\n");
 		error(Enoenv);
 	}
 	i = e - eg->etab + 1;

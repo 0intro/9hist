@@ -364,7 +364,6 @@ ibrk(ulong addr, int seg)
 		if(newtop >= ns->base && newtop < ns->top) {
 			qunlock(&s->lk);
 			pprint("segments overlap\n");
-			pexit("Suicide", 0);
 			error(Esegaddr);
 		}
 	}

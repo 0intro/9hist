@@ -757,7 +757,7 @@ noconnect(Chan *c, char *addr)
 		 *  send service name and user name
 		 */
 		cp->hdr->flag |= NO_SERVICE;
-		sprint(buf, "%s %s", service, u->p->pgrp->user);
+		sprint(buf, "%s %s", service, u->p->user);
 		c->qid.path = STREAMQID(STREAMID(c->qid.path), Sdataqid);
 		streamwrite(c, buf, strlen(buf), 1);
 		c->qid.path = STREAMQID(STREAMID(c->qid.path), Sctlqid);

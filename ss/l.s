@@ -55,20 +55,18 @@ TEXT	startvirt(SB), $-4
 
 TEXT	swap1(SB), $0
 
-	MOVW	keyaddr+0(FP), R8
-	TAS	(R8), R7		/* LDSTUB, thank you ken */
+	TAS	(R7), R7		/* LDSTUB, thank you ken */
 	RETURN
 
 TEXT	swap1_should_work(SB), $0
 
-	MOVW	keyaddr+0(FP), R8
+	MOVW	R7, R8
 	MOVW	$1, R7
 	SWAP	(R8), R7
 	RETURN
 
 TEXT	swap1x(SB), $0
 
-	MOVW	keyaddr+0(FP), R8
 	MOVW	PSR, R9
 	MOVW	R9, R10
 	AND	$~PSRET, R10		/* BUG: book says this is buggy */
@@ -76,7 +74,7 @@ TEXT	swap1x(SB), $0
 	OR	R0, R0
 	OR	R0, R0
 	OR	R0, R0
-	MOVW	(R8), R7
+	MOVW	(R7), R7
 	CMP	R7, R0
 	BNE	was1
 	MOVW	$1, R10
@@ -111,7 +109,6 @@ TEXT	splhi(SB), $0
 TEXT	splx(SB), $0
 
 	MOVW	R15, 4(R(MACH))	/* save PC in m->splpc */
-	MOVW	psr+0(FP), R7
 	MOVW	R7, PSR		/* BUG: book says this is buggy */
 	OR	R0, R0
 	OR	R0, R0
@@ -123,13 +120,13 @@ TEXT	spldone(SB), $0
 	RETURN
 
 TEXT	touser(SB), $-4
-	MOVW	$(SYSPSR&~PSREF), R7
-	MOVW	R7, PSR
+	MOVW	$(SYSPSR&~PSREF), R8
+	MOVW	R8, PSR
 	OR	R0, R0
 	OR	R0, R0
 	OR	R0, R0
 
-	MOVW	sp+0(FP), R1
+	MOVW	R7, R1
 	SAVE	R0, R0			/* RETT is implicit RESTORE */
 	MOVW	$(UTZERO+32), R7	/* PC; header appears in text */
 	MOVW	$(UTZERO+32+4), R8	/* nPC */
@@ -137,7 +134,7 @@ TEXT	touser(SB), $-4
 
 TEXT	rfnote(SB), $0
 
-	MOVW	0(FP), R1		/* 1st arg is &uregpointer */
+	MOVW	R7, R1			/* 1st arg is &uregpointer */
 	ADD	$4, R1			/* point at ureg */
 	JMP	restore
 
@@ -301,7 +298,6 @@ TEXT	syslink(SB), $-4
 
 TEXT	puttbr(SB), $0
 
-	MOVW	tbr+0(FP), R7
 	MOVW	R7, TBR
 	OR	R0, R0
 	OR	R0, R0
@@ -325,7 +321,6 @@ TEXT	getwim(SB), $0
 
 TEXT	setlabel(SB), $0
 
-	MOVW	b+0(FP), R7
 	MOVW	R1, (R7)
 	MOVW	R15, 4(R7)
 	MOVW	$0, R7
@@ -333,15 +328,14 @@ TEXT	setlabel(SB), $0
 
 TEXT	gotolabel(SB), $0
 
-	MOVW	b+0(FP), R8
-	MOVW	(R8), R1
-	MOVW	4(R8), R15
+	MOVW	(R7), R1
+	MOVW	4(R7), R15
 	MOVW	$1, R7
 	RETURN
 
 TEXT	putcxsegm(SB), $0
 
-	MOVW	0(FP), R8		/* context */
+	MOVW	R7, R8			/* context */
 	MOVW	4(FP), R9		/* segment addr */
 	MOVW	8(FP), R10		/* segment value */
 	MOVW	$0xFFE80118, R7
@@ -350,61 +344,52 @@ TEXT	putcxsegm(SB), $0
 
 TEXT	putcxreg(SB), $0
 
-	MOVW	$CONTEXT, R7
-	MOVW	0(FP), R8
-	MOVB	R8, (R7, 2)
+	MOVW	$CONTEXT, R8
+	MOVB	R7, (R8, 2)
 	RETURN
 
 TEXT	putb2(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVB	R8, (R7, 2)
 	RETURN
 
 TEXT	getb2(SB), $0
 
-	MOVW	0(FP), R7
 	MOVB	(R7, 2), R7
 	RETURN
 
 TEXT	getw2(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	(R7, 2), R7
 	RETURN
 
 TEXT	putw2(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 2)
 	RETURN
 
 TEXT	putw4(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 4)
 	RETURN
 
 TEXT	putwC(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 0xC)
 	RETURN
 
 TEXT	putwD(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 0xD)
 	RETURN
 
 TEXT	putwD16(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 0xD)
 	ADD	$(1<<4), R7
@@ -441,14 +426,12 @@ TEXT	putwD16(SB), $0
 
 TEXT	putwE(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 0xE)
 	RETURN
 
 TEXT	putwE16(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 0xE)
 	ADD	$(1<<4), R7
@@ -485,14 +468,12 @@ TEXT	putwE16(SB), $0
 
 TEXT	putsegm(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 3)
 	RETURN
 
 TEXT	savefpregs(SB), $0
 
-	MOVW	0(FP), R7
 	MOVW	FSR, 0(R7)
 
 	ADD	$(4+7), R7		/* double-align so can MOVD */
@@ -526,7 +507,6 @@ TEXT	restfpregs(SB), $0
 	OR	$PSREF, R8
 	MOVW	R8, PSR
 
-	MOVW	0(FP), R7
 	MOVW	(R7), FSR
 
 	ADD	$(4+7), R7		/* double-align so can MOVD */
@@ -554,6 +534,7 @@ TEXT	restfpregs(SB), $0
 	RETURN
 
 TEXT	clearfpintr(SB), $0
+
 	MOVW	$fpq+BY2WD(SB), R7
 	ANDN	$0x7, R7		/* must be D aligned */
 	MOVW	$fsr+0(SB), R9

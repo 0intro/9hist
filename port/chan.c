@@ -434,6 +434,7 @@ namec(char *name, int amode, int omode, ulong perm)
 	int mntok, isdot;
 	char *p;
 	char *elem, *nn;
+	char createerr[ERRLEN];
 
 	if(name[0] == 0)
 		error(Enonexist);
@@ -590,9 +591,24 @@ namec(char *name, int amode, int omode, ulong perm)
 		 */
 		if(c->mnt && !(c->flag&CCREATE))
 			c = createdir(c);
+
+		/*
+		 *  protect against the open/create race. This is not a complete
+		 *  fix. It just reduces the window.
+		 */
+		if(waserror()) {
+			strcpy(createerr, u->error);
+			nc = walk(c, elem, 1);
+			if(nc == 0)
+				errors(createerr);
+			c = nc;
+			omode |= OTRUNC;
+			goto Open;
+		}
 		(*devtab[c->type].create)(c, elem, omode, perm);
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
+		poperror();
 		break;
 
 	default:

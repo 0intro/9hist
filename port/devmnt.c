@@ -192,7 +192,7 @@ mattach(Mnt *m, char *spec, char *auth)
 	}
 	r->request.type = Tattach;
 	r->request.fid = c->fid;
-	memmove(r->request.uname, u->p->pgrp->user, NAMELEN);
+	memmove(r->request.uname, u->p->user, NAMELEN);
 	strncpy(r->request.aname, spec, NAMELEN);
 	strncpy(r->request.auth, auth, NAMELEN);
 	mountrpc(m, r);

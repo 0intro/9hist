@@ -8,6 +8,8 @@
 
 #define DPRINT
 
+void	faultexit(char*);
+
 int
 fault(ulong addr, int read)
 {
@@ -160,17 +162,13 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	if(loadrec == 0) {			/* This is demand load */
 		c = s->image->c;
 		qlock(&c->rdl);
-		/* We are unable to correctly error up throught the kernel
-		 * during faults. Therefore note delivery is postponed until
-		 * we leave the system. Read errors cause the process to die.
-		 */
 		while(waserror()) {
 			if(strcmp(u->error, errstrtab[Eintr]) == 0)
 				continue;
 			qunlock(&c->rdl);
 			kunmap(k);
 			putpage(new);
-			pexit("demand load I/O error", 0);
+			faultexit("sys: demand load I/O error");
 		}
 
 		ask = s->flen-soff;
@@ -206,7 +204,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			putpage(new);
 			qlock(&s->lk);
 			qunlock(&s->lk);
-			pexit("page in I/O error", 0);
+			faultexit("sys: page in I/O error");
 		}
 
 		n = (*devtab[c->type].read)(c, kaddr, BY2PG, daddr);
@@ -229,6 +227,16 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		else
 			putpage(new);
 	}
+}
+
+void
+faultexit(char *s)
+{
+	if(u->nerrlab) {
+		postnote(u->p, 1, s, NDebug);
+		errors(s);
+	}
+	pexit(s, 0);
 }
 
 /*
