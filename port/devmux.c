@@ -135,7 +135,7 @@ muxattach(char *spec)
 {
 	Chan *c;
 
-	c = devattach('m', spec);
+	c = devattach('s', spec);
 	c->qid.path = CHDIR|Qdir;
 	return c;
 }

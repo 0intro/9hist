@@ -322,7 +322,7 @@ syscall(Ureg *aur)
 			error(Ebadarg);
 		}
 		if(sp & (BY2WD-1)){
-			pprint("odd sp in sys call pc %lux sp %lux\n", 
+			pprint("odd sp in sys call pc %lux sp %lux\n",
 				((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 			msg = "sys: odd stack";
 			goto Bad;

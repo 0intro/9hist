@@ -55,7 +55,6 @@ fault68020(Ureg *ur, FFrame *f)
 	}
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
-	u->dbgreg = ur;
 	addr = 0;	/* set */
 	if(f->ssw & DF)
 		addr = f->addr;
@@ -80,6 +79,8 @@ fault68020(Ureg *ur, FFrame *f)
 	badvaddr = addr;
 	addr &= ~(BY2PG-1);
 	user = !(ur->sr&SUPER);
+	if(user)
+		u->dbgreg = ur;
 
 	if(f->ssw & DF)
 		read = (f->ssw&READ) && !(f->ssw&RM);
