@@ -57,8 +57,7 @@ void	lidt(ushort[3]);
 void	ltr(ulong);
 void	mathinit(void);
 #define mmuflushtlb(pdb) putcr3(pdb)
-void	meminit(void);
-void	memscan(void);
+void	meminit(ulong);
 void	mmuinit(void);
 #define	mmunewpage(x)
 ulong*	mmuwalk(ulong*, ulong, int);
@@ -98,6 +97,7 @@ void	touser(void*);
 void	trapinit(void);
 int	tas(void*);
 ulong	umbmalloc(ulong, int, int);
+ulong	umbrmalloc(ulong, int, int);
 void	umbfree(ulong, int);
 ulong	upamalloc(ulong, int, int);
 void	upafree(ulong, int);

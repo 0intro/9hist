@@ -242,7 +242,7 @@ reset(Ether* ether)
 	ctlr->pstop = HOWMANY(ether->size, Dp8390BufSz);
 
 	/*
-	 * Finally, init the 8390,set the ethernet address
+	 * Finally, init the 8390, set the ethernet address
 	 * and claim the memory used.
 	 */
 	dp8390reset(ether);
@@ -253,8 +253,8 @@ reset(Ether* ether)
 	}
 	dp8390setea(ether);
 
-	if(umbmalloc(ether->mem, ether->size, 0) == 0)
-		panic("ether8003: 0x%lux reused", ether->mem);
+	if(umbrmalloc(PADDR(ether->mem), ether->size, 0) == 0)
+		panic("ether8003: 0x%luX unavailable", PADDR(ether->mem));
 
 	return 0;
 }

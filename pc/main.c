@@ -17,7 +17,7 @@ static  uchar *sp;	/* stack pointer for /boot */
  * (e.g. why parse the .ini file twice?).
  * There are 1024 bytes available at CONFADDR.
  */
-#define BOOTLINE	((char *)CONFADDR)
+#define BOOTLINE	((char*)CONFADDR)
 #define BOOTLINELEN	64
 #define BOOTARGS	((char*)(CONFADDR+BOOTLINELEN))
 #define	BOOTARGSLEN	(1024-BOOTLINELEN)
@@ -57,17 +57,17 @@ main(void)
 	/*
 	 * There is a little leeway here in the ordering but care must be
 	 * taken with dependencies:
-	 *	function		depends on
-	 *	========		==========
-	 *	machinit		m->machno, m->pdb
-	 *	cpuidentify		m
-	 *	memscan			cpuidentify (needs to know processor
-	 *				type for caching, etc.)
-	 *	archinit		memscan (MP config table may be at the
-	 *				top of system physical memory);
+	 *	function		dependencies
+	 *	========		============
+	 *	machinit		depends on: m->machno, m->pdb
+	 *	cpuidentify		depends on :m
+	 *	confinit		calls: meminit
+	 *	meminit			depends on: cpuidentify (needs to know processor
+	 *				  type for caching, etc.)
+	 *	archinit		depends on: meminit (MP config table may be at the
+	 *				  top of system physical memory);
 	 *				conf.nmach (not critical, mpinit will check);
-	 *	confinit		meminit
-	 *	arch->intrinit		trapinit
+	 *	arch->intrinit		depends on: trapinit
 	 */
 	conf.nmach = 1;
 	MACHP(0) = (Mach*)CPU0MACH;
@@ -75,15 +75,14 @@ main(void)
 	machinit();
 	active.machs = 1;
 	active.exiting = 0;
+	screeninit();
 	cpuidentify();
 	bcompatibility();
-	memscan();
-	archinit();
 	confinit();
+	archinit();
 	xinit();
 	dmainit();
 	trapinit();
-	screeninit();
 	printinit();
 	if(isoldbcom)
 		print("    ****OLD B.COM - UPGRADE****\n");
@@ -152,8 +151,12 @@ init0(void)
 		strcat(tstr, " %s");
 		ksetterm(tstr);
 		ksetenv("cputype", "386");
+		if(cpuserver)
+			ksetenv("service", "cpu");
+		else
+			ksetenv("service", "terminal");
 		for(i = 0; i < nconf; i++)
-			if(confname[i])
+			if(confname[i] && confname[i][0] != '*')
 				ksetenv(confname[i], confval[i]);
 		poperror();
 	}
@@ -246,19 +249,19 @@ bootargs(ulong base)
 	cp[BOOTLINELEN-1] = 0;
 	buf[0] = 0;
 	if(strncmp(cp, "fd!", 3) == 0){
-		sprint(buf, "local!#f/fd%ddisk", atoi(cp+3));
+		sprint(buf, "local!#f/fd%ddisk", strtol(cp+3, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "h!", 2) == 0){
-		sprint(buf, "local!#H/hd%dfs", atoi(cp+2));
+		sprint(buf, "local!#H/hd%dfs", strtol(cp+2, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "hd!", 3) == 0){
-		sprint(buf, "local!#H/hd%ddisk", atoi(cp+3));
+		sprint(buf, "local!#H/hd%ddisk", strtol(cp+3, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "s!", 2) == 0){
-		sprint(buf, "local!#w/sd%dfs", atoi(cp+2));
+		sprint(buf, "local!#w/sd%dfs", strtol(cp+2, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "sd!", 3) == 0){
-		sprint(buf, "local!#w/sd%ddisk", atoi(cp+3));
+		sprint(buf, "local!#w/sd%ddisk", strtol(cp+3, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "e!", 2) == 0)
 		av[ac++] = pusharg("-n");
@@ -334,6 +337,7 @@ confinit(void)
 	char *cp;
 	char *line[MAXCONF], *p, *q;
 	extern int defmaxmsg;
+	ulong maxmem;
 
 	/*
 	 *  parse configuration args from dos file plan9.ini
@@ -354,6 +358,7 @@ confinit(void)
 	}
 	*p = 0;
 
+	maxmem = 0;
 	pcnt = 0;
 	n = getcfields(cp, line, MAXCONF, "\n");
 	for(j = 0; j < n; j++){
@@ -367,17 +372,19 @@ confinit(void)
 			*(line[j]+NAMELEN-1) = 0;
 		confname[nconf] = line[j];
 		confval[nconf] = cp;
-		if(cistrcmp(confname[nconf], "kernelpercent") == 0)
-			pcnt = 100 - atoi(confval[nconf]);
-		if(cistrcmp(confname[nconf], "defmaxmsg") == 0){
-			i = atoi(confval[nconf]);
+		if(cistrcmp(confname[nconf], "*maxmem") == 0)
+			maxmem = strtoul(confval[nconf], 0, 0);
+		if(cistrcmp(confname[nconf], "*kernelpercent") == 0)
+			pcnt = 100 - strtol(confval[nconf], 0, 0);
+		if(cistrcmp(confname[nconf], "*defmaxmsg") == 0){
+			i = strtol(confval[nconf], 0, 0);
 			if(i < defmaxmsg && i >=128)
 				defmaxmsg = i;
 		}
 		nconf++;
 	}
 
-	meminit();
+	meminit(maxmem);
 
 	conf.npage = conf.npage0 + conf.npage1;
 	if(pcnt < 10)

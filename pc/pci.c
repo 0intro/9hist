@@ -162,13 +162,13 @@ pcicfginit(void)
 		outb(PciCSE, 0);
 		if(inb(PciCSE) == 0){
 			pcicfgmode = 2;
-			pcimaxdno = 31;
+			pcimaxdno = 15;
 		}
 		else{
 			outl(PciADDR, 0);
 			if(inl(PciADDR) == 0){
 				pcicfgmode = 1;
-				pcimaxdno = 15;
+				pcimaxdno = 31;
 			}
 		}
 	

@@ -67,6 +67,38 @@ static RMap rmapumb = {
 	&mapumb[63],
 };
 
+static Map mapumbr[8];
+static RMap rmapumbr = {
+	"UMB device memory",
+	mapumbr,
+	&mapumbr[7],
+};
+
+#define notdef
+#ifdef notdef
+void
+dumpmembank(void)
+{
+	Map *mp;
+	ulong maxpa, maxpa1, maxpa2;
+
+	maxpa = (nvramread(0x18)<<8)|nvramread(0x17);
+	maxpa1 = (nvramread(0x31)<<8)|nvramread(0x30);
+	maxpa2 = (nvramread(0x16)<<8)|nvramread(0x15);
+	print("maxpa = %uX -> %uX, maxpa1 = %uXm maxpa2 = %uX\n",
+		maxpa, MB+maxpa*KB, maxpa1, maxpa2);
+
+	for(mp = rmapram.map; mp->size; mp++)
+		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
+	for(mp = rmapumb.map; mp->size; mp++)
+		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
+	for(mp = rmapumbr.map; mp->size; mp++)
+		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
+	for(mp = rmapupa.map; mp->size; mp++)
+		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
+}
+#endif /* notdef */
+
 void
 mapfree(RMap* rmap, ulong addr, int size)
 {
@@ -98,7 +130,8 @@ mapfree(RMap* rmap, ulong addr, int size)
 		}
 		else do{
 			if(mp >= rmap->mapend){
-				print("mapfree: losing %d, %d\n", addr, size);
+				print("mapfree: %s: losing 0x%uX, %d\n",
+					rmap->name, addr, size);
 				break;
 			}
 			t = mp->addr;
@@ -177,17 +210,20 @@ umbscan(void)
 	 */
 	p = KADDR(0xC8000);
 	while(p < (uchar*)KADDR(0xE0000)){
-		p[0] = 0x55;
-		p[1] = 0xAA;
-		p[2] = 4;
-		if(p[0] == 0x55 && p[1] == 0xAA){
-			p += p[2]*512;
-			continue;
-		}
 		p[0] = 0xCC;
 		p[2*KB-1] = 0xCC;
-		if(p[0] != 0xCC && p[2*KB-1] != 0xCC)
+		if(p[0] != 0xCC && p[2*KB-1] != 0xCC){
+			p[0] = 0x55;
+			p[1] = 0xAA;
+			p[2] = 4;
+			if(p[0] == 0x55 && p[1] == 0xAA){
+				p += p[2]*512;
+				continue;
+			}
 			mapfree(&rmapumb, PADDR(p), 2*KB);
+		}
+		else
+			mapfree(&rmapumbr, PADDR(p), 2*KB);
 		p += 2*KB;
 	}
 
@@ -201,7 +237,7 @@ umbscan(void)
 }
 
 static void
-ramscan(void)
+ramscan(ulong maxmem)
 {
 	ulong *k0, kzero, map, maxpa, pa, *pte, *table, *va, x;
 	int nvalid[NMemType];
@@ -220,7 +256,6 @@ ramscan(void)
 	 * the BIOS data area.
 	 */
 	x = PADDR(CPU0MACH+BY2PG);
-
 	bda = (uchar*)(KZERO|0x400);
 	mapfree(&rmapram, x, ((bda[0x14]<<8)|bda[0x13])*KB-x);
 
@@ -230,14 +265,20 @@ ramscan(void)
 	 * at least 24MB in case there's a memory gap (up to 8MB) below 16MB;
 	 * in this case the memory from the gap is remapped to the top of
 	 * memory.
-	 * The value in CMOS is supposed to be the number of KB minus one.
+	 * The value in CMOS is supposed to be the number of KB above 1MB.
 	 */
-	maxpa = (nvramread(0x18)<<8)|nvramread(0x17);
-	maxpa = MB+(maxpa+1)*KB;
-	if(maxpa == 0 || maxpa >= 64*MB)
-		maxpa = MemMaxMB*MB;
-	if(maxpa < 24*MB)
-		maxpa = 24*MB;
+	if(maxmem == 0){
+		x = (nvramread(0x18)<<8)|nvramread(0x17);
+		if(x == 0 || x >= (63*KB))
+			maxpa = MemMaxMB*MB;
+		else
+			maxpa = MB+x*KB;
+		if(maxpa < 24*MB)
+			maxpa = 24*MB;
+		maxmem = MemMaxMB*MB;
+	}
+	else
+		maxpa = maxmem;
 
 	/*
 	 * March up memory from the end of the loaded kernel to maxpa
@@ -331,8 +372,8 @@ ramscan(void)
 	}
 	if(map)
 		mapfree(&rmapram, map, BY2PG);
-	if(pa < MemMaxMB*MB)
-		mapfree(&rmapupa, pa, MemMaxMB*MB-pa);
+	if(pa < maxmem)
+		mapfree(&rmapupa, pa, maxmem-pa);
 	*k0 = kzero;
 }
 
@@ -373,9 +414,11 @@ upainit(void)
 	mapfree(&xrmapupa, addr, pa-addr);
 }
 
+
 void
-memscan(void)
+meminit(ulong maxmem)
 {
+	Map *mp, *xmp;
 	ulong pa, *pte;
 
 	/*
@@ -395,34 +438,9 @@ memscan(void)
 	mmuflushtlb(PADDR(m->pdb));
 
 	umbscan();
-	ramscan();
+dumpmembank();
+	ramscan(maxmem);
 	upainit();
-}
-
-#ifdef notdef
-void
-dumpmembank(void)
-{
-	Map *mp;
-	ulong maxpa, maxpa1;
-
-	maxpa = (nvramread(0x18)<<8)|nvramread(0x17);
-	maxpa1 = (nvramread(0x31)<<8)|nvramread(0x30);
-	print("maxpa = %uX -> %uX, maxpa1 = %uX\n", maxpa, MB+(maxpa+1)*KB, maxpa1);
-
-	for(mp = rmapram.map; mp->size; mp++)
-		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
-	for(mp = rmapumb.map; mp->size; mp++)
-		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
-	for(mp = rmapupa.map; mp->size; mp++)
-		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
-}
-#endif /* notdef */
-
-void
-meminit(void)
-{
-	Map *mp, *xmp;
 
 	/*
 	 * Set the conf entries describing two banks of allocatable memory.
@@ -460,6 +478,17 @@ void
 umbfree(ulong addr, int size)
 {
 	mapfree(&rmapumb, addr & ~KZERO, size);
+}
+
+ulong
+umbrmalloc(ulong addr, int size, int align)
+{
+	ulong a;
+
+	if(a = mapalloc(&rmapumbr, addr, size, align))
+		return KZERO|a;
+
+	return 0;
 }
 
 ulong
