@@ -190,8 +190,8 @@ ilackq(Ilcb *ic, Block *bp)
 		ic->unacked = np;
 	}
 	ic->unackedtail = np;
-	qunlock(&ic->ackq);
 	np->list = 0;
+	qunlock(&ic->ackq);
 }
 
 void
@@ -468,7 +468,10 @@ ilrexmit(Ilcb *ic)
 	if(ic->unacked == 0)
 		return;
 
+	qlock(&ic->ackq);
 	nb = copyb(ic->unacked, blen(ic->unacked));
+	qunlock(&ic->ackq);
+
 	h = (Ilhdr*)nb->rptr;
 	DBG("rxmit %d.", nhgetl(h->ilid));
 

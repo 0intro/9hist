@@ -373,7 +373,7 @@ notify(Ureg *ur)
 
 	if(u->p->procctl)
 		procctl(u->p);
-	if(u->nnote==0)
+	if(u->nnote == 0)
 		return;
 
 	s = spllo();
