@@ -246,7 +246,7 @@ dp8390read(Dp8390* ctlr, void* to, ulong from, ulong len)
 	void *v;
 
 	ilock(ctlr);
-	v = dp8390read(ctlr, to, from, len);
+	v = _dp8390read(ctlr, to, from, len);
 	iunlock(ctlr);
 
 	return v;
