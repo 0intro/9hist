@@ -462,7 +462,7 @@ dumpregs(Ureg *ur)
 static void
 linkproc(void)
 {
-print("linkproc %ulx\n", up);
+//print("linkproc %ulx\n", up);
 	spllo();
 	(*up->kpfun)(up->kparg);
 	pexit("", 0);
@@ -676,7 +676,7 @@ notify(Ureg* ur)
 	ulong s, sp;
 	Note *n;
 
-print("***notify %ld\n", up->pid);
+//print("***notify %ld\n", up->pid);
 
 	if(up->procctl)
 		procctl(up);
@@ -753,7 +753,7 @@ noted(Ureg* ureg, ulong arg0)
 	Ureg *nureg;
 	ulong oureg, sp;
 
-print("***noted\n");
+//print("***noted\n");
 	qlock(&up->debug);
 	if(arg0!=NRSTR && !up->notified) {
 		qunlock(&up->debug);

@@ -330,7 +330,7 @@ static Algorithm authalg[] =
 static Algorithm compalg[] =
 {
 	"null",			0,	nullcompinit,
-	"thwack",		0,	thwackcompinit,
+//	"thwack",		0,	thwackcompinit,
 	nil,			0,	nil,
 };
 
@@ -340,6 +340,8 @@ sdpinit(void)
 {
 	int i;
 	Dirtab *dt;
+	
+	return;
 
 	// setup dirtab with non directory entries
 	for(i=0; i<nelem(sdpdirtab); i++) {
@@ -367,7 +369,7 @@ sdpattach(char* spec)
 	if(dev<0 || dev >= Nfs)
 		error("bad specification");
 
-	c = devattach('T', spec);
+	c = devattach('E', spec);
 	c->qid = (Qid){QID(0, Qtopdir)|CHDIR, 0};
 	c->dev = dev;
 
@@ -556,6 +558,7 @@ sdpread(Chan *ch, void *a, long n, vlong off)
 		return readstr(off, a, n, buf);
 	case Qcontrol:
 		b = readcontrol(sdp->conv[CONV(ch->qid)], n);
+print("readcontrol asked %ld\n", n);
 		if(b == nil)
 			return 0;
 print("readcontrol asked %ld got %ld\n", n, BLEN(b));
@@ -905,7 +908,7 @@ sdpackproc(void *a)
 }
 
 Dev sdpdevtab = {
-	'T',
+	'E',
 	"sdp",
 
 	devreset,
@@ -971,7 +974,7 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 		break;
 	case CRemoteClose:
 		wakeup(&c->in.controlready);
-		convoconnect(c, ConReset, c->dialid, c->acceptid);
+// convoconnect(c, ConReset, c->dialid, c->acceptid);
 		break;
 	case CClosed:
 		wakeup(&c->in.controlready);
