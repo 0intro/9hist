@@ -52,12 +52,18 @@ machinit(void)
 	int n;
 
 	icflush(0, 64*1024);
+	dcflush(0, 64*1024);
 	n = m->machno;
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
 	m->stb = &stlb[n][0];
 
 	m->ledval = 0xff;
+
+	/* Setup call back ring buffer */
+	m->cbin = m->calls;
+	m->cbout = m->calls;
+	m->cbend = &m->calls[NCALLBACK];
 }
 
 void
@@ -517,6 +523,7 @@ confinit(void)
 	i = conf.npage-conf.upages;
 	if(i > (12*MB)/BY2PG)
 		conf.upages +=  i - ((12*MB)/BY2PG);
+	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 	/*
  	 *  clear MP bus error caused by sizing memory
 	 */

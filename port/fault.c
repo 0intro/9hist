@@ -156,7 +156,6 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		(*pg)->modref = PG_MOD|PG_REF;
 		break;
 	}
-
 	qunlock(&s->lk);
 
 	if(doputmmu)

@@ -317,7 +317,6 @@ sysread9p(ulong *arg)
 	else
 		n = mntread9p(c, (void*)arg[1], n, c->offset);
 
-
 	lock(c);
 	c->offset += n;
 	unlock(c);

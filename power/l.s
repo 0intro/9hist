@@ -238,8 +238,6 @@ TEXT	tlbp(SB), $0
 	RET
 	
 TEXT	tlbvirt(SB), $0
-	TLBP
-	NOOP
 	MOVW	M(TLBVIRT), R1
 	RET
 	
@@ -277,7 +275,8 @@ TEXT	vector80(SB), $-4
 	JMP	(R26)
 
 TEXT	vector0(SB), $-4
-/* 	get m->tlbfault BUG
+/*
+ 	get m->tlbfault BUG
 	MOVW	$((MACHADDR+368) & 0xffff0000), R26
 	OR	$((MACHADDR+368) & 0xffff), R26
 	MOVW	(R26), R27
@@ -296,15 +295,12 @@ TEXT	utlbmiss(SB), $-4
 	XOR	R26, R27
 	AND	$(STLBSIZE-1), R27
 	SLL	$8, R27
-	/*
-	 * R27 = (((tlbvirt<<1)^(tlbvirt>>12)) & (STLBSIZE-1)) << 8 
-	 * (8 to clear zero in TLBPHYS)
-	 */
-	MOVW	R27, M(TLBPHYS)
+	/* R27 = (((tlbvirt<<1)^(tlbvirt>>12)) & (STLBSIZE-1)) << 8 (8 to clear zero in TLBPHYS) */
+	MOVW	R27, M(TLBPHYS)			/* scratch register, store */
 
-	MOVW	$((MACHADDR+4)&0xffff0000), R26	/* get &mach[0].stb BUG */	
-	OR	$((MACHADDR+4)&0xffff), R26
-	MOVW	$MPID, R27			/* add BY2PG*machno */
+	MOVW	$((MACHADDR+4) & 0xffff0000), R26	/* get &mach[0].stb BUG */	
+	OR	$((MACHADDR+4) & 0xffff), R26
+	MOVW	$MPID, R27				/* add BY2PG*machno */
 	MOVB	3(R27), R27
 	AND	$7, R27
 	SLL	$PGSHIFT, R27
@@ -789,4 +785,8 @@ _dcflush3:
 	NOP
 
 TEXT dcflush4(SB), $-4
+	RET
+
+TEXT	getstatus(SB), $0
+	MOVW	M(STATUS), R1
 	RET

@@ -1,7 +1,6 @@
 typedef struct Conf	Conf;
 typedef struct Lancepkt Lancepkt;
 typedef struct FPsave	FPsave;
-typedef struct Cycmsg	Cycmsg;
 typedef struct Lance	Lance;
 typedef struct Lancemem	Lancemem;
 typedef struct Label	Label;
@@ -77,14 +76,6 @@ struct	FPsave
 struct PMMU
 {
 	int	pidonmach[MAXMACH];
-	/*
-	 * I/O point for hotrod interfaces.
-	 * This is the easiest way to allocate
-	 * them, but not the prettiest or most general.
-	 */
-	Cycmsg	*kcyc;
-	Cycmsg	*ucyc;
-	Cycmsg	*fcyc;
 };
 
 /*
@@ -98,14 +89,6 @@ struct Notsave
 
 #include "../port/portdat.h"
 
-struct Cycmsg
-{
-	ulong	cmd;
-	ulong	param[5];
-	Rendez	r;
-	uchar	intr;			/* flag: interrupt has occurred */
-};
-
 /* First FOUR members offsets known by l.s */
 struct Mach
 {
@@ -113,18 +96,16 @@ struct Mach
 	Softtlb *stb;			/* Software tlb simulation  */
 	Proc	*proc;			/* current process on this processor */
 	ulong	splpc;			/* pc that called splhi() */
+	int	tlbfault;		/* this offset known in l.s/utlbmiss() */
+
 	/* Ok to change from here */
 	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
-	char	pidhere[NTLBPID];	/* is this pid possibly in this mmu? */
 	int	lastpid;		/* last pid allocated on this machine */
-	Proc	*pidproc[NTLBPID];	/* tlb allocation table */
-	Page	*ufreeme;		/* address of upage of exited process */
-	Ureg	*ur;
+	Proc	*pidproc[NTLBPID];	/* process that owns this tlbpid on this mach */
 
-	int	tlbfault;		/* this offset known in l.s/utlbmiss() */
 	int	tlbpurge;
 	int	pfault;
 	int	cs;
