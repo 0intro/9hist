@@ -236,7 +236,7 @@ struct Wltv
 			char	name[WNameLen];
 		};
 		struct {
-			WKey	key[WNKeys];
+			WKey	keys[WNKeys];
 		};
 	};
 };
@@ -284,9 +284,11 @@ struct Ctlr
 	uchar	txbuf[1536];
 	int	txlen;
 
-	int	keyid;			// 0 if not using WEP
-	int	xclear;
-	WKey	key[WNKeys];
+	int	hascrypt;		// card has encryption
+	int	crypt;			// encryption off/on
+	int	txkey;			// transmit key
+	Wltv	keys;			// default keys
+	int	xclear;			// exclude clear packets off/on
 
 	Stats;
 	WStats;
@@ -314,11 +316,7 @@ w_cmd(Ctlr *ctlr, ushort cmd, ushort arg)
 	int i;
 	int rc;
 
-if(csr_ins(ctlr, WR_Cmd) & WCmdBusy)
-    print("busy\n");
 	csr_outs(ctlr, WR_Parm0, arg);
-	csr_outs(ctlr, WR_Parm1, 0);
-	csr_outs(ctlr, WR_Parm2, 0);
 	csr_outs(ctlr, WR_Cmd, cmd);
 	for (i = 0; i<WTmOut; i++){
 		rc = csr_ins(ctlr, WR_EvSts);
@@ -389,7 +387,6 @@ w_outltv(Ctlr* ctlr, Wltv* l)
 {
 	int i,len;
 	ushort *p;
-delay(100);
 
 	if (w_seek(ctlr,l->type,0,1))
 		return;
@@ -406,7 +403,6 @@ static void
 ltv_outs(Ctlr* ctlr, int type, ushort val)
 {
 	Wltv l;
-delay(100);
 
 	l.type = type;
 	l.val = val;
@@ -431,7 +427,6 @@ ltv_outstr(Ctlr* ctlr, int type, char *val)
 {
 	Wltv l;
 	int len;
-delay(100);
 
 	len = strlen(val);
 	if(len > sizeof(l.s))
@@ -460,55 +455,6 @@ ltv_inname(Ctlr* ctlr, int type)
 	if (l.name[2] == 0)
 		return Nilname;
 	return l.name+2;
-}
-
-
-static char*
-ltv_inkey(Ctlr* ctlr, int id)
-{
-	static char k[WKeyLen+1];
-	Wltv l;
-	int i, len;
-
-	id--; 
-	memset(&l, 0, sizeof(l));
-	l.type = WTyp_Keys;
-	l.len = sizeof(l.key)/2 + 2;	// BUG? 
-	if (w_inltv(ctlr, &l))
-		return Unkname;
-	if (id <0 || id >=WNKeys){
-		DEBUG("wavelan: ltv_inkey: bad key id\n");
-		return Unkname;
-	}
-	for (i=0 ; i <WNKeys; i++){
-		// BUG: despite the checks, this seems to get nothing;
-		// although it could be that the card
-		// does not allow reading keys for security.
-		if (l.key[id].len != 0){
-			DEBUG("len=%d ", l.key[id].len);
-		}
-		if (l.key[id].dat[1] != 0){
-			DEBUG("dat1=%s ", l.key[id].dat+1);
-		} 
-		if (l.key[id].dat[2] != 0){
-			DEBUG("dat2=%s ", l.key[id].dat+2);
-		} 
-		if (l.key[id].dat[0] != 0){
-			DEBUG("%s ", l.key[id].dat);
-		} 
-//		else 
-//			DEBUG("none ");
-	}
-	DEBUG("\n");
-	if (l.key[id].dat[0] == 0)
-		return Nilname;
-	len = l.key[id].len;
-	if (len > WKeyLen)
-		len = WKeyLen;
-	memset(k, 0, sizeof(k));
-	memmove(k, l.key[id].dat, len);
-	k[WKeyLen] = 0;
-	return k;
 }
 
 static int
@@ -589,7 +535,6 @@ w_enable(Ether* ether)
 {
 	Wltv l;
 	Ctlr* ctlr = (Ctlr*) ether->ctlr;
-	ushort wep;
 
 	if (!ctlr)
 		return -1;
@@ -597,7 +542,6 @@ w_enable(Ether* ether)
 	w_intdis(ctlr);
 	w_cmd(ctlr, WCmdDis, 0);
 	w_intdis(ctlr);
-delay(100);
 	if(w_cmd(ctlr, WCmdIni, 0))
 		return -1;
 	w_intdis(ctlr);
@@ -624,24 +568,12 @@ delay(100);
 
 	ltv_outs(ctlr, WTyp_Prom, (ether->prom?1:0));
 
-	wep = ltv_ins(ctlr, WTyp_HasCrypt);
-	if (wep)
-		if (ctlr->keyid == 0)
-			ltv_outs(ctlr, WTyp_Crypt, 0);
-		else {
-			// BUG?
-			// I think it's ok, but don't know if
-			// the card needs a WEPing access point
-			// just to admit the keys.
-			ltv_outs(ctlr, WTyp_TxKey, ctlr->keyid);
-			memset(&l, 0, sizeof(l));
-			l.len = sizeof(ctlr->key[0])*WNKeys/2 + 1;
-			l.type= WTyp_Keys;
-			memmove(l.key, &ctlr->key[0], sizeof(l.key[0])*WNKeys);
-			w_outltv(ctlr, &l);
-			ltv_outs(ctlr, WTyp_Crypt, wep);
-			ltv_outs(ctlr, WTyp_XClear, ctlr->xclear);
-		}
+	if (ctlr->hascrypt){
+		ltv_outs(ctlr, WTyp_Crypt, ctlr->crypt);
+		ltv_outs(ctlr, WTyp_TxKey, ctlr->txkey);
+		w_outltv(ctlr, &ctlr->keys);
+		ltv_outs(ctlr, WTyp_XClear, ctlr->xclear);
+	}
 
 	// BUG: set multicast addresses
 
@@ -938,18 +870,6 @@ w_timer(void* arg)
 	pexit("terminated",0);
 }
 
-static void*
-emalloc(ulong size)
-{
-	void *r=malloc(size);
-	if (!r)
-		error(Enomem);
-	memset(r,0,size);
-	return r;
-}
-
-
-
 static void
 multicast(void*, uchar*, int)
 {
@@ -1010,18 +930,16 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	k = ((ctlr->txbusy)? ", txbusy" : "");
 	PRINTSTAT("%s\n", k);
 
-	if (ctlr->keyid){
+	if (ctlr->txkey){
 		PRINTSTR("Keys: ");
-		for (i = 0; i < WNKeys; i++)
-			if (ctlr->key[i].len == 0)
+		for (i = 0; i < WNKeys; i++){
+			if (ctlr->keys.keys[i].len == 0)
 				PRINTSTR("none ");
-			else {
-				if (SEEKEYS == 0)
-					PRINTSTR("set ");
-				else {
-					PRINTSTAT("%s ", ctlr->key[i].dat);
-				}
-			}
+			else if (SEEKEYS == 0)
+				PRINTSTR("set ");
+			else
+				PRINTSTAT("%s ", ctlr->keys.keys[i].dat);
+		}
 		PRINTSTR("\n");
 	}
 
@@ -1054,11 +972,6 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 			PRINTSTAT("Clear packets: %s\n", k);
 			txid = ltv_ins(ctlr, WTyp_TxKey);
 			PRINTSTAT("Transmit key id: %d\n", txid);
-			if (txid >= 1 && txid <= WNKeys){
-				k = ltv_inkey(ctlr, txid);
-				if (SEEKEYS && k != nil)
-					PRINTSTAT("Transmit key: %s\n", k);
-			}
 		}
 	}
 	iunlock(&ctlr->Lock);
@@ -1092,96 +1005,85 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 #undef PRINTSTR
 #undef PRINTSTAT
 
-		
-static long 
-ctl(Ether* ether, void* buf, long n)
+static int
+option(Ctlr* ctlr, char* buf, long n)
 {
-	int i, key;
-	Ctlr *ctlr;
+	char *p;
+	int i, r;
+	WKey *key;
 	Cmdbuf *cb;
-	char *nessid;
-	WKey *kp;
-	char k[64];
-	char *kn= &k[3];
 
-	if((ctlr = ether->ctlr) == nil)
-		error(Enonexist);
-	if(ctlr->attached == 0)
-		error(Eshutdown);
+	r = 0;
 
 	cb = parsecmd(buf, n);
-
 	if(cb->nf < 2)
-		error(Ebadctl);
-
-	ilock(&ctlr->Lock);
-	if(waserror()){
-		iunlock(&ctlr->Lock);
-		free(cb);
-		nexterror();
-	}
-
-	if(strcmp(cb->f[0], "essid") == 0){
-		if (strcmp(cb->f[1],"default") == 0)
-			nessid = "";
+		r = -1;
+	else if(cistrcmp(cb->f[0], "essid") == 0){
+		if (cistrcmp(cb->f[1],"default") == 0)
+			p = "";
 		else
-			nessid = cb->f[1];
-		if (ctlr->ptype == 3){
+			p = cb->f[1];
+		if(ctlr->ptype == 3){
 			memset(ctlr->netname, 0, sizeof(ctlr->netname));
-			strncpy(ctlr->netname, nessid, WNameLen);
+			strncpy(ctlr->netname, p, WNameLen);
 		}
-		else {
+		else{
 			memset(ctlr->wantname, 0, sizeof(ctlr->wantname));
-			strncpy(ctlr->wantname, nessid, WNameLen);
+			strncpy(ctlr->wantname, p, WNameLen);
 		}
 	} 
-	else if(strcmp(cb->f[0], "station_name") == 0){
+	else if(cistrcmp(cb->f[0], "station") == 0){
 		memset(ctlr->nodename, 0, sizeof(ctlr->nodename));
 		strncpy(ctlr->nodename, cb->f[1], WNameLen);
 	}
-	else if(strcmp(cb->f[0], "channel") == 0){
+	else if(cistrcmp(cb->f[0], "channel") == 0){
 		i = atoi(cb->f[1]);
-		if(i < 1 || i > 16 )
-			error("channel not in [1-16]\n");
-		ctlr->chan = i;
+		if(i >= 1 && i <= 16 )
+			ctlr->chan = i;
+		else
+			r = -1;
 	}
-	else if(strcmp(cb->f[0], "ptype") == 0){
+	else if(cistrcmp(cb->f[0], "mode") == 0){
 		i = atoi(cb->f[1]);
-		if(i < 1 || i > 3 )
-			error("port type not in [1-3]");
-		ctlr->ptype = i;
+		if(i >= 1 && i <= 3 )
+			ctlr->ptype = i;
+		else
+			r = -1;
 	}
-	else if(strncmp(cb->f[0], "key", 3) == 0){
-		strncpy(k,cb->f[0],64);
-		if (strcmp(cb->f[1], "off") == 0)
-			ctlr->keyid = 0;
-		else if (strcmp(cb->f[1], "exclude") == 0){
-			ctlr->xclear = 1;
-		}
-		else if (strcmp(cb->f[1], "include") == 0){
+	else if(cistrcmp(cb->f[0], "crypt") == 0){
+		if(cistrcmp(cb->f[1], "off") == 0)
+			ctlr->crypt = 0;
+		else if(cistrcmp(cb->f[1], "on") == 0 && ctlr->hascrypt)
+			ctlr->crypt = 1;
+		else
+			r = -1;
+	}
+	else if(cistrcmp(cb->f[0], "clear") == 0){
+		if(cistrcmp(cb->f[1], "on") == 0)
 			ctlr->xclear = 0;
+		else if(cistrcmp(cb->f[1], "off") == 0 && ctlr->hascrypt)
+			ctlr->xclear = 1;
+		else
+			r = -1;
+	}
+	else if(cistrncmp(cb->f[0], "key", 3) == 0){
+		i = atoi(cb->f[0]+3);
+		if(i >= 1 && i <= WNKeys){
+			ctlr->txkey = i-1;
+			key = &ctlr->keys.keys[ctlr->txkey];
+			key->len = strlen(cb->f[1]);
+			if (key->len > WKeyLen)
+				key->len = WKeyLen;
+			memset(key->dat, 0, sizeof(key->dat));
+			memmove(key->dat, cb->f[1], key->len);
 		}
-		else {
-			key = atoi(kn);
-			if (key < 1 || key > WNKeys)
-				error("key not in [1-4]");
-			ctlr->keyid = key;
-			kp = &ctlr->key[key-1];
-			kp->len = strlen(cb->f[1]);
-//			if (kp->len > WKeyLen)
-				kp->len = WKeyLen;
-			memset(kp->dat, 0, sizeof(kp->dat));
-			strncpy(kp->dat, cb->f[1], kp->len);
-//			if (kp->len > WMinKeyLen)
-//				kp->len = WKeyLen;
-//			else if (kp->len > 0)
-//				kp->len = WMinKeyLen;
-		}
+		else
+			r = -1;
 	} 
-	else if(strcmp(cb->f[0], "pm") == 0){
-		if(strcmp(cb->f[1], "off") == 0)
+	else if(cistrcmp(cb->f[0], "pm") == 0){
+		if(cistrcmp(cb->f[1], "off") == 0)
 			ctlr->pmena = 0;
-		else if(strcmp(cb->f[1], "on") == 0){
+		else if(cistrcmp(cb->f[1], "on") == 0){
 			ctlr->pmena = 1;
 			if(cb->nf == 3){
 				i = atoi(cb->f[2]);
@@ -1190,18 +1092,34 @@ ctl(Ether* ether, void* buf, long n)
 			}
 		}
 		else
-			error(Ebadctl);
+			r = -1;
 	}
 	else
-		error(Ebadctl);
+		r = -2;
+	free(cb);
 
+	return r;
+}
+		
+static long 
+ctl(Ether* ether, void* buf, long n)
+{
+	Ctlr *ctlr;
+
+	if((ctlr = ether->ctlr) == nil)
+		error(Enonexist);
+	if(ctlr->attached == 0)
+		error(Eshutdown);
+
+	ilock(&ctlr->Lock);
+	if(option(ctlr, buf, n)){
+		iunlock(&ctlr->Lock);
+		error(Ebadctl);
+	}
 	if(ctlr->txbusy)
 		w_txdone(ctlr, WTxErrEv|1);	// retry tx later.
 	w_enable(ether);
-
 	iunlock(&ctlr->Lock);
-	poperror();
-	free(cb);
 
 	return n;
 }
@@ -1251,91 +1169,22 @@ interrupt(Ureg* ,void* arg)
 	iunlock(&ctlr->Lock);
 }
 
-static void
-setopt(Ctlr* ctlr, char* opt, int no)
-{
-	int i;
-	char k[64], *ke, *nessid;
-	char *kn = &k[3];
-	WKey *kp;
-	int key;
-
-	if (strncmp(opt,"essid=",6) == 0){
-		if (strcmp(opt+6, "default") == 0)
-			nessid = "";
-		else
-			nessid = opt+6;
-		if (ctlr->ptype == 3){
-			memset(ctlr->netname, 0, sizeof(ctlr->netname));
-			strncpy(ctlr->netname, nessid, WNameLen);
-		}
-		else{
-			memset(ctlr->wantname, 0, sizeof(ctlr->wantname));
-			strncpy(ctlr->wantname, nessid, WNameLen);
-		}
-	} 
-	else if (strncmp(opt,"station_name=",13) == 0){
-		// The max. length of an 'opt' is ISAOPTLEN in dat.h.
-		// It should be > 16 to give reasonable name lengths.
-		memset(ctlr->nodename, 0, sizeof(ctlr->nodename));
-		strncpy(ctlr->nodename, opt+13,WNameLen);
-	} 
-	else if (strncmp(opt, "channel=",8) == 0){
-		i = atoi(opt+8);
-		if(i < 1 || i > 16 )
-			print("#l%d: channel (%d) not in [1-16]\n",no,i);
-		else
-			ctlr->chan = i;
-	} 
-	else if (strncmp(opt, "ptype=",6) == 0){
-		i = atoi(opt+6);
-		if(i < 1 || i > 3 )
-			print("#l%d: port type (%d) not in [1-3]\n",no,i);
-		else
-			ctlr->ptype = i;
-	}
-	else if (strncmp(opt, "key", 3) == 0){
-		if (opt[3] == 0 || opt[4] != '='){
-			print("#l%d: key option is not keyX=xxxx\n", no);
-			return;
-		}
-		strncpy(k,opt,64);
-		key = atoi(kn);
-		if (key < 1 || key > WNKeys){
-			print("#l%d: key number (%d) not in [1-%d]\n",
-					no, key, WNKeys);
-			return;
-		}
-		ctlr->keyid = key;
-		kp = &ctlr->key[key-1];
-		ke = opt+5;
-		while (*ke && *ke != ' ' && *ke != '\n' && *ke != '\t')
-			ke++;
-		kp->len = ke - (opt+5);
-		if (kp->len > WKeyLen)
-			kp->len = WKeyLen;
-		memset(kp->dat, 0, sizeof(kp->dat));
-		strncpy(kp->dat, opt+5, kp->len);
-//		if (kp->len > WMinKeyLen)
-//			kp->len = WKeyLen;
-//		else if (kp->len > 0)
-//			kp->len = WMinKeyLen;
-	}
-}
-
 static int
 reset(Ether* ether)
 {
-	Ctlr* ctlr;
-	Wltv ltv;
 	int i;
+	Wltv ltv;
+	Ctlr* ctlr;
+	char buf[ISAOPTLEN], *p;
 
 	if (ether->ctlr){
 		print("#l%d: only one card supported\n", ether->ctlrno);
 		return -1;
 	}
 
-	ether->arg = ctlr = (Ctlr*)emalloc(sizeof(Ctlr));
+	if((ctlr = malloc(sizeof(Ctlr))) == nil)
+		return -1;
+
 	ilock(&ctlr->Lock);
 	
 	if (ether->port==0)
@@ -1351,13 +1200,23 @@ reset(Ether* ether)
 			ether->ctlrno, ether->port, ether->irq);
   
 	ctlr->chan = 0;
-	ctlr->ptype= WDfltPType;
-	ctlr->keyid= 0;
+	ctlr->ptype = WDfltPType;
+	ctlr->txkey = 0;
+	ctlr->keys.len = sizeof(WKey)*WNKeys/2 + 1;
+	ctlr->keys.type = WTyp_Keys;
 	*ctlr->netname = *ctlr->wantname = 0;
 	strcpy(ctlr->nodename, "wvlancard");
 
-	for (i=0; i < ether->nopt; i++)
-		setopt(ctlr, ether->opt[i], ether->ctlrno);
+	for(i = 0; i < ether->nopt; i++){
+		//
+		// The max. length of an 'opt' is ISAOPTLEN in dat.h.
+		// It should be > 16 to give reasonable name lengths.
+		//
+		strcpy(buf, ether->opt[i]);
+		if(p = strchr(buf, '='))
+			*p = ' ';
+		option(ctlr, buf, strlen(buf));
+	}
 
 	ctlr->netname[WNameLen-1] = 0;
 	ctlr->wantname[WNameLen-1] = 0;
@@ -1370,7 +1229,6 @@ reset(Ether* ether)
 	}
 
 	w_intdis(ctlr);
-delay(500);
 	if (w_cmd(ctlr,WCmdIni,0)){
 		print("#l%d: init failed\n", ether->ctlrno);
 		goto abort;
@@ -1399,6 +1257,9 @@ delay(500);
 	ctlr->maxlen = WMaxLen;
 	ctlr->pmena = 0;
 	ctlr->pmwait= 100;
+	if(ctlr->hascrypt = ltv_ins(ctlr, WTyp_HasCrypt))
+		ctlr->crypt = 1;
+
 	// link to ether
 	ether->ctlr = ctlr;
 	ether->mbps = 10;	

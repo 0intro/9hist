@@ -1312,7 +1312,7 @@ usbreset(void)
 	ub->bwsop = allocqh(ub);
 	ub->bulkq = allocqh(ub);
 	ub->recvq = allocqh(ub);
-if(0){ /* DISABLE ERRATA FOR NOW */
+if(0){
 	t = alloctd(ub);	/* inactive TD, looped */
 	t->link = PADDR(t);
 	ub->bwsop->entries = PADDR(t);
