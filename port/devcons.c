@@ -27,8 +27,10 @@ static struct
 	int	ctlpoff;
 } kbd;
 
-
 char	sysname[NAMELEN];
+
+static ulong randomread(uchar*, ulong);
+static void randomreset(void);
 
 void
 printinit(void)
@@ -330,6 +332,7 @@ enum{
 	Qpgrpid,
 	Qpid,
 	Qppid,
+	Qrandom,
 	Qswap,
 	Qsysname,
 	Qsysstat,
@@ -356,6 +359,7 @@ Dirtab consdir[]={
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
 	"ppid",		{Qppid},	NUMSIZE,	0444,
+	"random",	{Qrandom},	0,		0664,
 	"swap",		{Qswap},	0,		0664,
 	"sysname",	{Qsysname},	0,		0664,
 	"sysstat",	{Qsysstat},	0,		0666,
@@ -406,6 +410,7 @@ readstr(ulong off, char *buf, ulong n, char *str)
 void
 consreset(void)
 {
+	randomreset();
 }
 
 void
@@ -641,6 +646,9 @@ consread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qsysname:
 		return readstr(offset, buf, n, sysname);
+
+	case Qrandom:
+		return randomread(buf, n);
 
 	default:
 		print("consread %lux\n", c->qid);
@@ -878,4 +886,100 @@ setterm(char *f)
 
 	sprint(buf, f, conffile);
 	ksetenv("terminal", buf);
+}
+
+static struct
+{
+	QLock;
+	Rendez	r;
+	uchar	buf[4096];
+	uchar	*ep;
+	uchar	*rp;
+	uchar	*wp;
+	uchar	next;
+	uchar	bits;
+	uchar	wakeme;
+} rb;
+
+ulong randomcount;
+
+void
+randomreset(void)
+{
+	rb.ep = rb.buf + sizeof(rb.buf);
+	rb.rp = rb.wp = rb.buf;
+}
+
+/*
+ *  produce random bits in a circular buffer
+ */
+void
+randomclock(void)
+{
+	int i;
+	uchar *p;
+
+	i = rb.rp - rb.wp;
+	if(i == 1 || i == (1 - sizeof(rb.buf)))
+		return;
+
+	rb.bits = (rb.bits<<2) ^ randomcount;
+	rb.next += 2;
+	if(rb.next != 8)
+		return;
+
+	rb.next = 0;
+	*rb.wp ^= rb.bits;
+	p = rb.wp+1;
+	if(p == rb.ep)
+		p = rb.buf;
+	rb.wp = p;
+
+	if(rb.wakeme)
+		wakeup(&rb.r);
+}
+
+static int
+notempty(void*)
+{
+	return rb.wp != rb.rp;
+}
+
+/*
+ *  consume random bytes from a circular buffer
+ */
+static ulong
+randomread(uchar *p, ulong n)
+{
+	int i, sofar;
+	uchar *e;
+
+	if(waserror()){
+		qunlock(&rb);
+		nexterror();
+	}
+
+	qlock(&rb);
+	for(sofar = 0; sofar < n; sofar += i){
+		i = rb.wp - rb.rp;
+		if(i == 0){
+			rb.wakeme = 1;
+			sleep(&rb.r, notempty, 0);
+			rb.wakeme = 0;
+			continue;
+		}
+		if(i < 0)
+			i = rb.ep - rb.rp;
+		if(i > n)
+			i = n;
+		memmove(p + sofar, rb.rp, i);
+		e = rb.rp + i;
+		if(e == rb.ep)
+			e = rb.buf;
+		rb.rp = e;
+	}
+	qunlock(&rb);
+	poperror();
+
+	return n;
 }

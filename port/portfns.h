@@ -216,6 +216,7 @@ long		qiwrite(Queue*, void*, int);
 long		qwrite(Queue*, void*, int);
 void		qsetlimit(Queue*, int);
 void		qnoblock(Queue*, int);
+void		randomclock(void);
 int		readnum(ulong, char*, ulong, ulong, int);
 int		readstr(ulong, char*, ulong, char*);
 void		ready(Proc*);

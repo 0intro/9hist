@@ -44,6 +44,7 @@ clock(Ureg *ur, void *arg)
 	hardclock();
 	uartclock();
 	mouseclock();
+	randomclock();
 
 	if(up && up->state == Running){
 		if(anyready())

@@ -47,6 +47,8 @@ char *statename[] =
 	"Rendez",
 };
 
+ulong randomcount;
+
 /*
  * Always splhi()'ed.
  */
@@ -183,7 +185,7 @@ loop:
 	 *  or one that hasn't moved in a while (load balancing).
 	 */
 	spllo();
-	for(;;){
+	for(randomcount++;;randomcount++){
 		/*
 		 *  Once a second we look for a long waiting process
 		 *  in the lowest priority queue to make sure nothing

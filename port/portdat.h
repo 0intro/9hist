@@ -704,3 +704,4 @@ extern int nsyscall;
 extern Physseg physseg[];
 extern ulong crasharea;
 extern ulong crashend;
+extern ulong randomcount;
