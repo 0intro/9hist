@@ -428,8 +428,12 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 		up->notepending = 0;
 		s = splhi();
 		lock(&up->rlock);
-		if(r->p == up)
+		if(r->p == up){
+			/* undo the sleep1() */
+			up->r = 0;
 			r->p = 0;
+			up->state = Running;
+		}
 		unlock(&up->rlock);
 		splx(s);
 		error(Eintr);

@@ -12,7 +12,7 @@
 #include "screen.h"
 
 /*
- * ATI Mach64.
+ * ATI Mach64(CT|ET|GP|GT|GU|VT|VU).
  */
 static ushort mach64xxdid[] = {
 	('C'<<8)|'T',
@@ -35,12 +35,10 @@ mach64xxpci(void)
 		return nil;
 	for(did = mach64xxdid; *did; did++){
 		if(*did == p->did)
-			break;
+			return p;
 	}
-	if(*did == 0)
-		return nil;
 
-	return p;
+	return nil;
 }
 
 static void
@@ -53,8 +51,17 @@ mach64xxenable(VGAscr* scr)
 	 */
 	if(scr->io)
 		return;
-	if(p = mach64xxpci())
-		scr->io = p->mem[1].bar & ~0x01;
+	if(p = mach64xxpci()){
+		/*
+		 * The CT doesn't always have the I/O base address
+		 * in the PCI base registers. There is a way to find
+		 * it via the vendor-specific PCI config space but
+		 * this will do for now.
+		 */
+		scr->io = p->mem[1].bar & ~0x03;
+		if(scr->io == 0 && p->did == ('C'<<8)|'T')
+			scr->io = 0x2EC;
+	}
 }
 
 static ulong
@@ -89,26 +96,42 @@ mach64xxlinear(VGAscr* scr, int* size, int* align)
 	return aperture;
 }
 
-enum {					/* I/O select */
-	CurClr0		= 0x18,
-	CurClr1		= 0x19,
-	CurOffset	= 0x1a,
-	CurHVposn	= 0x1b,
-	CurHVoff	= 0x1c,
+enum {					/* MM offset */
 
-	GenTestCntl	= 0x34,
+	CurClr0		= 0x0B,		/* I/O Select */
+	CurClr1		= 0x0C,
+	CurOffset	= 0x0D,
+	CurHVposn	= 0x0E,
+	CurHVoff	= 0x0F,
+
+	GenTestCntl	= 0x19,
+};
+
+static uchar mmoffset[] = {
+	[CurClr0]	0x18,
+	[CurClr1]	0x19,
+	[CurOffset]	0x1a,
+	[CurHVposn]	0x1b,
+	[CurHVoff]	0x1c,
+
+	[GenTestCntl]	0x34,
 };
 
 static ulong
 ior32(VGAscr* scr, int r)
 {
-	return inl((r<<2)+scr->io);
+	if(scr->io == 0x2EC || scr->io == 0x1C8)
+		return inl((r<<10)+scr->io);
+	return inl((mmoffset[r]<<2)+scr->io);
 }
 
 static void
 iow32(VGAscr* scr, int r, ulong l)
 {
-	outl(((r)<<2)+scr->io, l);
+	if(scr->io == 0x2EC || scr->io == 0x1C8)
+		outl(((r)<<10)+scr->io, l);
+	else
+		outl((mmoffset[r]<<2)+scr->io, l);
 }
 
 static void

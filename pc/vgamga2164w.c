@@ -12,8 +12,8 @@
 #include "screen.h"
 
 /*
- * Matrox Millenium and Matrox Millenium II.
- * Matrox MGA-2064W, MGA-2164W 3D graphics accelerators
+ * Matrox Millennium and Matrox Millennium II.
+ * Matrox MGA-2064W, MGA-2164W 3D graphics accelerators.
  * Texas Instruments Tvp3026 RAMDAC.
  */
 
