@@ -92,7 +92,7 @@ tcpmove(struct Tctl *to, struct Tctl *from)
 }
 
 Ipconv*
-tcpincoming(Ipconv *ipc, Ipconv *s, Tcp *segp, Ipaddr source)
+tcpincoming(Ipifc *ifc, Ipconv *s, Tcp *segp, Ipaddr source)
 {
 	Ipconv *new;
 
@@ -102,7 +102,7 @@ tcpincoming(Ipconv *ipc, Ipconv *s, Tcp *segp, Ipaddr source)
 		return 0;
 	}
 
-	new = ipincoming(ipc, s);
+	new = ipincoming(ifc, s);
 	if(new == 0){
 		qunlock(s);
 		return 0;
@@ -120,17 +120,15 @@ tcpincoming(Ipconv *ipc, Ipconv *s, Tcp *segp, Ipaddr source)
 	new->tcpctl.acktimer.arg = new;
 	new->tcpctl.acktimer.state = TIMER_STOP;
 	new->newcon = s;
-	new->ipinterface = s->ipinterface;
 
-	s->ipinterface->ref++;
 	wakeup(&s->listenr);
 	return new;
 }
 
 void
-tcp_input(Ipconv *ipc, Block *bp)
+tcp_input(Ipifc *ifc, Block *bp)
 {
-	Ipconv *s, *e;
+	Ipconv *s, **p, **etab;
 	Ipconv *spec, *gen;
 	Tcpctl *tcb;		
 	Tcphdr *h;
@@ -164,7 +162,7 @@ tcp_input(Ipconv *ipc, Block *bp)
 		return;
 	
 	/* Look for a connection, failing that attempt to establish a listen */
-	s = ip_conn(ipc, seg.dest, seg.source, source, IP_TCPPROTO);
+	s = ip_conn(ifc, seg.dest, seg.source, source, IP_TCPPROTO);
 	if (s == 0) {
 		if(seg.flags & SYN){
 			/*
@@ -173,8 +171,9 @@ tcp_input(Ipconv *ipc, Block *bp)
 			 */
 			spec = 0;
 			gen = 0;
-			e = &ipc[conf.ip];
-			for(s = ipc; s < e; s++) {
+			etab = &ifc->conv[Nipconv];
+			for(p = ifc->conv; p < etab && *p; p++) {
+				s = *p;
 				if(s->tcpctl.state == Listen)
 				if(s->pdst == 0)
 				if(s->dst == 0) {
@@ -187,9 +186,9 @@ tcp_input(Ipconv *ipc, Block *bp)
 				}
 			}
 			if(spec)
-				s = tcpincoming(ipc, spec, &seg, source);
+				s = tcpincoming(ifc, spec, &seg, source);
 			else if(gen)
-				s = tcpincoming(ipc, gen, &seg, source);
+				s = tcpincoming(ifc, gen, &seg, source);
 			else
 				s = 0;
 		}
@@ -583,7 +582,7 @@ proc_syn(Ipconv *s, char tos, Tcp *seg)
 		tcb->mss = seg->mss;
 
 	tcb->max_snd = seg->wnd;
-	if((mtu = s->ipinterface->maxmtu) != 0) {
+	if((mtu = s->ifc->maxmtu) != 0) {
 		mtu -= TCP_HDRSIZE + TCP_EHSIZE + TCP_PHDRSIZE; 
 		tcb->cwind = tcb->mss = MIN(mtu, tcb->mss);
 	}

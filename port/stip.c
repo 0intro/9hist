@@ -17,7 +17,6 @@
 #define DPRINT if(pip)print
 int pip = 0;
 int ipcksum = 1;
-extern Ipifc *ipifc;
 int Id = 1;
 
 Fragq		*flisthead;
@@ -81,7 +80,7 @@ ipetheropen(Queue *q, Stream *s)
 		s->inuse++;
 		ipsetaddrs();
 	} else {
-		ipc = &ipconv[s->dev][s->id];
+		ipc = ipcreateconv(ipifc[s->dev], s->id);
 		RD(q)->ptr = (void *)ipc;
 		WR(q)->ptr = (void *)ipc;
 		ipc->ref = 1;
@@ -92,50 +91,27 @@ ipetheropen(Queue *q, Stream *s)
 }
 
 /*
- * newipifc - Attach to or Create a new protocol interface
+ *  initipifc - set parameters of an ip protocol interface
  */
-
-Ipifc *
-newipifc(uchar ptcl, void (*recvfun)(Ipconv *, Block *bp),
-	 Ipconv *con, int max, int min, int hdrsize, char *name)
+void
+initipifc(Ipifc *ifc, uchar ptcl, void (*recvfun)(Ipifc*, Block *bp), int max,
+	int min, int hdrsize, char *name)
 {
-	Ipifc *ifc, *free;
- 
-	free = 0;
-	for(ifc = ipifc; ifc < &ipifc[conf.ipif]; ifc++) {
-		qlock(ifc);
-		if(ifc->protocol == ptcl) {
-			ifc->ref++;
-			qunlock(ifc);
-			return(ifc);
-		}
-		if(!free && ifc->ref == 0) {
-			ifc->ref = 1;
-			free = ifc;
-		}
-		else
-			qunlock(ifc);
-	}
-
-	if(!free)
-		error(Enoifc);
-
-	free->iprcv = recvfun;
+	qlock(ifc);
+	ifc->iprcv = recvfun;
 
 	/* If media supports large transfer units limit maxmtu
 	 * to max ip size */
 	if(max > IP_MAX)
 		max = IP_MAX;
-	free->maxmtu = max;
-	free->minmtu = min;
-	free->hsize = hdrsize;
-	free->connections = con;
+	ifc->maxmtu = max;
+	ifc->minmtu = min;
+	ifc->hsize = hdrsize;
 
-	free->protocol = ptcl;
-	strncpy(free->name, name, NAMELEN);
+	ifc->protocol = ptcl;
+	ifc->inited = 1;
 
-	qunlock(free);
-	return(free);
+	qunlock(ifc);
 }
 
 static void
@@ -148,20 +124,6 @@ ipetherclose(Queue *q)
 		netdisown(ipc);
 		ipc->ref = 0;
 	}
-}
-
-void
-closeipifc(Ipifc *ifc)
-{
-	/* If this is the last reference to the protocol multiplexor
-	 * cancel upcalls from this stream
-	 */
-	qlock(ifc);
-	if(--ifc->ref == 0) {
-		ifc->protocol = 0;
-		ifc->name[0] = 0;
-	}
-	qunlock(ifc);
 }
 
 static void
@@ -301,7 +263,7 @@ drop:
 static void
 ipetheriput(Queue *q, Block *bp)
 {
-	Ipifc 	 *ep, *ifp;
+	Ipifc 	 *ifc, **ifp;
 	Etherhdr *h;
 	ushort   frag;
 
@@ -345,13 +307,16 @@ ipetheriput(Queue *q, Block *bp)
 	/*
  	 * Look for an ip interface attached to this protocol
 	 */
-	ep = &ipifc[conf.ipif];
-	for(ifp = ipifc; ifp < ep; ifp++)
-		if(ifp->protocol == h->proto) {
-			(*ifp->iprcv)(ifp->connections, bp);
+	for(ifp = ipifc; ; ifp++){
+		ifc = *ifp;
+		if(ifc == 0)
+			break;
+		if(ifc->protocol == h->proto) {
+			(*ifc->iprcv)(ifc, bp);
 			return;
 		}
-			
+	}
+
 drop:
 	freeb(bp);
 }

@@ -280,13 +280,11 @@ struct Ipconv
 	QLock;			/* Ref count lock */
 	Netprot;		/* stat info */
 	int 	ref;
-	Qinfo	*stproto;	/* Stream protocol for this device */
-	Network	*net;		/* user level network interface */
 	Ipaddr	dst;		/* Destination from connect */
 	Port	psrc;		/* Source port */
 	Port	pdst;		/* Destination port */
 
-	Ipifc	*ipinterface;	/* Ip protocol interface */
+	Ipifc	*ifc;	/* Ip protocol interface */
 	Queue	*readq;		/* Pointer to upstream read q */
 	QLock	listenq;	/* List of people waiting incoming cons */
 	Rendez	listenr;	/* Some where to sleep while waiting */
@@ -360,23 +358,30 @@ enum				/* Tcp connection states */
 	Time_wait
 };
 
+enum
+{
+	Nipconv=	512,		/* max conversations per interface */
+};
+
 /*
  * Ip interface structure. We have one for each active protocol driver
  */
 struct Ipifc 
 {
 	QLock;
-	int 		ref;
+	Network;				/* user level network interface */
+	Ipifc		*next;
+	int 		inited;
 	uchar		protocol;		/* Ip header protocol number */
-	char		name[NAMELEN];		/* Protocol name */
-	void (*iprcv)	(Ipconv *, Block *);	/* Receive demultiplexor */
-	Ipconv		*connections;		/* Connection list */
+	void (*iprcv)	(Ipifc*, Block*);	/* Receive demultiplexor */
 	int		maxmtu;			/* Maximum transfer unit */
 	int		minmtu;			/* Minumum tranfer unit */
 	int		hsize;			/* Media header size */	
 	ulong		chkerrs;		/* checksum errors */
-	Lock;	
+	Lock;
+	Ipconv		**conv;			/* conversations */
 };
+
 
 struct Fragq
 {
@@ -423,7 +428,6 @@ int	arp_lookup(uchar*, uchar*);
 int	backoff(int);
 Block*	btrim(Block*, int, int);
 void	close_self(Ipconv *, char []);
-void	closeipifc(Ipifc*);
 int	dupb(Block **, Block *, int, int);
 void	extract_oob(Block **, Block **, Tcp *);
 void	get_reseq(Tcpctl *, char *, Tcp *, Block **, ushort *);
@@ -436,15 +440,17 @@ void	ilstart(Ipconv *, int, int);
 int	inb_window(Tcpctl *, int);
 void	init_tcpctl(Ipconv *);
 void	initfrag(int);
-Ipconv*	ip_conn(Ipconv *, Port, Port, Ipaddr dest, char proto);
+void	initipifc(Ipifc*, uchar, void (*)(Ipifc*, Block*), int, int, int, char*);
+Ipconv*	ip_conn(Ipifc*, Port, Port, Ipaddr dest, char proto);
 ushort	ip_csum(uchar*);
 Block*	ip_reassemble(int, Block*, Etherhdr*);
 int	ipclonecon(Chan *);
 int	ipconbusy(Ipconv*);
+Ipconv*	ipcreateconv(Ipifc*, int);
 int	ipforme(uchar*);
 Fragq*	ipfragallo(void);
 void	ipfragfree(Fragq*, int);
-Ipconv*	ipincoming(Ipconv*, Ipconv*);
+Ipconv*	ipincoming(Ipifc*, Ipconv*);
 int	iplisten(Chan *);
 void	iplocalfill(Chan*, char*, int);
 void	ipmkdir(Qinfo *, Dirtab *, Ipconv *);
@@ -453,13 +459,12 @@ void	ipremotefill(Chan*, char*, int);
 void	iproute(uchar*, uchar*);
 void	ipsetaddrs(void);
 void	ipstatusfill(Chan*, char*, int);
-Ipifc*	newipifc(uchar, void (*)(Ipconv *, Block*), Ipconv *, int, int, int, char*);
-Port	nextport(Ipconv *, int);
-ulong	nhgetl(uchar*);
+Port	nextport(Ipifc*, int);
 ushort	nhgets(uchar*);
+ulong	nhgetl(uchar*);
 int	ntohtcp(Tcp *, Block **);
 int	ntohtcp(Tcp*, Block**);
-Ipconv*	portused(Ipconv *, Port);
+Ipconv*	portused(Ipifc*, Port);
 void	ppkt(Block*);
 void	proc_syn(Ipconv*, char, Tcp*);
 ushort	ptcl_csum(Block*bp, int, int);
@@ -478,7 +483,7 @@ void	start_timer(Timer *);
 void	state_upcall(Ipconv*, char oldstate, char newstate);
 void	stop_timer(Timer *);
 void	tcp_acktimer(void *);
-void	tcp_input(Ipconv *, Block *);
+void	tcp_input(Ipifc*, Block *);
 void	tcp_output(Ipconv*);
 void	tcp_timeout(void *);
 void	tcpackproc(void*);
@@ -487,7 +492,7 @@ void	tcpflushincoming(Ipconv*);
 void	tcprcvwin(Ipconv *);
 void	tcpstart(Ipconv *, int, ushort, char);
 int	trim(Tcpctl *, Tcp *, Block **, ushort *);
-void	udprcvmsg(Ipconv *, Block*);
+void	udprcvmsg(Ipifc*, Block*);
 void	update(Ipconv *, Tcp *);
 
 #define	fmtaddr(xx)	(xx>>24)&0xff,(xx>>16)&0xff,(xx>>8)&0xff,xx&0xff
@@ -501,7 +506,7 @@ extern Ipaddr Myip[7];
 extern Ipaddr Mymask;
 extern Ipaddr Mynetmask;
 extern Ipaddr classmask[4];
-extern Ipconv *ipconv[];
+extern Ipifc *ipifc[];
 extern char *tcpstate[];
 extern char *ilstate[];
 extern Rendez tcpflowr;

@@ -13,15 +13,15 @@ enum
 {
 	Nrprotocol	= 3,	/* Number of protocols supported by this driver */
 	Nipsubdir	= 4,	/* Number of subdirectory entries per connection */
+	Nfrag		= 32,	/* Ip reassembly queue entries */
+	Nifc		= 4,	/* max interfaces */
 };
 
 int 	udpsum = 1;
 Queue	*Ipoutput;			/* Control message stream for tcp/il */
-Ipifc	*ipifc;				/* IP protocol interfaces for stip */
-Ipconv	*ipconv[Nrprotocol];		/* Connections for each protocol */
-Network	*ipnet[Nrprotocol];		/* User level interface for protocol */
+Ipifc	*ipifc[Nrprotocol+1];
 QLock	ipalloc;			/* Protocol port allocation lock */
-Ipconv	*tcpbase;			/* Base tcp connection */
+Ipconv	**tcpbase;
 
 Streamput   udpstiput, udpstoput, tcpstiput, tcpstoput, iliput, iloput, bsdiput, bsdoput;
 Streamopen  udpstopen, tcpstopen, ilopen, bsdopen;
@@ -35,46 +35,39 @@ Qinfo bsdinfo = { bsdiput,   bsdoput,	bsdopen,   bsdclose,   "bsd", 0, 1 };
 Qinfo *protocols[] = { &tcpinfo, &udpinfo, &ilinfo, 0 };
 
 void
-ipinitnet(Network *np, Qinfo *stproto, Ipconv *cp)
+ipinitifc(Ipifc *ifc, Qinfo *stproto)
 {
 	int j;
 
-	for(j = 0; j < conf.ip; j++, cp++){
-		cp->stproto = stproto;
-		cp->net = np;
-		netadd(np, cp, j);
-	}
-	np->name = stproto->name;
-	np->nconv = conf.ip;
-	np->devp = &ipinfo;
-	np->protop = stproto;
+	ifc->conv = xalloc(Nipconv * sizeof(Ipconv*));
+	ifc->protop = stproto;
+	ifc->nconv = Nipconv;
+	ifc->devp = &ipinfo;
 	if(stproto != &udpinfo)
-		np->listen = iplisten;
-	np->clone = ipclonecon;
-	np->ninfo = 3;
-	np->info[0].name = "remote";
-	np->info[0].fill = ipremotefill;
-	np->info[1].name = "local";
-	np->info[1].fill = iplocalfill;
-	np->info[2].name = "status";
-	np->info[2].fill = ipstatusfill;
+		ifc->listen = iplisten;
+	ifc->clone = ipclonecon;
+	ifc->ninfo = 3;
+	ifc->info[0].name = "remote";
+	ifc->info[0].fill = ipremotefill;
+	ifc->info[1].name = "local";
+	ifc->info[1].fill = iplocalfill;
+	ifc->info[2].name = "status";
+	ifc->info[2].fill = ipstatusfill;
+	ifc->name = stproto->name;
 }
 
 void
 ipreset(void)
 {
-	int i, j;
-
-	ipifc = (Ipifc *)xalloc(sizeof(Ipifc) * conf.ip);
+	int i;
 
 	for(i = 0; protocols[i]; i++) {
-		ipconv[i] = (Ipconv *)xalloc(sizeof(Ipconv) * conf.ip);
-		ipnet[i] = (Network *)xalloc(sizeof(Network));
-		ipinitnet(ipnet[i], protocols[i], ipconv[i]);
+		ipifc[i] = xalloc(sizeof(Ipifc));
+		ipinitifc(ipifc[i], protocols[i]);
 		newqinfo(protocols[i]);
 	}
 
-	initfrag(conf.frag);
+	initfrag(Nfrag);
 }
 
 void
@@ -114,40 +107,79 @@ ipclone(Chan *c, Chan *nc)
 int
 ipwalk(Chan *c, char *name)
 {
-	return netwalk(c, name, ipnet[c->dev]);
+	return netwalk(c, name, ipifc[c->dev]);
 }
 
 void
 ipstat(Chan *c, char *db)
 {
-	netstat(c, db, ipnet[c->dev]);
+	netstat(c, db, ipifc[c->dev]);
 }
 
 Chan *
 ipopen(Chan *c, int omode)
 {
-	return netopen(c, omode, ipnet[c->dev]);
+	return netopen(c, omode, ipifc[c->dev]);
 }
 
 int
 ipclonecon(Chan *c)
 {
-	Ipconv *new, *base;
+	Ipconv *new;
 
-	base = ipconv[c->dev];
-	new = ipincoming(base, 0);
+	new = ipincoming(ipifc[c->dev], 0);
 	if(new == 0)
 		error(Enodev);
-	return new - base;
+	return new->id;
 }
 
-Ipconv *
-ipincoming(Ipconv *base, Ipconv *from)
+/*
+ *  create a new conversation structure if none exists for this conversation slot
+ */
+Ipconv*
+ipcreateconv(Ipifc *ifc, int id)
 {
-	Ipconv *new, *etab;
+	Ipconv **p;
+	Ipconv *new;
 
-	etab = &base[conf.ip];
-	for(new = base; new < etab; new++) {
+	p = &ifc->conv[id];
+	if(*p)
+		return *p;
+	qlock(ifc);
+	p = &ifc->conv[id];
+	if(*p){
+		qunlock(ifc);
+		return *p;
+	}
+	if(waserror()){
+		qunlock(ifc);
+		nexterror();
+	}
+	new = smalloc(sizeof(Ipconv));
+	new->ifc = ifc;
+	netadd(ifc, new, p - ifc->conv);
+	new->ref = 1;
+	*p = new;
+	qunlock(ifc);
+	poperror();
+	return new;
+}
+
+/*
+ *  allocate a conversation structure.
+ */
+Ipconv*
+ipincoming(Ipifc *ifc, Ipconv *from)
+{
+	Ipconv **p, **etab;
+	Ipconv *new;
+
+	/* look for an unused existing conversation */
+	etab = &ifc->conv[Nipconv];
+	for(p = ifc->conv; p < etab; p++) {
+		new = *p;
+		if(new == 0)
+			break;
 		if(new->ref == 0 && canqlock(new)) {
 			if(new->ref || ipconbusy(new)) {
 				qunlock(new);
@@ -163,7 +195,35 @@ ipincoming(Ipconv *base, Ipconv *from)
 			return new;
 		}	
 	}
-	return 0;
+
+	/* create one */
+	qlock(ifc);
+	etab = &ifc->conv[Nipconv];
+	for(p = ifc->conv; ; p++){
+		if(p == etab){
+			qunlock(ifc);
+			return 0;
+		}
+		if(*p == 0)
+			break;
+	}
+	if(waserror()){
+		qunlock(ifc);
+		nexterror();
+	}
+	new = smalloc(sizeof(Ipconv));
+	new->ifc = ifc;
+	netadd(ifc, new, p - ifc->conv);
+	qlock(new);
+	*p = new;
+	qunlock(ifc);
+	if(from)	/* copy ownership from listening channel */
+		netown(new, from->owner, 0);
+	else		/* current user becomes owner */
+		netown(new, u->p->user, 0);
+	new->ref = 1;
+	qunlock(new);
+	return new;
 }
 
 void
@@ -183,7 +243,7 @@ ipremove(Chan *c)
 void
 ipwstat(Chan *c, char *dp)
 {
-	netwstat(c, dp, ipnet[c->dev]);
+	netwstat(c, dp, ipifc[c->dev]);
 }
 
 void
@@ -196,7 +256,7 @@ ipclose(Chan *c)
 long
 ipread(Chan *c, void *a, long n, ulong offset)
 {
-	return netread(c, a, n, offset, ipnet[c->dev]);
+	return netread(c, a, n, offset, ipifc[c->dev]);
 }
 
 long
@@ -214,7 +274,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 	if (type != Sctlqid)
 		error(Eperm);
 
-	cp = &ipconv[c->dev][STREAMID(c->qid.path)];
+	cp = ipcreateconv(ipifc[c->dev], STREAMID(c->qid.path));
 
 	m = n;
 	if(m > sizeof(buf)-1)
@@ -251,13 +311,13 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		/* If we have no local port assign one */
 		if(cp->psrc == 0){
 			qlock(&ipalloc);
-			cp->psrc = nextport(ipconv[c->dev], priv);
+			cp->psrc = nextport(ipifc[c->dev], priv);
 			qunlock(&ipalloc);
 		}
 
-		if(cp->stproto == &tcpinfo)
+		if(cp->ifc->protop == &tcpinfo)
 			tcpstart(cp, TCP_ACTIVE, Streamhi, 0);
-		else if(cp->stproto == &ilinfo)
+		else if(cp->ifc->protop == &ilinfo)
 			ilstart(cp, IL_ACTIVE, 20);
 
 		/*
@@ -274,7 +334,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		}
 	}
 	else if(strcmp(field[0], "disconnect") == 0) {
-		if(cp->stproto != &udpinfo)
+		if(cp->ifc->protop != &udpinfo)
 			error(Eperm);
 
 		cp->dst = 0;
@@ -291,7 +351,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 
 		if(port){
 			qlock(&ipalloc);
-			if(portused(ipconv[c->dev], port)) {
+			if(portused(ipifc[c->dev], port)) {
 				qunlock(&ipalloc);	
 				error(Einuse);
 			}
@@ -299,14 +359,14 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 			qunlock(&ipalloc);
 		} else if(*field[1] != '*'){
 			qlock(&ipalloc);
-			cp->psrc = nextport(ipconv[c->dev], 0);
+			cp->psrc = nextport(ipifc[c->dev], 0);
 			qunlock(&ipalloc);
 		} else
 			cp->psrc = 0;
 
-		if(cp->stproto == &tcpinfo)
+		if(cp->ifc->protop == &tcpinfo)
 			tcpstart(cp, TCP_PASSIVE, Streamhi, 0);
-		else if(cp->stproto == &ilinfo)
+		else if(cp->ifc->protop == &ilinfo)
 			ilstart(cp, IL_PASSIVE, 10);
 
 		if(cp->backlog == 0)
@@ -331,11 +391,11 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 int
 ipconbusy(Ipconv  *cp)
 {
-	if(cp->stproto == &tcpinfo)
+	if(cp->ifc->protop == &tcpinfo)
 	if(cp->tcpctl.state != Closed)
 		return 1;
 
-	if(cp->stproto == &ilinfo)
+	if(cp->ifc->protop == &ilinfo)
 	if(cp->ilctl.state != Ilclosed)
 		return 1;
 
@@ -352,9 +412,9 @@ udpstiput(Queue *q, Block *bp)
  * udprcvmsg - called by stip to multiplex udp ports onto conversations
  */
 void
-udprcvmsg(Ipconv *muxed, Block *bp)
+udprcvmsg(Ipifc *ifc, Block *bp)
 {
-	Ipconv *ifc, *etab;
+	Ipconv *cp, **p, **etab;
 	Udphdr *uh;
 	Port   dport, sport;
 	ushort sum, len;
@@ -383,11 +443,14 @@ udprcvmsg(Ipconv *muxed, Block *bp)
 	sport = nhgets(uh->udpsport);
 
 	/* Look for a conversation structure for this port */
-	etab = &muxed[conf.ip];
-	for(ifc = muxed; ifc < etab; ifc++) {
-		if(ifc->ref)
-		if(ifc->psrc == dport)
-		if(ifc->pdst == 0 || ifc->pdst == sport) {
+	etab = &ifc->conv[Nipconv];
+	for(p = ifc->conv; p < etab; p++) {
+		cp = *p;
+		if(cp == 0)
+			break;
+		if(cp->ref)
+		if(cp->psrc == dport)
+		if(cp->pdst == 0 || cp->pdst == sport) {
 			/* Trim the packet down to data size */
 			len = len - (UDP_HDRSIZE-UDP_PHDRSIZE);
 			bp = btrim(bp, UDP_EHSIZE+UDP_HDRSIZE, len);
@@ -395,9 +458,9 @@ udprcvmsg(Ipconv *muxed, Block *bp)
 				return;
 
 			/* Stuff the src address into the remote file */
-		 	ifc->dst = addr;
-			ifc->pdst = sport;
-			PUTNEXT(ifc->readq, bp);
+		 	cp->dst = addr;
+			cp->pdst = sport;
+			PUTNEXT(cp->readq, bp);
 			return;
 		}
 	}
@@ -476,8 +539,6 @@ udpstclose(Queue *q)
 	ipc->psrc = 0;
 	ipc->pdst = 0;
 	ipc->dst = 0;
-
-	closeipifc(ipc->ipinterface);
 }
 
 void
@@ -485,13 +546,12 @@ udpstopen(Queue *q, Stream *s)
 {
 	Ipconv *ipc;
 
-	ipc = &ipconv[s->dev][s->id];
-	ipc->ipinterface = newipifc(IP_UDPPROTO, udprcvmsg, ipconv[s->dev],
-			            1500, 512, ETHER_HDR, "UDP");
+	ipc = ipcreateconv(ipifc[s->dev], s->id);
+	initipifc(ipifc[s->dev], IP_UDPPROTO, udprcvmsg, 1500, 512, ETHER_HDR, "UDP");
 
 	ipc->readq = RD(q);	
 	RD(q)->ptr = (void *)ipc;
-	WR(q)->next->ptr = (void *)ipc->ipinterface;
+	WR(q)->next->ptr = (void *)ipc->ifc;
 	WR(q)->ptr = (void *)ipc;
 }
 
@@ -564,6 +624,7 @@ void
 tcpstopen(Queue *q, Stream *s)
 {
 	Ipconv *ipc;
+	Ipifc *ifc;
 	Tcpctl *tcb;
 	Block *bp;	
 	static int tcpkprocs;
@@ -578,22 +639,22 @@ tcpstopen(Queue *q, Stream *s)
 	if(tcpkprocs == 0) {
 		tcpkprocs = 1;
 		kproc("tcpack", tcpackproc, 0);
-		kproc("tcpflow", tcpflow, &ipconv[s->dev]);
+		kproc("tcpflow", tcpflow, ipifc[s->dev]);
 
 	}
 
 	if(tcpbase == 0)
-		tcpbase = ipconv[s->dev];
-	ipc = &ipconv[s->dev][s->id];
-	ipc->ipinterface = newipifc(IP_TCPPROTO, tcp_input, ipconv[s->dev], 
-			            1500, 512, ETHER_HDR, "TCP");
+		tcpbase = ipifc[s->dev]->conv;
+	ifc = ipifc[s->dev];
+	initipifc(ifc, IP_TCPPROTO, tcp_input, 1500, 512, ETHER_HDR, "TCP");
+	ipc = ipcreateconv(ifc, s->id);
 
 	ipc->readq = RD(q);
 	ipc->readq->rp = &tcpflowr;
 	ipc->err = 0;
 
 	RD(q)->ptr = (void *)ipc;
-	WR(q)->next->ptr = (void *)ipc->ipinterface;
+	WR(q)->next->ptr = (void *)ipc->ifc;
 	WR(q)->ptr = (void *)ipc;
 
 	/* pass any waiting data upstream */
@@ -607,22 +668,18 @@ tcpstopen(Queue *q, Stream *s)
 void
 ipremotefill(Chan *c, char *buf, int len)
 {
-	int connection;
 	Ipconv *cp;
 
-	connection = STREAMID(c->qid.path);
-	cp = &ipconv[c->dev][connection];
+	cp = ipcreateconv(ipifc[c->dev], STREAMID(c->qid.path));
 	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(cp->dst), cp->pdst);
 }
 
 void
 iplocalfill(Chan *c, char *buf, int len)
 {
-	int connection;
 	Ipconv *cp;
 
-	connection = STREAMID(c->qid.path);
-	cp = &ipconv[c->dev][connection];
+	cp = ipcreateconv(ipifc[c->dev], STREAMID(c->qid.path));
 	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(Myip[Myself]), cp->psrc);
 }
 
@@ -633,17 +690,17 @@ ipstatusfill(Chan *c, char *buf, int len)
 	Ipconv *cp;
 
 	connection = STREAMID(c->qid.path);
-	cp = &ipconv[c->dev][connection];
-	if(cp->stproto == &tcpinfo)
+	cp = ipcreateconv(ipifc[c->dev], connection);
+	if(cp->ifc->protop == &tcpinfo)
 		sprint(buf, "tcp/%d %d %s %s\n", connection, cp->ref,
 			tcpstate[cp->tcpctl.state],
 			cp->tcpctl.flags & CLONE ? "listen" : "connect");
-	else if(cp->stproto == &ilinfo)
+	else if(cp->ifc->protop == &ilinfo)
 		sprint(buf, "il/%d %d %s rtt %d ms %d csum\n", connection, cp->ref,
 			ilstate[cp->ilctl.state], cp->ilctl.rtt,
-			cp->ipinterface ? cp->ipinterface->chkerrs : 0);
+			cp->ifc ? cp->ifc->chkerrs : 0);
 	else
-		sprint(buf, "%s/%d %d\n", cp->stproto->name, connection, cp->ref);
+		sprint(buf, "%s/%d %d\n", cp->ifc->protop->name, connection, cp->ref);
 }
 
 int
@@ -655,20 +712,19 @@ iphavecon(Ipconv *s)
 int
 iplisten(Chan *c)
 {
-	Ipconv *etab, *new;
-	Ipconv *s, *base;
+	Ipconv **p, **etab, *new;
+	Ipconv *s;
 	int connection;
 	Ipconv *cp;
 
 	connection = STREAMID(c->qid.path);
-	s = &ipconv[c->dev][connection];
-	base = ipconv[c->dev];
+	s = ipcreateconv(ipifc[c->dev], connection);
 
-	if(s->stproto == &tcpinfo)
+	if(s->ifc->protop == &tcpinfo)
 	if(s->tcpctl.state != Listen)
 		error(Enolisten);
 
-	if(s->stproto == &ilinfo)
+	if(s->ifc->protop == &ilinfo)
 	if(s->ilctl.state != Illistening)
 		error(Enolisten);
 
@@ -680,15 +736,18 @@ iplisten(Chan *c)
 		}
 		sleep(&s->listenr, iphavecon, s);
 		poperror();
-		new = base;
- 		for(etab = &base[conf.ip]; new < etab; new++) {
+		etab = &ipifc[c->dev]->conv[Nipconv];
+ 		for(p = ipifc[c->dev]->conv; p < etab; p++) {
+			new = *p;
+			if(new == 0)
+				break;
 			if(new->newcon == s) {
 				qlock(s);
 				s->curlog--;
 				qunlock(s);
 				new->newcon = 0;
 				qunlock(&s->listenq);
-				return new - base;
+				return new->id;
 			}
 		}
 		qunlock(&s->listenq);
@@ -701,7 +760,7 @@ void
 tcpstclose(Queue *q)
 {
 	Ipconv *s;
-	Ipconv *etab, *ifc;
+	Ipconv **etab, **p;
 	Tcpctl *tcb;
 
 	s = (Ipconv *)(q->ptr);
@@ -720,11 +779,11 @@ tcpstclose(Queue *q)
 		qlock(s);
 		s->backlog = 0;
 		s->curlog = 0;
-		etab = &tcpbase[conf.ip];
-		for(ifc = tcpbase; ifc < etab; ifc++){
-			if(ifc->newcon == s) {
-				ifc->newcon = 0;
-				tcpflushincoming(ifc);
+		etab = &tcpbase[Nipconv];
+		for(p = tcpbase; p < etab && *p; p++){
+			if((*p)->newcon == s) {
+				(*p)->newcon = 0;
+				tcpflushincoming(*p);
 			}
 		}
 		qunlock(s);
@@ -921,17 +980,22 @@ btrim(Block *bp, int offset, int len)
 }
 
 Ipconv *
-portused(Ipconv *ic, Port port)
+portused(Ipifc *ifc, Port port)
 {
-	Ipconv *ifc, *etab;
+	Ipconv **p, **etab;
+	Ipconv *cp;
 
 	if(port == 0)
 		return 0;
 
-	etab = &ic[conf.ip];
-	for(ifc = ic; ifc < etab; ifc++)
-		if(ifc->psrc == port) 
-			return ifc;
+	etab = &ifc->conv[Nipconv];
+	for(p = ifc->conv; p < etab; p++){
+		cp = *p;
+		if(cp == 0)
+			break;
+		if(cp->psrc == port) 
+			return cp;
+	}
 
 	return 0;
 }
@@ -939,7 +1003,7 @@ portused(Ipconv *ic, Port port)
 static Port lastport[2] = { PORTALLOC-1, PRIVPORTALLOC-1 };
 
 Port
-nextport(Ipconv *ic, int priv)
+nextport(Ipifc *ifc, int priv)
 {
 	Port base;
 	Port max;
@@ -957,10 +1021,10 @@ nextport(Ipconv *ic, int priv)
 	}
 	
 	for(i = *p + 1; i < max; i++)
-		if(!portused(ic, i))
+		if(!portused(ifc, i))
 			return(*p = i);
 	for(i = base ; i <= *p; i++)
-		if(!portused(ic, i))
+		if(!portused(ifc, i))
 			return(*p = i);
 
 	return(0);
@@ -968,14 +1032,17 @@ nextport(Ipconv *ic, int priv)
 
 /* NEEDS HASHING ! */
 
-Ipconv *
-ip_conn(Ipconv *ic, Port dst, Port src, Ipaddr dest, char proto)
+Ipconv*
+ip_conn(Ipifc *ifc, Port dst, Port src, Ipaddr dest, char proto)
 {
-	Ipconv *s, *etab;
+	Ipconv **p, *s, **etab;
 
 	/* Look for a conversation structure for this port */
-	etab = &ic[conf.ip];
-	for(s = ic; s < etab; s++) {
+	etab = &ifc->conv[Nipconv];
+	for(p = ifc->conv; p < etab; p++) {
+		s = *p;
+		if(s == 0)
+			break;
 		if(s->psrc == dst)
 		if(s->pdst == src)
 		if(s->dst == dest || dest == 0)

@@ -44,7 +44,7 @@ enum
 			 (s)->fasttime = (Fasttime*(s)->rtt)/Iltickms; \
 			 (s)->slowtime = (Slowtime*(s)->rtt)/Iltickms; }
 
-void	ilrcvmsg(Ipconv*, Block*);
+void	ilrcvmsg(Ipifc*, Block*);
 void	ilackproc(void*);
 void	ilsendctl(Ipconv*, Ilhdr*, int, ulong, ulong);
 void	ilackq(Ilcb*, Block*);
@@ -69,16 +69,15 @@ ilopen(Queue *q, Stream *s)
 
 	if(ilkproc == 0) {
 		ilkproc = 1;
-		kproc("ilack", ilackproc, ipconv[s->dev]);
+		kproc("ilack", ilackproc, ipifc[s->dev]);
 	}
 
-	ipc = &ipconv[s->dev][s->id];
-	ipc->ipinterface = newipifc(IP_ILPROTO, ilrcvmsg, ipconv[s->dev],
-			            1500, 60, ETHER_HDR, "IL");
+	ipc = ipcreateconv(ipifc[s->dev], s->id);
+	initipifc(ipc->ifc, IP_ILPROTO, ilrcvmsg, 1500, 60, ETHER_HDR, "IL");
 
 	ipc->readq = RD(q);	
 	RD(q)->ptr = (void *)ipc;
-	WR(q)->next->ptr = (void *)ipc->ipinterface;
+	WR(q)->next->ptr = (void *)ipc->ifc;
 	WR(q)->ptr = (void *)ipc;
 }
 
@@ -259,12 +258,12 @@ iliput(Queue *q, Block *bp)
 }
 
 void
-ilrcvmsg(Ipconv *ipc, Block *bp)
+ilrcvmsg(Ipifc *ifc, Block *bp)
 {
 	Ilhdr *ih;
 	Ilcb *ic;
 	int plen, illen;
-	Ipconv *s, *etab, *new;
+	Ipconv *s, **p, **etab, *new;
 	short sp, dp;
 	Ipaddr dst;
 	char *st;
@@ -283,39 +282,46 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	dst = nhgetl(ih->src);
 
 	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
-		ipc->ipinterface->chkerrs++;
+		ifc->chkerrs++;
 /*		st = (ih->iltype < 0 || ih->iltype > Ilclose) ? "?" : iltype[ih->iltype];
 		print("il: cksum error, pkt(%s id %lud ack %lud %d.%d.%d.%d/%d->%d)\n",
 			st, nhgetl(ih->ilid), nhgetl(ih->ilack), fmtaddr(dst), sp, dp); /**/
 		goto drop;
 	}
 
-	etab = &ipc[conf.ip];
-	for(s = ipc; s < etab; s++)
+	etab = &ifc->conv[Nipconv];
+	for(p = ifc->conv; p < etab; p++) {
+		s = *p;
+		if(s == 0)
+			break;
 		if(s->psrc == sp)
 		if(s->pdst == dp)
 		if(s->dst == dst) {
 			ilprocess(s, ih, bp);
 			return;
 		}
+	}
 
 	if(ih->iltype != Ilsync)
 		goto drop;
 
 	/* Look for a listener */
-	for(s = ipc; s < etab; s++) {
+	for(p = ifc->conv; p < etab; p++) {
+		s = *p;
+		if(s == 0)
+			break;
 		if(s->ilctl.state == Illistening)
 		if(s->pdst == 0)
 		if(s->dst == 0) {
 			if(s->curlog > s->backlog)
 				goto reset;
 
-			new = ipincoming(ipc, s);
+			new = ipincoming(ifc, s);
 			if(new == 0)
 				goto reset;
 
 			new->newcon = s;
-			new->ipinterface = s->ipinterface;
+			new->ifc = s->ifc;
 			new->psrc = sp;
 			new->pdst = dp;
 			new->dst = nhgetl(ih->src);
@@ -334,7 +340,6 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 			ic->window = Defaultwin;
 			ilprocess(new, ih, bp);
 
-			s->ipinterface->ref++;
 			s->curlog++;
 			wakeup(&s->listenr);
 			return;
@@ -549,6 +554,7 @@ ilhangup(Ipconv *s, char *msg)
 	ic = &s->ilctl;
 	callout = ic->state == Ilsyncer;
 	ic->state = Ilclosed;
+	qlock(s);
 	if(s->readq) {
 		if(msg) {
 			l = strlen(msg);
@@ -562,6 +568,7 @@ ilhangup(Ipconv *s, char *msg)
 		nb->flags |= S_DELIM;
 		PUTNEXT(s->readq, nb);
 	}
+	qunlock(s);
 	if(callout)
 		wakeup(&ic->syncer);
 	s->psrc = 0;
@@ -703,16 +710,19 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type, ulong id, ulong ack)
 void
 ilackproc(void *a)
 {
-	Ipconv *base, *end, *s;
+	Ipifc *ifc;
+	Ipconv **base, **p, **end, *s;
 	Ilcb *ic;
 	Block *bp, *np;
 
-	base = (Ipconv*)a;
-	end = &base[conf.ip];
+	ifc = (Ipifc*)a;
+	base = ifc->conv;
+	end = &base[Nipconv];
 
 	for(;;) {
 		tsleep(&ilackr, return0, 0, Iltickms);
-		for(s = base; s < end; s++) {
+		for(p = base; p < end && *p; p++) {
+			s = *p;
 			ic = &s->ilctl;
 			ic->timeout += Iltickms;
 			switch(ic->state) {

@@ -108,23 +108,25 @@ stop_timer(Timer *t)
 }
 
 void
-tcpflow(void *conv)
+tcpflow(void *x)
 {
-	Ipconv *base, *ifc, *etab;
+	Ipifc *ifc;
+	Ipconv *cp, **p, **etab;
 
-	base = (Ipconv*)conv;
-
-	etab = &base[conf.ip];
+	ifc = x;
+	etab = &ifc->conv[Nipconv];
 	for(;;) {
 		sleep(&tcpflowr, return0, 0);
 
-		for(ifc = base; ifc < etab; ifc++) {
-			if(ifc->readq)
-			if(ifc->ref != 0)
-			if(ifc->stproto == &tcpinfo)
-			if(!QFULL(ifc->readq->next)) {
-				tcprcvwin(ifc);
-				tcp_acktimer(ifc);
+		for(p = ifc->conv; p < etab; p++) {
+			cp = *p;
+			if(cp == 0)
+				break;
+			if(cp->readq)
+			if(cp->ref != 0)
+			if(!QFULL(cp->readq->next)) {
+				tcprcvwin(cp);
+				tcp_acktimer(cp);
 			}
 		}
 	}
