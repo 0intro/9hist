@@ -1386,7 +1386,7 @@ atainterrupt(Ureg*, void* arg)
 	int cmdport, len, status;
 
 	ctlr = arg;
-	
+
 	ilock(ctlr);
 	if(inb(ctlr->ctlport+As) & Bsy){
 		iunlock(ctlr);
