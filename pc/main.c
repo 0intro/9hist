@@ -170,8 +170,11 @@ init0(void)
 			ksetenv("service", "cpu", 0);
 		else
 			ksetenv("service", "terminal", 0);
-		for(i = 0; i < nconf; i++)
+		for(i = 0; i < nconf; i++){
+			if(confname[i][0] != '*')
+				ksetenv(confname[i], confval[i], 0);
 			ksetenv(confname[i], confval[i], 1);
+		}
 		poperror();
 	}
 	kproc("alarm", alarmkproc, 0);

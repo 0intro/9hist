@@ -154,8 +154,11 @@ init0(void)
 		else
 			ksetenv("service", "terminal", 0);
 		for(i = 0; i < nconf; i++)
-			if(confname[i])
+			if(confname[i]){
+				if(confname[i][0] != '*')
+					ksetenv(confname[i], confval[i], 0);
 				ksetenv(confname[i], confval[i], 1);
+			}
 		poperror();
 	}
 
