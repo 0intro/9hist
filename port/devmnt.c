@@ -809,11 +809,14 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		 */
 		if(tag<0 || tag>=conf.nmnthdr){
 			print("unknown tag %d\n", tag);
+	FreeRead:
+			mbfree(mh->mbr);
+			mh->mbr = 0;
 			goto Read;
 		}
 		w = &mnthdralloc.arena[tag];
 		if(w->flushing || !w->active)	/* nothing to do; mntflush will clean up */
-			goto Read;
+			goto FreeRead;
 		w->mbr = mh->mbr;
 		mh->mbr = 0;
 		memcpy(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);

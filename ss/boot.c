@@ -247,6 +247,8 @@ boot(int ask)
 {
 	int n, f, tries;
 	char *srvname;
+	Dir dir;
+	char dirbuf[DIRLEN];
 
 	if(ask){
 		outin("server", sys, sizeof(sys));
@@ -356,8 +358,21 @@ boot(int ask)
 		error("bind");
 	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
 		error("mount");
+
+	/*
+	 * set the time from the access time of the root of the file server,
+	 * accessible as /..
+	 */
+	print("time...");
+	if(stat("/..", dirbuf) < 0)
+		error("stat");
+	convM2D(dirbuf, &dir);
+	f = open("#c/time", OWRITE);
+	sprint(dirbuf, "%ld", dir.atime);
+	write(f, dirbuf, strlen(dirbuf));
+	close(f);
+	
 	print("success\n");
-	close(fd);
 
 	if(net){
 		char buf[128];

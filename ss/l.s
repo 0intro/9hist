@@ -21,6 +21,31 @@ TEXT	start(SB), $-4
 TEXT	startvirt(SB), $-4
 
 	MOVW	$BOOTSTACK, R1
+
+	MOVW	$(SPL(0xF)|PSREF|PSRSUPER), R7
+	MOVW	R7, PSR
+
+	MOVW	$(0x35<<22), R7		/* NVM OFM DZM AU */
+	MOVW	R7, fsr+0(SB)
+	MOVW	fsr+0(SB), FSR
+	FMOVD	$0.5, F26		/* 0.5 -> F26 */
+	FSUBD	F26, F26, F24		/* 0.0 -> F24 */
+	FADDD	F26, F26, F28		/* 1.0 -> F28 */
+	FADDD	F28, F28, F30		/* 2.0 -> F30 */
+
+	FMOVD	F24, F0
+	FMOVD	F24, F2
+	FMOVD	F24, F4
+	FMOVD	F24, F6
+	FMOVD	F24, F8
+	FMOVD	F24, F10
+	FMOVD	F24, F12
+	FMOVD	F24, F14
+	FMOVD	F24, F16
+	FMOVD	F24, F18
+	FMOVD	F24, F20
+	FMOVD	F24, F22
+
 	MOVW	$mach0(SB), R(MACH)
 	MOVW	$0x8, R7
 	MOVW	R7, WIM
@@ -93,7 +118,7 @@ TEXT	splx(SB), $0
 
 TEXT	touser(SB), $-4
 
-	MOVW	$SYSPSR, R7
+	MOVW	$(SYSPSR&~PSREF), R7
 	MOVW	R7, PSR
 
 	OR	R0, R0
@@ -167,7 +192,7 @@ trap1:
 	OR	R0, R0
 	OR	R0, R0
 	OR	R0, R0
-	JMPL	faultsparc(SB)
+	JMPL	trap(SB)
 
 	ADD	$8, R1
 restore:
@@ -461,10 +486,73 @@ TEXT	putsegm(SB), $0
 	MOVW	R8, (R7, 3)
 	RETURN
 
+TEXT	savefpregs(SB), $0
+
+	MOVW	0(FP), R7
+	MOVW	FSR, 0(R7)
+
+	ADD	$(4+7), R7		/* double-align so can MOVD */
+	ANDN	$7, R7
+
+	MOVD	F0, (0*4)(R7)
+	MOVD	F2, (2*4)(R7)
+	MOVD	F4, (4*4)(R7)
+	MOVD	F6, (6*4)(R7)
+	MOVD	F8, (8*4)(R7)
+	MOVD	F10, (10*4)(R7)
+	MOVD	F12, (12*4)(R7)
+	MOVD	F14, (14*4)(R7)
+	MOVD	F16, (16*4)(R7)
+	MOVD	F18, (18*4)(R7)
+	MOVD	F20, (20*4)(R7)
+	MOVD	F22, (22*4)(R7)
+	MOVD	F24, (24*4)(R7)
+	MOVD	F26, (26*4)(R7)
+	MOVD	F28, (28*4)(R7)
+	MOVD	F30, (30*4)(R7)
+
+	MOVW	PSR, R8
+	ANDN	$PSREF, R8
+	MOVW	R8, PSR
+	RETURN
+
+TEXT	restfpregs(SB), $0
+
+	MOVW	PSR, R8
+	OR	$PSREF, R8
+	MOVW	R8, PSR
+
+	MOVW	0(FP), R7
+	MOVW	(R7), FSR
+
+	ADD	$(4+7), R7		/* double-align so can MOVD */
+	ANDN	$7, R7
+
+	MOVD	(0*4)(R7), F0
+	MOVD	(2*4)(R7), F2
+	MOVD	(4*4)(R7), F4
+	MOVD	(6*4)(R7), F6
+	MOVD	(8*4)(R7), F8
+	MOVD	(10*4)(R7), F10
+	MOVD	(12*4)(R7), F12
+	MOVD	(14*4)(R7), F14
+	MOVD	(16*4)(R7), F16
+	MOVD	(18*4)(R7), F18
+	MOVD	(20*4)(R7), F20
+	MOVD	(22*4)(R7), F22
+	MOVD	(24*4)(R7), F24
+	MOVD	(26*4)(R7), F26
+	MOVD	(28*4)(R7), F28
+	MOVD	(30*4)(R7), F30
+
+	ANDN	$PSREF, R8
+	MOVW	R8, PSR
+	RETURN
+
 TEXT	clearfpintr(SB), $0
 	MOVW	$fpq+BY2WD(SB), R7
 	ANDN	$0x7, R7		/* must be D aligned */
-	MOVW	$fpr+0(SB), R9
+	MOVW	$fsr+0(SB), R9
 clrq:
 	MOVD	FQ, (R7)
 	MOVW	FSR, (R9)
@@ -474,11 +562,11 @@ clrq:
 	RETURN
 
 TEXT	getfsr(SB), $0
-	MOVW	$fpr+0(SB), R7
+	MOVW	$fsr+0(SB), R7
 	MOVW	FSR, (R7)
 	MOVW	(R7), R7
 	RETURN
 
 GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	fpq+0(SB), $(3*BY2WD)
-GLOBL	fpr+0(SB), $BY2WD
+GLOBL	fsr+0(SB), $BY2WD

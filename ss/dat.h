@@ -117,11 +117,8 @@ struct Chan
 
 struct	FPsave
 {
-	uchar	type;
-	uchar	size;
-	short	reserved;
-	char	junk[212];	/* 68881: sizes 24, 180; 68882: 56, 212 */
-	char	reg[3*4+8*12];
+	long	fsr;
+	long	fpreg[32+1];	/* +1 so we can double-align */
 };
 
 struct Conf
@@ -734,7 +731,7 @@ enum
 {
 	FPinit,
 	FPactive,
-	FPdirty,
+	FPinactive,
 };
 
 /*

@@ -53,47 +53,95 @@ excname(ulong tbr)
 void
 trap(Ureg *ur)
 {
-	int user;
+	int user, x;
 	char buf[64];
 	ulong tbr;
 
-	tbr = (ur->tbr&0xFFF)>>4;
-	if(tbr == 16+15){			/* interrupt 14: counter 1 */
-		faultasync(ur);
-		return;
-	}
-	if(tbr == 16+14){			/* interrupt 14: counter 1 */
-		clock(ur);
-		return;
-	}
-	if(tbr == 16+12){			/* interrupt 12: keyboard and mouse */
-		duartintr();
-		return;
-	}
-	if(tbr == 16+5){			/* interrupt 5: lance */
-		lanceintr();
-		return;
-	}
-	if(tbr == 8)				/* floating point exception */
-		clearfpintr();
-
-	user = !(ur->psr&PSRPSUPER);
-
-/*	if(u)
+	if(u)
 		u->p->pc = ur->pc;		/* BUG */
-	if(user){
-		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(tbr));
-		if(tbr == 8)
-			sprint(buf+strlen(buf), " FSR %lux", getfsr());
-		postnote(u->p, 1, buf, NDebug);
+	user = !(ur->psr&PSRPSUPER);
+	tbr = (ur->tbr&0xFFF)>>4;
+	if(tbr > 16){			/* interrupt */
+		if(u && u->p->state==Running){
+			if(u->p->fpstate == FPactive) {
+				savefpregs(&u->fpsave);
+				u->p->fpstate = FPinactive;
+				ur->psr &= ~PSREF;
+			}
+		}
+		switch(tbr-16){
+		case 15:			/* asynch mem err */
+			faultasync(ur);
+			break;
+		case 14:			/* counter 1 */
+			clock(ur);
+			break;
+		case 12:			/* keyboard and mouse */
+			duartintr();
+			break;
+		case 5:				/* lance */
+			lanceintr();
+			break;
+		default:
+			goto Error;
+		}
 	}else{
-		print("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
-		dumpregs(ur);
-for(;;);
-		exit();
+		switch(tbr){
+		case 1:				/* instr. access */
+		case 9:				/* data access */
+			if(u && u->p->fpstate==FPactive) {
+				savefpregs(&u->fpsave);
+				u->p->fpstate = FPinactive;
+				ur->psr &= ~PSREF;
+			}
+			if(u){
+				x = u->p->insyscall;
+				u->p->insyscall = 1;
+				faultsparc(ur);
+				u->p->insyscall = x;
+			}else
+				faultsparc(ur);
+			goto Return;
+		case 4:				/* floating point disabled */
+			if(u && u->p){
+				if(u->p->fpstate == FPinit)
+					restfpregs(&initfp);
+				else if(u->p->fpstate == FPinactive)
+					restfpregs(&u->fpsave);
+				else
+					break;
+				u->p->fpstate = FPactive;
+				ur->psr |= PSREF;
+				return;
+			}
+			break;
+		case 8:				/* floating point exception */
+			clearfpintr();
+			break;
+		default:
+			break;
+		}
+		if(user){
+			spllo();
+			sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(tbr));
+			if(tbr == 8)
+				sprint(buf+strlen(buf), " FSR %lux", u->fpsave.fsr);
+			postnote(u->p, 1, buf, NDebug);
+		}else{
+    Error:
+			print("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
+			dumpregs(ur);
+			for(;;);
+		}
+		if(user && u->nnote)
+			notify(ur);
 	}
-	if(user && u->nnote)
-		notify(ur);
+    Return:
+	if(user && u && u->p->fpstate == FPinactive) {
+		restfpregs(&u->fpsave);
+		u->p->fpstate = FPactive;
+		ur->psr |= PSREF;
+	}
 }
 
 void
@@ -272,19 +320,16 @@ syscall(Ureg *aur)
 	u->p->pc = ur->pc;
 	if(ur->psr & PSRPSUPER)
 		panic("recursive system call");
-#ifdef asdf
+
 	/*
 	 * since the system call interface does not
-	 * guarantee anything about registers, but the fpcr is more than
-	 * just a register...  BUG
+	 * guarantee anything about registers,
 	 */
-	fpsave(&u->fpsave);
-	if(u->p->fpstate==FPactive || u->fpsave.type){
-		fprestore(&initfp);
+	if(u->p->fpstate == FPactive) {
 		u->p->fpstate = FPinit;
-		m->fpstate = FPinit;
+		ur->psr &= ~PSREF;
 	}
-#endif
+
 	spllo();
 	r7 = ur->r7;
 	sp = ur->usp;

@@ -11,6 +11,7 @@ void	chaninit(void);
 void	chandevreset(void);
 void	chandevinit(void);
 void	checkalarms(void);
+void	clearfpintr(void);
 #define	clearmmucache()
 void	clock(Ureg*);
 void	clockinit(void);
@@ -59,6 +60,7 @@ void	execpc(ulong);
 void	exit(void);
 int	fault(ulong, int);
 void	faultasync(Ureg*);
+void	faultsparc(Ureg*);
 void	fdclose(int);
 Chan	*fdtochan(int, int);
 void	filsys(Chan*, char*, long);
@@ -105,6 +107,7 @@ void	kproc(char*, void(*)(void*), void*);
 void	kunmap(KMap*);
 void	lanceintr(void);
 void	lancesetup(Lance*);
+void	lancetoggle(void);
 void	lock(Lock*);
 void	lockinit(void);
 Orig	*lookorig(ulong, ulong, int, Chan*);
@@ -131,6 +134,7 @@ int	nonetcksum(Block*, int);
 void	nonetfreeifc(Noifc*);
 Noifc*	nonetnewifc(Queue*, Stream*, int, int, int, void (*)(Noconv*, char*));
 void	nonetrcvmsg(Noconv*, Block*);
+void	nonettoggle(void);
 void	notify(Ureg*);
 void	nullput(Queue*, Block*);
 int	openmode(ulong);
@@ -235,6 +239,14 @@ Chan	*walk(Chan*, char*, int);
 
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define	poperror()	u->nerrlab--
+
+/*
+ *  no external state to save on the SPARC
+ */
+#define procsetup(x)
+#define procsave(x,y)
+#define procrestore(x,y)
+
 
 #define USED(x) if(x)
 #define SET(x) x = 0

@@ -152,14 +152,6 @@ mmuinit(void)
 		for(l=UZERO; l<(KZERO&VAMASK); l+=BY2SEGM)
 			putsegm(l, INVALIDPMEG);
 
-#ifdef doesntwork
-		/*
-		 * Invalidate high kernel addresses
-		 */
-		for(l=conf.maxialloc; l<IOSEGM0; l+=BY2SEGM)
-			putsegm(l, INVALIDPMEG);
-#endif
-
 		/*
 		 * One segment for screen
 		 */

@@ -16,6 +16,7 @@ main(int argc, char *argv[])
 	int cfd, fd, n, fu, f, i;
 	char buf[256];
 	int p[2];
+	Dir dir;
 
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
@@ -183,6 +184,20 @@ main(int argc, char *argv[])
 		error("bind");
 	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
 		error("mount");
+
+	/*
+	 * set the time from the access time of the root of the file server,
+	 * accessible as /..
+	 */
+	print("time...");
+	if(stat("/..", buf) < 0)
+		error("stat");
+	convM2D(buf, &dir);
+	f = open("#c/time", OWRITE);
+	sprint(buf, "%ld", dir.atime);
+	write(f, buf, strlen(buf));
+	close(f);
+	
 	print("success\n");
 
 	f = create("#e/bootnet", 1, 0666);

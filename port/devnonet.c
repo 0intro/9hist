@@ -517,7 +517,7 @@ acked(void *a)
 	Nomsg *mp;
 
 	mp = (Nomsg *)a;
-	return mp->acked;
+	return mp->inuse;
 }
 static void
 nonetoput(Queue *q, Block *bp)
@@ -549,11 +549,16 @@ nonetoput(Queue *q, Block *bp)
 	mp = 0;
 	if(waserror()){
 		if(mp){
+			q->len = 0;
+			q->first = q->last = 0;
 			if(mp->first){
 				freeb(mp->first);
 				mp->first = 0;
 			}
 			mp->inuse = 0;
+			mp->acked = 0;
+			if(((cp->first+1)%Nnomsg) == cp->next)
+				cp->first = cp->next;
 		}
 		qunlock(&cp->mlock);
 		nexterror();
@@ -584,27 +589,13 @@ nonetoput(Queue *q, Block *bp)
 	q->len = 0;
 	q->first = q->last = 0;
 	cp->sent++;
+
+	/*
+	 *  send the message, the kproc will retry
+	 */
+	sendmsg(cp, mp);
 	qunlock(&cp->mlock);
-
-	/*
-	 *  wait for acknowledgement
-	 */
-	retries = 0;
-	while(!mp->acked && cp->state!=Chungup){
-		sendmsg(cp, mp);
-		tsleep(&mp->r, acked, mp, MSrexmit);
-		if(retries++ > 100)
-			errors("too many nonet rexmits");
-	}
 	poperror();
-
-	/*
-	 *  free buffer
-	 */
-	freeb(mp->first);
-	mp->first = 0;
-	mp->inuse = 0;
-	wakeup(&cp->r);
 }
 
 /*
@@ -871,11 +862,25 @@ rcvack(Noconv *cp, int mid)
 		return;
 
 	/*
-	 *  wakeup the sender
+ 	 *  free it
 	 */
+	cp->rexmit = 0;
 	mp->acked = 1;
-	wakeup(&mp->r);
 	cp->lastacked = mid;
+	freeb(mp->first);
+	mp->first = 0;
+	mp->inuse = 0;
+
+	/*
+	 *  advance first if this is the first
+	 */
+	if((mid&Nmask) == cp->first){
+		while(cp->first != cp->next){
+			if(cp->out[cp->first].acked == 0)
+				break;
+			cp->first = (cp->first+1) % Nnomsg;
+		}
+	}
 }
 
 /*
@@ -1094,10 +1099,10 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 		 *  start of message packet
 		 */
 		if(mp->first){
-			DPRINT("mp->mid==%d mp->rem==%d buf r==%d\n", mp->mid, mp->rem, r);
-			cp->bad++;
-			freeb(bp);
-			return;
+			DPRINT("mp->mid==%d mp->rem==%d r==%d\n", mp->mid, mp->rem, r);
+			freeb(mp->first);
+			mp->first = mp->last = 0;
+			mp->len = 0;
 		}
 		mp->rem = r;
 	} else {
@@ -1105,7 +1110,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 		 *  a continuation
 		 */
 		if(-r != mp->rem) {
-			DPRINT("mp->mid==%d mp->rem==%d buf r==%d\n", mp->mid, mp->rem, r);
+			DPRINT("mp->mid==%d mp->rem==%d r==%d\n", mp->mid, mp->rem, r);
 			cp->bad++;
 			freeb(bp);
 			return;
@@ -1275,13 +1280,39 @@ nonetkproc(void *arg)
 	}
 
 loop:
+	/*
+	 *  loop through all active interfaces
+	 */
 	for(ifc = noifc; ifc < &noifc[conf.nnoifc]; ifc++){
 		if(ifc->wq==0 || !canlock(ifc))
 			continue;
+
+		/*
+		 *  loop through all active conversations
+		 */
 		ep = ifc->conv + conf.nnoconv;
 		for(cp = ifc->conv; cp < ep; cp++){
 			if(cp->state==Cclosed || !canqlock(cp))
 				continue;
+			if(cp->state == Cclosed){
+				qunlock(cp);
+				continue;
+			}
+
+			/*
+			 *  resend the first message
+			 */
+			if(cp->first!=cp->next && cp->out[cp->first].time>=NOW){
+				if(cp->rexmit++ > 100){
+					print("hanging up\n");
+					hangup(cp);
+				} else
+					sendmsg(cp, &(cp->out[cp->first]));
+			}
+
+			/*
+			 *  resend an acknowledge
+			 */
 			if(cp->afirst != cp->anext){
 				DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
 				sendctlmsg(cp, 0, 0);
@@ -1294,7 +1325,8 @@ loop:
 	goto loop;
 }
 
-nonettoggle()
+void
+nonettoggle(void)
 {
 	pnonet ^= 1;
 }

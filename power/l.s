@@ -8,7 +8,6 @@
 
 /*
  * Boot first processor
- *   - why is the processor number loaded from R0 ?????
  */
 TEXT	start(SB), $-4
 

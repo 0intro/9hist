@@ -848,7 +848,8 @@ stage:
 	}
 }
 
-lancetoggle()
+void
+lancetoggle(void)
 {
 	plance ^= 1;
 }

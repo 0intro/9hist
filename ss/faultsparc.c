@@ -10,7 +10,7 @@ void
 faultsparc(Ureg *ur)
 {
 	ulong addr, badvaddr;
-	int user, read, insyscall;
+	int user, read;
 	ulong tbr;
 
 	tbr = (ur->tbr&0xFFF)>>4;
@@ -23,18 +23,13 @@ faultsparc(Ureg *ur)
 		addr = getw2(SEVAR);
 		if(getw2(SER) & 0x8000)
 			read = 0;
-	}else if(tbr != 1){		/* should be instr. access exception */
-		trap(ur);
-		return;
 	}
 	spllo();
 /* print("fault: %s pc=0x%lux addr %lux %d\n", excname(tbr), ur->pc, addr, read); /**/
 	if(u == 0){
 		dumpregs(ur);
-		panic("fault u==0 pc=%lux", ur->pc);
+		panic("fault u==0 pc=%lux addr=%lux", ur->pc, addr);
 	}
-	insyscall = u->p->insyscall;
-	u->p->insyscall = 1;
 /*	addr &= VAMASK; /**/
 	badvaddr = addr;
 	addr &= ~(BY2PG-1);
@@ -51,7 +46,7 @@ faultsparc(Ureg *ur)
 		panic("fault: 0x%lux", badvaddr);
 		exit();
 	}
-	u->p->insyscall = insyscall;
+	splhi();
 }
 
 void

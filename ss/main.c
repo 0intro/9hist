@@ -71,10 +71,7 @@ machinit(void)
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
 	m->mmask = 1<<m->machno;
-#ifdef adsf
 	m->fpstate = FPinit;
-	fprestore(&initfp);
-#endif
 }
 
 void
@@ -109,6 +106,7 @@ userinit(void)
 	p = newproc();
 	p->pgrp = newpgrp();
 	strcpy(p->text, "*init*");
+	savefpregs(&initfp);
 	p->fpstate = FPinit;
 
 	/*
@@ -262,7 +260,7 @@ confinit(void)
 	conf.nmtab = 50*mul;
 	conf.nmount = 80*mul;
 	conf.nmntdev = 10*mul;
-	conf.nmntbuf = conf.nmntdev+6;
+	conf.nmntbuf = conf.nmntdev+3;
 	conf.nmnthdr = 2*conf.nmntdev;
 	conf.nstream = 40 + 32*mul;
 	conf.nqueue = 5 * conf.nstream;
@@ -344,63 +342,4 @@ print("%d lance buffers\n", i);
 	lp->rp = (Etherpkt*)k->va;
 	lp->ltp = lp->lrp+lp->nrrb;
 	lp->tp = lp->rp+lp->nrrb;
-}
-
-/*
- *  set up floating point for a new process
- */
-void
-procsetup(Proc *p)
-{
-#ifdef asdf
-	long fpnull;
-
-	fpnull = 0;
-	splhi();
-	m->fpstate = FPinit;
-	p->fpstate = FPinit;
-	fprestore((FPsave*)&fpnull);
-	spllo();
-#endif
-}
-
-/*
- * Save the part of the process state.
- */
-void
-procsave(uchar *state, int len)
-{
-#ifdef asdf
-	fpsave(&u->fpsave);
-	if(u->fpsave.type){
-		if(u->fpsave.size > sizeof u->fpsave.junk)
-			panic("fpsize %d max %d\n", u->fpsave.size, sizeof u->fpsave.junk);
-		fpregsave(u->fpsave.reg);
-		u->p->fpstate = FPactive;
-		m->fpstate = FPdirty;
-	}
-#endif
-}
-
-/*
- *  Restore what procsave() saves
- *
- *  Procsave() makes sure that what state points to is long enough
- */
-void
-procrestore(Proc *p, uchar *state)
-{
-#ifdef asdf
-	if(p->fpstate != m->fpstate){
-		if(p->fpstate == FPinit){
-			u->p->fpstate = FPinit;
-			fprestore(&initfp);
-			m->fpstate = FPinit;
-		}else{
-			fpregrestore(u->fpsave.reg);
-			fprestore(&u->fpsave);
-			m->fpstate = FPdirty;
-		}
-	}
-#endif
 }
