@@ -460,6 +460,7 @@ syserrstr(ulong *arg)
 long
 sysforkpgrp(ulong *arg)
 {
+	int mask;
 	Pgrp *pg;
 
 	pg = newpgrp();
@@ -467,10 +468,25 @@ sysforkpgrp(ulong *arg)
 		closepgrp(pg);
 		nexterror();
 	}
-	if(arg[0] == 0)
+
+	mask = arg[0];
+	if(mask == FPall)
+		mask = FPnote|FPenv|FPnamespc;
+
+	memmove(pg->user, u->p->pgrp->user, NAMELEN);
+
+	if(mask & FPnamespc)
 		pgrpcpy(pg, u->p->pgrp);
-	else
-		memmove(pg->user, u->p->pgrp->user, NAMELEN);
+
+	if(mask & FPenv)
+		envcpy(pg, u->p->pgrp);
+
+	if((mask & FPnote) == 0) {
+		u->nnote = 0;
+		u->notified = 0;
+		memset(u->note, 0, sizeof(u->note));
+	}
+
 	closepgrp(u->p->pgrp);
 	u->p->pgrp = pg;
 	return pg->pgrpid;

@@ -182,26 +182,13 @@ closemount(Mount *m)
 }
 
 void
-pgrpcpy(Pgrp *to, Pgrp *from)
+envcpy(Pgrp *to, Pgrp *from)
 {
-	int i;
-	Mtab *m;
 	Envp *ep;
 	Env *e;
+	int i;
 
 	lock(from);
-	memmove(to->user, from->user, NAMELEN);
-	memmove(to->mtab, from->mtab, from->nmtab*sizeof(Mtab));
-	to->nmtab = from->nmtab;
-	m = to->mtab;
-	for(i=0; i<from->nmtab; i++,m++)
-		if(m->c){
-			incref(m->c);
-			lock(m->mnt);
-			m->mnt->ref++;
-			unlock(m->mnt);
-		}
-
 	to->nenv = from->nenv;
 	ep = to->etab;
 	for(i=0; i<from->nenv; i++,ep++){
@@ -231,5 +218,27 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 			unlock(e);
 		}
 	}
+	unlock(from);
+}
+
+void
+pgrpcpy(Pgrp *to, Pgrp *from)
+{
+	int i;
+	Mtab *m;
+
+	lock(from);
+	memmove(to->user, from->user, NAMELEN);
+	memmove(to->mtab, from->mtab, from->nmtab*sizeof(Mtab));
+	to->nmtab = from->nmtab;
+	m = to->mtab;
+	for(i=0; i<from->nmtab; i++,m++)
+		if(m->c){
+			incref(m->c);
+			lock(m->mnt);
+			m->mnt->ref++;
+			unlock(m->mnt);
+		}
+
 	unlock(from);
 }

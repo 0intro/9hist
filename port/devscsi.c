@@ -31,6 +31,12 @@ static int	debugs[8];
 static int	isscsi;
 static int	ownid = 0x08|7; /* enable advanced features */
 
+void *
+dmaalloc(ulong n)
+{
+	return ialloc(n, 0);
+}
+
 static int
 scsigen1(Chan *c, long qid, Dir *dp)
 {

@@ -70,7 +70,7 @@ struct Rs232{
 	Queue	*wq;
 	Alarm	*a;		/* alarm for waking the rs232 kernel process */
 	int	started;	/* true if output interrupt pending */
-	int	delay;		/* time between character input and waking kproc */
+	int	delay;		/* between character input and waking kproc */
 	Rendez	r;
 	Rendez	rempty;
 };
@@ -1007,7 +1007,7 @@ rs232ichar(int c)
 
 	r = &rs232;
 	if(putc(&r->in, c) < 0)
-		screenputc('^');
+		/*screenputc('^')*/;
 
 	/*
 	 *  pass upstream within r->delay milliseconds

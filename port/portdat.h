@@ -273,6 +273,15 @@ struct Pgrp
 	Envp	*etab;
 };
 
+enum					/* Argument to forkpgrp call */
+{
+	FPall 	  = 0,			/* Concession to back portablility */
+	FPnote 	  = 1,
+	FPnamespc = 2,
+	FPenv	  = 4,
+	FPclear	  = 8,
+};
+
 /*
  *  process memory segments
  */

@@ -42,6 +42,7 @@ void	dumpqueues(void);
 void	dumpregs(Ureg*);
 void	dumpstack(void);
 void	envpgclose(Env *);
+void	envcpy(Pgrp*, Pgrp*);
 int	eqchan(Chan*, Chan*, long);
 int	eqqid(Qid, Qid);
 void	error(int);
