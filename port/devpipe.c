@@ -298,7 +298,9 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 	USED(offset);
 
 	if(waserror()) {
-		postnote(up, 1, "sys: write on closed pipe", NUser);
+		/* avoid notes when pipe is a mounted queue */
+		if((c->flag & CMSG) == 0)
+			postnote(up, 1, "sys: write on closed pipe", NUser);
 		error(Ehungup);
 	}
 
