@@ -154,7 +154,7 @@ hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 {
 	Qid qid;
 	int drive;
-	char name[NAMELEN];
+	char name[NAMELEN+4];
 	Drive *dp;
 	Partition *pp;
 	ulong l;
@@ -169,6 +169,7 @@ hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 	if(s < dp->npart){
 		pp = &dp->p[s];
 		sprint(name, "hd%d%s", drive, pp->name);
+		name[NAMELEN] = 0;
 		qid.path = MKQID(drive, s);
 		l = (pp->end - pp->start) * dp->bytes;
 	} else
@@ -472,8 +473,8 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 	cp->cmd = cmd;
 	cp->dp = dp;
 	cp->sofar = 0;
-print("xfer:\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
-print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
+/*print("xfer:\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
+print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);/**/
 	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, cp->tsec);
 	outb(cp->pbase+Pdh, (dp->drive<<4) | cp->thead);
@@ -582,6 +583,18 @@ hardpart(Drive *dp)
 	ulong n;
 	int i;
 
+	cp = dp->cp;
+	qlock(cp);
+	if(waserror()){
+		qunlock(cp);
+		print("error in hardpart\n");
+		nexterror();
+	}
+
+	/*
+	 *  we always have a partition for the whole disk
+	 *  and one for the partition table
+	 */
 	pp = &dp->p[0];
 	strcpy(pp->name, "disk");
 	pp->start = 0;
@@ -592,17 +605,15 @@ hardpart(Drive *dp)
 	pp->end = dp->p[0].end;
 	dp->npart = 2;
 
-	cp = dp->cp;
-	qlock(cp);
-	if(waserror()){
-		qunlock(cp);
-		print("error in hardpart\n");
-		nexterror();
-	}
-
+	/*
+	 *  read partition table from disk, null terminate
+	 */
 	hardxfer(dp, pp, Cread, 0, dp->bytes);
 	cp->buf[dp->bytes-1] = 0;
 
+	/*
+	 *  parse partition table.
+	 */
 	n = getfields(cp->buf, line, Npart+1, '\n');
 	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) != 0){
 print("bad partition magic\n");
@@ -614,11 +625,7 @@ print("bad partition magic\n");
 print("bad partition field\n");
 			break;
 		}
-		if(strlen(field[0]) > NAMELEN){
-print("bad partition name\n");
-			break;
-		}
-		strcpy(pp->name, field[0]);
+		strncpy(pp->name, field[0], NAMELEN);
 		pp->start = strtoul(field[1], 0, 0);
 		pp->end = strtoul(field[2], 0, 0);
 		if(pp->start > pp->end || pp->start >= dp->p[0].end){
