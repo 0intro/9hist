@@ -189,10 +189,10 @@ kbdinit(void)
 	outb(Cmd, 0x60);
 	if(outready() < 0)
 		print("kbd init failed\n");
-	outb(Data, 0x47);
+	outb(Data, 0x47);	/* BUG -- on 6300 0x65 */
 	if(outready() < 0)
 		print("kbd init failed\n");
-	outb(Cmd, 0xA8);
+	outb(Cmd, 0xA8);	/* BUG -- should this be AE? */
 
 	/* make mouse streaming, enabled */
 	if(mousecmd(0xEA) < 0

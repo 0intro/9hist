@@ -165,10 +165,9 @@ struct Chan
 	Qid	mqid;			/* qid of root of mount point */
 };
 
-#define	KEYLEN	7
 struct Crypt
 {
-	char	key[KEYLEN];		/* des encryption key */
+	char	key[DESKEYLEN];		/* des encryption key */
 	char	chal[8];		/* challenge for setting user name */
 };
 

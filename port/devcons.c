@@ -21,7 +21,7 @@ KIOQ	kbdq;
 Ref	raw;			/* whether kbd i/o is raw (rcons is open) */
 
 char	eve[NAMELEN] = "bootes";
-char	evekey[KEYLEN];
+char	evekey[DESKEYLEN];
 
 /*
  *  init the queues and set the output routine
@@ -351,7 +351,7 @@ Dirtab consdir[]={
 	"user",		{Quser},	0,		0666,
 	"chal",		{Qchal},	8,		0666,
 	"crypt",	{Qcrypt},	0,		0666,
-	"key",		{Qkey},		KEYLEN,		0222,
+	"key",		{Qkey},		DESKEYLEN,	0222,
 	"klog",		{Qklog},	0,		0444,
 	"sysstat",	{Qsysstat},	0,		0666,
 	"swap",		{Qswap},	0,		0666,
@@ -762,11 +762,11 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Qkey:
-		if(n != KEYLEN)
+		if(n != DESKEYLEN)
 			error(Ebadarg);
-		memmove(u->p->pgrp->crypt->key, a, KEYLEN);
+		memmove(u->p->pgrp->crypt->key, a, DESKEYLEN);
 		if(strcmp(u->p->user, eve) == 0)
-			memmove(evekey, a, KEYLEN);
+			memmove(evekey, a, DESKEYLEN);
 		break;
 
 	case Quser:
@@ -786,14 +786,14 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	case Qchal:
 		if(offset != 0)
 			error(Ebadarg);
-		if(n != 8+NAMELEN+KEYLEN)
+		if(n != 8+NAMELEN+DESKEYLEN)
 			error(Ebadarg);
 		decrypt(evekey, a, n);
 		if(memcmp(u->p->pgrp->crypt->chal, a, 8) != 0)
 			errors("authentication failure");
 		strncpy(u->p->user, a+8, NAMELEN);
 		u->p->user[NAMELEN-1] = '\0';
-		memmove(u->p->pgrp->crypt->key, a+NAMELEN+KEYLEN, KEYLEN);
+		memmove(u->p->pgrp->crypt->key, a+NAMELEN+DESKEYLEN, DESKEYLEN);
 		break;
 
 	case Qnull:
