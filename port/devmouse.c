@@ -54,6 +54,7 @@ struct Cursorinfo
 	Lock;
 	int	visible;	/* on screen */
 	int	disable;	/* from being used */
+	int	frozen;	/* from being used */
 	Rectangle r;		/* location */
 };
 
@@ -379,6 +380,33 @@ Cursortocursor(Cursor *c)
 	}
 	if(hwcurs)
 		hwcursset(set.base, clr.base, cursor.offset.x, cursor.offset.y);
+	unlock(&cursor);
+}
+
+void
+cursorlock(Rectangle r)
+{
+	if(hwcurs)
+		return;
+	lock(&cursor);
+	if(rectXrect(cursor.r, r)){
+		cursoroff(0);
+		cursor.frozen = 1;
+	}
+	cursor.disable++;
+	unlock(&cursor);
+}
+
+void
+cursorunlock(void)
+{
+	if(hwcurs)
+		return;
+	lock(&cursor);
+	cursor.disable--;
+	if(cursor.frozen)
+		cursoron(0);
+	cursor.frozen = 0;
 	unlock(&cursor);
 }
 

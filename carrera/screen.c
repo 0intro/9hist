@@ -534,32 +534,24 @@ mousescreenupdate(void)
 	unlock(&screenlock);
 }
 
+extern	cursorlock(Rectangle);
+extern	cursorunlock(void);
 /*
- * graphics
+ * paste tile into screen.
+ * tile is at location r, first pixel in *data.  tl is length of scan line to insert,
+ * l is amount to advance data after each scan line.
  */
 void
-screenload(Rectangle r, uchar *data, long n)
+screenload(Rectangle r, uchar *data, int tl, int l)
 {
-	int y, ws, l, t, lpart, rpart, mx, m, mr;
+	int y, lpart, rpart, mx, m, mr;
 	uchar *q;
 
-	if(!rectclip(&r, gscreen.r))
+	if(!rectclip(&r, gscreen.r) || tl<=0)
 		return;
 	lock(&screenlock);
-	ws = 8>>gscreen.ldepth;	/* pixels per byte */
-	/* set l to number of bytes of data per scan line */
-	if(r.min.x >= 0)
-		l = (r.max.x+ws-1)/ws - r.min.x/ws;
-	else{		/* make positive before divide */
-		t = (-r.min.x)+ws-1;
-		t = (t/ws)*ws;
-		l = (t+r.max.x+ws-1)/ws;
-	}
-	if(n != l*Dy(r)){
-		unlock(&screenlock);
-		error("bad tile size");
-	}
-	cursoroff(1);
+	cursorlock(r);
+	screenupdate();
 	q = gbaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
 	lpart = (r.min.x & mx) << gscreen.ldepth;
@@ -573,40 +565,41 @@ screenload(Rectangle r, uchar *data, long n)
 		for(y=r.min.y; y<r.max.y; y++){
 			*q ^= (*data^*q) & m;
 			q += gscreen.width*sizeof(ulong);
-			data++;
+			data += l;
 		}
 	}else if(lpart==0 && rpart==0){	/* easy case */
 		for(y=r.min.y; y<r.max.y; y++){
-			memmove(q, data, l);
+			memmove(q, data, tl);
 			q += gscreen.width*sizeof(ulong);
 			data += l;
 		}
 	}else if(rpart==0){
 		for(y=r.min.y; y<r.max.y; y++){
 			*q ^= (*data^*q) & m;
-			if(l > 1)
-				memmove(q+1, data+1, l-1);
+			if(tl > 1)
+				memmove(q+1, data+1, tl-1);
 			q += gscreen.width*sizeof(ulong);
 			data += l;
 		}
 	}else if(lpart == 0){
 		for(y=r.min.y; y<r.max.y; y++){
-			if(l > 1)
-				memmove(q, data, l-1);
-			q[l-1] ^= (data[l-1]^q[l-1]) & mr;
+			if(tl > 1)
+				memmove(q, data, tl-1);
+			q[tl-1] ^= (data[tl-1]^q[tl-1]) & mr;
 			q += gscreen.width*sizeof(ulong);
 			data += l;
 		}
 	}else for(y=r.min.y; y<r.max.y; y++){
 			*q ^= (*data^*q) & m;
 			if(l > 2)
-				memmove(q+1, data+1, l-2);
-			q[l-1] ^= (data[l-1]^q[l-1]) & mr;
+				memmove(q+1, data+1, tl-2);
+			q[tl-1] ^= (data[tl-1]^q[l-1]) & mr;
 			q += gscreen.width*sizeof(ulong);
 			data += l;
 		}
 	mbbrect(r);
-	cursoron(1);
+	screenupdate();
+	cursorunlock();
 	screenupdate();
 	unlock(&screenlock);
 }
