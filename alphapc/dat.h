@@ -1,5 +1,5 @@
 typedef struct Conf	Conf;
-typedef struct Cycintr	Cycintr;
+typedef struct Timer	Timer;
 typedef struct FPsave	FPsave;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
@@ -252,10 +252,10 @@ struct DevConf
 /*
  * fasttick timer interrupts (Dummy for now)
  */
-struct Cycintr
+struct Timer
 {
 	vlong	when;			/* fastticks when f should be called */
-	void	(*f)(Ureg*, Cycintr*);
+	void	(*f)(Ureg*, Timer*);
 	void	*a;
-	Cycintr	*next;
+	Timer	*next;
 };

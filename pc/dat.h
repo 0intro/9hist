@@ -1,5 +1,5 @@
 typedef struct Conf	Conf;
-typedef struct Cycintr	Cycintr;
+typedef struct Timer	Timer;
 typedef struct FPsave	FPsave;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
@@ -176,7 +176,6 @@ struct Mach
 	int	syscall;
 	int	load;
 	int	intr;
-	vlong	fastclock;		/* last sampled value */
 	vlong	intrts;			/* time stamp of last interrupt */
 	int	flushmmu;		/* make current proc flush it's mmu state */
 
@@ -191,6 +190,8 @@ struct Mach
 	int	cpuiddx;
 	char	cpuidid[16];
 	char*	cpuidtype;
+	int	havetsc;
+	vlong	lasttsc;		/* last sampled value */
 
 	vlong	mtrrcap;
 	vlong	mtrrdef;
@@ -203,12 +204,12 @@ struct Mach
 /*
  * fasttick timer interrupts
  */
-struct Cycintr
+struct Timer
 {
 	vlong	when;			/* fastticks when f should be called */
-	void	(*f)(Ureg*, Cycintr*);
+	void	(*f)(Ureg*, Timer*);
 	void	*a;
-	Cycintr	*next;
+	Timer	*next;
 };
 
 /*

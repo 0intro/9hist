@@ -181,7 +181,7 @@ enum {						/* Window 1 - operating set */
 	Fifo			= 0x0000,
 	RxError			= 0x0004,	/* 3C59[0257] only */
 	RxStatus		= 0x0008,
-	Timer			= 0x000A,
+	Timerx			= 0x000A,
 	TxStatus		= 0x000B,
 	TxFree			= 0x000C,
 						/* RxError bits */
@@ -999,7 +999,7 @@ interrupt(Ureg*, void* arg)
 	if(ctlr->busmaster == 2)
 		ctlr->timer[0] += inb(port+Timer905) & 0xFF;
 	else
-		ctlr->timer[0] += inb(port+Timer) & 0xFF;
+		ctlr->timer[0] += inb(port+Timerx) & 0xFF;
 
 	do{
 		if(status & hostError){
@@ -1167,7 +1167,7 @@ interrupt(Ureg*, void* arg)
 	if(ctlr->busmaster == 2)
 		ctlr->timer[1] += inb(port+Timer905) & 0xFF;
 	else
-		ctlr->timer[1] += inb(port+Timer) & 0xFF;
+		ctlr->timer[1] += inb(port+Timerx) & 0xFF;
 
 	COMMAND(port, SelectRegisterWindow, w);
 	iunlock(&ctlr->wlock);

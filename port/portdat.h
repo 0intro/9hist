@@ -430,7 +430,7 @@ struct Rgrp
 struct Egrp
 {
 	Ref;
-	QLock;
+	RWlock;
 	Evalue	*entries;
 	ulong	path;	/* qid.path of next Evalue to be allocated */
 	ulong	vers;	/* of Egrp */

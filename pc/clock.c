@@ -6,11 +6,16 @@
 #include "io.h"
 #include "ureg.h"
 
+/*
+ *  this is called both by the mp's clock interrupt and
+ *  by the clockintr0 for the i8253
+ */
+int nclockintr;
 void
 clockintr(Ureg* ureg, void*)
 {
-	// this needs to be here for synchronizing mp clocks
-	// see pc/mp.c's squidboy()
+nclockintr++;
+	/* this has to get called every tick or the 8253 timer will overflow */
 	fastticks(nil);
 
 	if(m->flushmmu){

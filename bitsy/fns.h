@@ -1,5 +1,6 @@
 #include "../port/portfns.h"
 
+void	addclock0link(void (*)(void));
 void	audiopower(int);
 void	audioamppower(int);
 void	audioicpower(int);
@@ -7,16 +8,14 @@ void	cacheflush(void);
 void	cachewb(void);
 void	cachewbaddr(void*);
 void	cachewbregion(ulong, int);
+void	clockintrsched(void);	/* to be deleted */
 void	coma(ulong);
 void	dcacheinvalidate(void);
 int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
 void	clockinit(void);
 void	clockpower(int);
-void	clockintrsched(void);
 #define	coherence()
-void	cycintradd(Cycintr *);
-void	cycintrdel(Cycintr *);
 #define	dcflush(a, b)
 void	delay(int);
 void	µdelay(ulong);
@@ -43,7 +42,7 @@ void*	getlink(void);
 ulong	getsp(void);
 void	gpiointrenable(ulong, int, void (*)(Ureg*, void*), void*, char*);
 void	h3650uartsetup(void);
-int	havecycintr(void);
+int	havetimer(void);
 void	icacheinvalidate(void);
 void	idle(void);
 void	idlehands(void);
@@ -101,6 +100,11 @@ int	screenprint(char*, ...);			/* debugging */
 void	serialµcputs(uchar *str, int n);
 void	setr13(int, ulong*);
 uchar*	tarlookup(uchar*, char*, int*);
+void	timersinit(void);
+void	timeradd(Timer*);
+void	timerdel(Timer*);
+vlong	timerintr(Ureg *, void*);
+void	timerset(vlong);
 void	touser(void*);
 void	trapdump(char *tag);
 void	trapinit(void);

@@ -6,18 +6,18 @@
 #include "io.h"
 
 int
-havecycintr(void)
+havetimer(void)
 {
 	return 0;
 }
 
 void
-cycintradd(Cycintr *)
+timeradd(Timer *)
 {
 }
 
 void
-cycintrdel(Cycintr *)
+timerdel(Timer *)
 {
 }
 

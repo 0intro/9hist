@@ -102,4 +102,5 @@ PCArch archmp = {
 	0,					/* intrdisable */
 
 	0,					/* clockenable */
+	i8253read,				/* fastclock */
 };

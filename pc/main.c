@@ -80,6 +80,7 @@ main(void)
 
 	print("\nPlan 9\n");
 
+	i8253init();
 	cpuidentify();
 	screeninit();
 	meminit();

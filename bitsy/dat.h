@@ -1,6 +1,5 @@
 typedef struct Cisdat 		Cisdat;
 typedef struct Conf		Conf;
-typedef struct Cycintr		Cycintr;
 typedef struct FPU		FPU;
 typedef struct FPenv		FPenv;
 typedef struct FPsave		FPsave;
@@ -17,6 +16,7 @@ typedef struct PCMconftab	PCMconftab;
 typedef struct PhysUart		PhysUart;
 typedef struct PMMU		PMMU;
 typedef struct Proc		Proc;
+typedef struct Timer		Timer;
 typedef struct Uart		Uart;
 typedef struct Ureg		Ureg;
 typedef struct Vctl		Vctl;
@@ -155,17 +155,6 @@ struct Mach
 };
 
 /*
- * fasttick timer interrupts
- */
-struct Cycintr
-{
-	vlong	when;			/* fastticks when f should be called */
-	void	(*f)(Ureg*, Cycintr*);
-	void	*a;
-	Cycintr	*next;
-};
-
-/*
  * Fake kmap since we direct map dram
  */
 typedef void		KMap;
@@ -272,4 +261,16 @@ struct DevConf
 	int		itype;	/* type of interrupt */
 	ulong	interrupt;	/* interrupt number */
 	char		*type;	/* card type, mallocated */
+};
+
+/*
+ * Timer interrupts
+ */
+struct Timer
+{
+	vlong	when;			/* fastticks when f should be called */
+	vlong	period;			/* non-zero for recurring periodic timers */
+	void		(*f)(Ureg*, Timer*);	/* function to call */
+	void		*a;				/* User parameter */
+	Timer	*next;
 };

@@ -403,16 +403,17 @@ squidboy(Apic* apic)
 	mprdthi |= (1<<apic->apicno)<<24;
 	unlock(&mprdthilock);
 
-	/*
-	 * Restrain your octopus! Don't let it go out on the sea!
-	 */
-	ilock(&mpclocksynclock);
-	x = MACHP(0)->ticks;
-	while(MACHP(0)->ticks == x)
-		;
-	wrmsr(0x10, MACHP(0)->fastclock); /* synchronize fast counters */
-	iunlock(&mpclocksynclock);
-
+	if(m->havetsc){
+		/*
+		 * Restrain your octopus! Don't let it go out on the sea!
+		 */
+		ilock(&mpclocksynclock);
+		x = MACHP(0)->ticks;
+		while(MACHP(0)->ticks == x)
+			;
+		wrmsr(0x10, MACHP(0)->lasttsc); /* synchronize fast counters */
+		iunlock(&mpclocksynclock);
+	}
 	lapicinit(apic);
 	lapiconline();
 

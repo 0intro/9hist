@@ -21,6 +21,12 @@ static int clockinited;
 
 static void	clockintr(Ureg*, void*);
 
+enum
+{
+	Minfreq = ClockFreq/HZ,		/* At least one interrupt per HZ (10 ms) */
+	Maxfreq = ClockFreq/10000,	/* At most one interrupt every 100 µs */
+};
+
 void
 clockpower(int on)
 {
@@ -61,6 +67,8 @@ clockinit(void)
 	/* post interrupt 1/HZ secs from now */
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
 
+	timersinit();
+
 	clockinited = 1;
 }
 
@@ -84,17 +92,32 @@ fastticks(uvlong *hz)
 	return high+x;
 }
 
+void
+timerset(vlong v)
+{
+	ulong when;	/* Must be unsigned! */
+
+	if (v == 0LL)
+		when = timerregs->oscr + Minfreq;
+	else {
+		when = v;
+
+		/* post next interrupt: calculate # of tics from now */
+		when = when - timerregs->oscr - Maxfreq;
+		if (when - timerregs->oscr > Minfreq)
+			when = timerregs->oscr + Maxfreq;
+	}
+	timerregs->osmr[0] = when;
+}
+
 static void
 clockintr(Ureg *ureg, void*)
 {
+
 	/* reset previous interrupt */
 	timerregs->ossr |= 1<<0;
 
-	/* post interrupt 1/HZ secs from now */
-	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
-
-	drawactive(0);	/* screen saver */
-	portclock(ureg);
+	timerset(timerintr(ureg, nil));
 }
 
 void

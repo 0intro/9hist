@@ -157,7 +157,6 @@ vmwarelinear(VGAscr* scr, int* size, int* align)
 	oapsize = scr->apsize;
 	wasupamem = scr->isupamem;
 
-iprint("osize %d oaperture %.8lux oapsize %d wasupamem %d\n", osize, oaperture, oapsize, wasupamem);
 	p = pcimatch(nil, PCIVMWARE, 0);
 	if(p == nil)
 		error("no vmware card found");
@@ -189,12 +188,8 @@ iprint("osize %d oaperture %.8lux oapsize %d wasupamem %d\n", osize, oaperture, 
 		if(wasupamem && upamalloc(oaperture, oapsize, 0))
 			scr->isupamem = 1;
 	}else
-{
-memset((void*)KADDR(aperture), 0x7F, 1048576);
 		scr->isupamem = 1;
-}
 
-iprint("aperture %lux size %lux\n", aperture, *size);
 	if(oaperture && aperture != oaperture)
 		print("warning (BUG): redefinition of aperture does not change vmwarescreen segment\n");
 	addvgaseg("vmwarescreen", aperture, osize);
@@ -306,14 +301,13 @@ vmwarescroll(VGAscr*, Rectangle r, Rectangle sr)
 {
 	if(vm->mmio == nil)
 		return 0;
-	vmfifowr(vm, Xrectropcopy);
-	vmfifowr(vm, r.max.x);
-	vmfifowr(vm, r.max.y);
+	vmfifowr(vm, Xrectcopy);
+	vmfifowr(vm, sr.min.x);
+	vmfifowr(vm, sr.min.y);
 	vmfifowr(vm, r.min.x);
 	vmfifowr(vm, r.min.y);
-	vmfifowr(vm, sr.min.x - r.min.x);
-	vmfifowr(vm, sr.min.y - r.min.y);
-	vmfifowr(vm, 3);	/* code for copy */
+	vmfifowr(vm, Dx(r));
+	vmfifowr(vm, Dy(r));
 	vmwait(vm);
 	return 1;
 }
@@ -338,18 +332,12 @@ vmwaredrawinit(VGAscr *scr)
 {
 	ulong mmiobase, mmiosize;
 
-extern int iprintscreenputs;
-	iprintscreenputs = 0;
-
 	if(scr->mmio==nil){
 		mmiobase = vmrd(vm, Rmemstart);
-		if(mmiobase == 0){
-			iprint("mmiobase 0\n");
+		if(mmiobase == 0)
 			return;
-		}
 		mmiosize = vmrd(vm, Rmemsize);
 		scr->mmio = KADDR(upamalloc(mmiobase, mmiosize, 0));
-iprint("mmio %p\n", scr->mmio);
 		vm->mmio = scr->mmio;
 		vm->mmiosize = mmiosize;
 		if(scr->mmio == nil)

@@ -35,7 +35,7 @@ struct Link
 	Queue	*oq;		/* output queue from other side & packets in the link */
 	Queue	*iq;
 
-	Cycintr	ci;		/* time to move packets from  next packet from oq */
+	Timer	ci;		/* time to move packets from  next packet from oq */
 };
 
 struct Loop
@@ -105,7 +105,7 @@ static vlong	gtime(uchar *p);
 static void	closelink(Link *link, int dofree);
 static void	pushlink(Link *link, vlong now);
 static void	freelb(Loop *lb);
-static void	linkintr(Ureg*, Cycintr *ci);
+static void	linkintr(Ureg*, Timer *ci);
 
 static void
 loopbackinit(void)
@@ -129,7 +129,7 @@ loopbackattach(char *spec)
 	int chan;
 	int dev;
 
-	if(!havecycintr())
+	if(!havetimer())
 		error("can't time packets");
 
 	dev = 0;
@@ -381,7 +381,7 @@ closelink(Link *link, int dofree)
 	link->tqtail = nil;
 	link->tout = 0;
 	link->tin = 0;
-	cycintrdel(&link->ci);
+	timerdel(&link->ci);
 	iunlock(link);
 	if(iq != nil){
 		qclose(iq);
@@ -604,7 +604,7 @@ looper(Loop *lb)
 }
 
 static void
-linkintr(Ureg*, Cycintr *ci)
+linkintr(Ureg*, Timer *ci)
 {
 	Link *link;
 
@@ -633,7 +633,7 @@ pushlink(Link *link, vlong now)
 		return;
 
 	}
-	cycintrdel(&link->ci);
+	timerdel(&link->ci);
 
 	/*
 	 * put more blocks into the xmit queue
@@ -710,7 +710,7 @@ pushlink(Link *link, vlong now)
 	if(tin){
 		if(tin < now)
 			panic("loopback unfinished business");
-		cycintradd(&link->ci);
+		timeradd(&link->ci);
 	}
 	iunlock(link);
 }

@@ -21,6 +21,12 @@ enum
 	Load0l=	0x10,		/* load counter 0's lsb */
 	Load0m=	0x20,		/* load counter 0's msb */
 	Load0=	0x30,		/* load counter 0 with 2 bytes */
+
+	Latch1=	0x40,		/* latch counter 1's value */
+	Load1l=	0x50,		/* load counter 1's lsb */
+	Load1m=	0x60,		/* load counter 1's msb */
+	Load1=	0x70,		/* load counter 1 with 2 bytes */
+
 	Latch2=	0x80,		/* latch counter 2's value */
 	Load2l=	0x90,		/* load counter 2's lsb */
 	Load2m=	0xa0,		/* load counter 2's msb */
@@ -55,51 +61,63 @@ enum
 static struct
 {
 	Lock;
-	int	havecyc;
 	int	enabled;
 	int	mode;
 	vlong	when;		/* next fastticks a clock interrupt should occur */
-	vlong	cycwhen;	/* next fastticks a cycintr happens; 0 == infinity */
+	vlong	timerwhen;	/* next fastticks a cycintr happens; 0 == infinity */
 	long	fastperiod;	/* fastticks/hz */
 	long	fast2freq;	/* fastticks*FreqMul/Freq */
+
+	Lock	lock1;		/* mutex for the following */
+	ushort	last1;		/* last value of clock 1 */
+	uvlong	ticks1;		/* cumulative ticks of counter 1 */
 }i8253;
 
 void
-i8253init(int aalcycles, int havecycleclock)
+i8253init(void)
+{
+	int loops, x;
+
+	ioalloc(T0cntr, 4, 0, "i8253");
+	ioalloc(T2ctl, 1, 0, "i8253.cntr2ctl");
+
+	/*
+	 *  set interrupting clock for 1/HZ seconds
+	 */
+	outb(Tmode, Load0|Square);
+	i8253.mode = Square;
+	outb(T0cntr, (Freq/HZ));	/* low byte */
+	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
+
+	/*
+	 *  set time clock
+	 */
+	outb(Tmode, Load1|Square);
+	i8253.mode = Square;
+	outb(T1cntr, 0xfe);	/* low byte */
+	outb(T1cntr, 0xff);	/* high byte */
+
+	/*
+	 * Introduce a little delay to make sure the count is
+	 * latched and the timer is counting down; with a fast
+	 * enough processor this may not be the case.
+	 * The i8254 (which this probably is) has a read-back
+	 * command which can be used to make sure the counting
+	 * register has been written into the counting element.
+	 */
+	x = (Freq/HZ);
+	for(loops = 0; loops < 100000 && x >= (Freq/HZ); loops++){
+		outb(Tmode, Latch0);
+		x = inb(T0cntr);
+		x |= inb(T0cntr)<<8;
+	}
+}
+
+void
+guesscpuhz(int aalcycles)
 {
 	int cpufreq, loops, incr, x, y;
 	vlong a, b;
-	static int initialised;
-
-	if(initialised == 0){
-		initialised = 1;
-		i8253.havecyc = havecycleclock;
-		ioalloc(T0cntr, 4, 0, "i8253");
-		ioalloc(T2ctl, 1, 0, "i8253.cntr2ctl");
-
-		/*
-		 *  set clock for 1/HZ seconds
-		 */
-		outb(Tmode, Load0|Square);
-		i8253.mode = Square;
-		outb(T0cntr, (Freq/HZ));	/* low byte */
-		outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
-
-		/*
-		 * Introduce a little delay to make sure the count is
-		 * latched and the timer is counting down; with a fast
-		 * enough processor this may not be the case.
-		 * The i8254 (which this probably is) has a read-back
-		 * command which can be used to make sure the counting
-		 * register has been written into the counting element.
-		 */
-		x = (Freq/HZ);
-		for(loops = 0; loops < 100000 && x >= (Freq/HZ); loops++){
-			outb(Tmode, Latch0);
-			x = inb(T0cntr);
-			x |= inb(T0cntr)<<8;
-		}
-	}
 
 	/* find biggest loop that doesn't wrap */
 	incr = 16000000/(aalcycles*HZ*2);
@@ -118,31 +136,34 @@ i8253init(int aalcycles, int havecycleclock)
 		 *  prefetch buffer.
 		 *
 		 */
-		if(havecycleclock)
-			rdtsc(&a);
 		outb(Tmode, Latch0);
+		if(m->havetsc)
+			rdtsc(&a);
 		x = inb(T0cntr);
 		x |= inb(T0cntr)<<8;
 		aamloop(loops);
-		if(havecycleclock)
+		outb(Tmode, Latch0);
+		if(m->havetsc)
 			rdtsc(&b);
 		y = inb(T0cntr);
 		y |= inb(T0cntr)<<8;
 		x -= y;
-
+	
 		if(x < 0)
 			x += Freq/HZ;
 
 		if(x > Freq/(3*HZ))
 			break;
 	}
+
 	/*
  	 *  figure out clock frequency and a loop multiplier for delay().
 	 *  n.b. counter goes up by 2*Freq
 	 */
 	cpufreq = loops*((aalcycles*2*Freq)/x);
 	m->loopconst = (cpufreq/1000)/aalcycles;	/* AAM+LOOP's for 1 ms */
-	if(havecycleclock){
+
+	if(m->havetsc){
 
 		/* counter goes up by 2*Freq */
 		b = (b-a)<<1;
@@ -165,7 +186,7 @@ i8253init(int aalcycles, int havecycleclock)
 
 /*
  * schedule the next interrupt
- * cycwhen is the next time for the cycle counter routines
+ * timerwhen is the time of the next interrupt
  */
 static void
 clockintrsched0(vlong next)
@@ -173,7 +194,7 @@ clockintrsched0(vlong next)
 	vlong now;
 	long set;
 
-	i8253.cycwhen = next;
+	i8253.timerwhen = next;
 	if(i8253.mode == Square && next == 0)
 		return;
 
@@ -201,9 +222,9 @@ clockintrsched0(vlong next)
 }
 
 int
-havecycintr(void)
+havetimer(void)
 {
-	return i8253.havecyc && i8253.enabled;
+	return i8253.enabled;
 }
 
 void
@@ -212,34 +233,27 @@ clockintrsched(void)
 	vlong next;
 
 	ilock(&i8253);
-	if(i8253.enabled && i8253.havecyc){
-		next = cycintrnext();
-		if(next != i8253.cycwhen)
+	if(i8253.enabled){
+		next = timernext();
+		if(next != i8253.timerwhen)
 			clockintrsched0(next);
 	}
 	iunlock(&i8253);
 }
 
+int nclockintr0;
 static void
 clockintr0(Ureg* ureg, void *v)
 {
 	vlong now, when;
 
-	if(!i8253.havecyc){
-		clockintr(ureg, v);
-		return;
-	}
+nclockintr0++;
+	/* goes with syncing in squidboy */
+	if(m->havetsc)
+		rdtsc(&m->lasttsc);
 
 	now = fastticks(nil);
 	when = i8253.when;
-
-	/*
-	 * If we suspend the machine and resume, the
-	 * processor cycle counter gets reset.  Detect this
-	 * and deal with it.
-	 */
-	if(now < i8253.when && i8253.when-now > 3*i8253.fastperiod)
-		i8253.when = now;
 
 	if(now >= i8253.when){
 		clockintr(ureg, v);
@@ -247,28 +261,58 @@ clockintr0(Ureg* ureg, void *v)
 			i8253.when += i8253.fastperiod;
 		while(i8253.when < now);
 	}
-	if(i8253.cycwhen || i8253.mode != Square)
-		clockintrsched0(checkcycintr(ureg, v));
+	if(i8253.timerwhen || i8253.mode != Square)
+		clockintrsched0(checktimer(ureg, v));
 }
 
 void
 i8253enable(void)
 {
-	i8253.when = fastticks(nil);
-	i8253.fastperiod = (m->cpuhz + HZ/2) / HZ;
-	i8253.fast2freq = (vlong)m->cpuhz * FreqMul / Freq;
+	uvlong hz;
+
+	i8253.when = fastticks(&hz);
+	i8253.fastperiod = (hz + HZ/2) / HZ;
+	i8253.fast2freq = (hz * FreqMul) / Freq;
 	i8253.enabled = 1;
 	intrenable(IrqCLOCK, clockintr0, 0, BUSUNKNOWN, "clock");
 }
 
 /*
- *  return time elapsed since clock start in
- *  100 times hz
+ *  return the total ticks of counter 1.  We shift by
+ *  8 to give timesync more wriggle room for interpretation
+ *  of the frequency
  */
 uvlong
 i8253read(uvlong *hz)
 {
+	ushort y, x;
+	uvlong ticks;
+
 	if(hz)
-		*hz = HZ*100;
-	return m->ticks*100;
+		*hz = Freq<<8;
+
+	ilock(&i8253.lock1);
+	outb(Tmode, Latch1);
+	y = inb(T1cntr);
+	y |= inb(T1cntr)<<8;
+
+	if(y < i8253.last1)
+		x = i8253.last1 - y;
+	else
+		x = i8253.last1 + (0xfffe - y);
+	i8253.last1 = y;
+	i8253.ticks1 += x>>1;
+	ticks = i8253.ticks1;
+	iunlock(&i8253.lock1);
+
+	return ticks<<8;
+}
+
+/*
+ *  return value and speed of timer set in arch->clockenable
+ */
+vlong
+fastticks(uvlong *hz)
+{
+	return (*arch->fastclock)(hz);
 }

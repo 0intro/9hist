@@ -489,8 +489,6 @@ nop(void)
 }
 
 void (*coherence)(void) = nop;
-void cycletimerinit(void);
-uvlong cycletimer(uvlong*);
 
 PCArch* arch;
 extern PCArch* knownarch[];
@@ -594,7 +592,6 @@ static X86type x86winchip[] =
 };
 
 
-static uvlong fasthz;
 static X86type *cputype;
 
 void
@@ -611,6 +608,15 @@ cpuidprint(void)
 	print(buf);
 }
 
+/*
+ *  figure out:
+ *	- cpu type
+ *	- whether or not we have a TSC (cycle counter)
+ *	- whether or not is supports page size extensions
+ *		(if so turn it on)
+ *	- whether or not is supports machine check exceptions
+ *		(if so turn it on)
+ */
 int
 cpuidentify(void)
 {
@@ -637,7 +643,18 @@ cpuidentify(void)
 		t++;
 	}
 	m->cpuidtype = t->name;
-	i8253init(t->aalcycles, t->family >= 5);
+
+	/*
+	 *  if there is one, set tsc to a known value
+	 */
+	m->havetsc = t->family >= 5;
+	if(m->havetsc)
+		wrmsr(0x10, 0);
+
+	/*
+ 	 *  use i8253 to guess our cpu speed
+	 */
+	guesscpuhz(t->aalcycles);
 
 	/*
 	 * If machine check exception or page size extensions are supported
@@ -703,17 +720,12 @@ archinit(void)
 			arch->serialpower = archgeneric.serialpower;
 		if(arch->modempower == 0)
 			arch->modempower = archgeneric.modempower;
-	
 		if(arch->intrinit == 0)
 			arch->intrinit = archgeneric.intrinit;
 		if(arch->intrenable == 0)
 			arch->intrenable = archgeneric.intrenable;
-	}
-
-	/* pick the better timer */
-	if(X86FAMILY(m->cpuidax) >= 5){
-		cycletimerinit();
-		arch->fastclock = cycletimer;
+		if(arch->intrenable == 0)
+			arch->intrenable = archgeneric.intrenable;
 	}
 
 	/*
@@ -728,40 +740,18 @@ archinit(void)
 	addarchfile("cputype", 0444, cputyperead, nil);
 }
 
-void
-cycletimerinit(void)
-{
-	wrmsr(0x10, 0);
-	fasthz = m->cpuhz;
-}
-
 /*
- *  return the most precise clock we have
+ *  call either the pcmcia or pccard device setup
  */
-uvlong
-cycletimer(uvlong *hz)
-{
-	uvlong tsc;
-
-	if(hz != nil)
-		*hz = fasthz;
-	rdtsc((vlong*)&tsc);
-	m->fastclock = tsc;
-	return tsc;
-}
-
-vlong
-fastticks(uvlong *hz)
-{
-	return (*arch->fastclock)(hz);
-}
-
 int
 pcmspecial(char *idstr, ISAConf *isa)
 {
 	return (_pcmspecial  != nil)? _pcmspecial(idstr, isa): -1;
 }
 
+/*
+ *  call either the pcmcia or pccard device teardown
+ */
 void
 pcmspecialclose(int a)
 {

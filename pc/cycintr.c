@@ -9,56 +9,56 @@
 static struct
 {
 	Lock;
-	Cycintr	*ci;
-}cycintrs;
+	Timer	*ci;
+}timers;
 
 /*
  * called by clockintrsched()
  */
 vlong
-cycintrnext(void)
+timernext(void)
 {
-	Cycintr *ci;
+	Timer *ci;
 	vlong when;
 
-	ilock(&cycintrs);
+	ilock(&timers);
 	when = 0;
-	ci = cycintrs.ci;
+	ci = timers.ci;
 	if(ci != nil)
 		when = ci->when;
-	iunlock(&cycintrs);
+	iunlock(&timers);
 	return when;
 }
 
 vlong
-checkcycintr(Ureg *u, void*)
+checktimer(Ureg *u, void*)
 {
-	Cycintr *ci;
+	Timer *ci;
 	vlong when;
 
-	ilock(&cycintrs);
-	while(ci = cycintrs.ci){
+	ilock(&timers);
+	while(ci = timers.ci){
 		when = ci->when;
 		if(when > fastticks(nil)){
-			iunlock(&cycintrs);
+			iunlock(&timers);
 			return when;
 		}
-		cycintrs.ci = ci->next;
-		iunlock(&cycintrs);
+		timers.ci = ci->next;
+		iunlock(&timers);
 		(*ci->f)(u, ci);
-		ilock(&cycintrs);
+		ilock(&timers);
 	}
-	iunlock(&cycintrs);
+	iunlock(&timers);
 	return 0;
 }
 
 void
-cycintradd(Cycintr *nci)
+timeradd(Timer *nci)
 {
-	Cycintr *ci, **last;
+	Timer *ci, **last;
 
-	ilock(&cycintrs);
-	last = &cycintrs.ci;
+	ilock(&timers);
+	last = &timers.ci;
 	while(ci = *last){
 		if(ci == nci){
 			*last = ci->next;
@@ -67,7 +67,7 @@ cycintradd(Cycintr *nci)
 		last = &ci->next;
 	}
 
-	last = &cycintrs.ci;
+	last = &timers.ci;
 	while(ci = *last){
 		if(ci->when > nci->when)
 			break;
@@ -75,16 +75,16 @@ cycintradd(Cycintr *nci)
 	}
 	nci->next = *last;
 	*last = nci;
-	iunlock(&cycintrs);
+	iunlock(&timers);
 }
 
 void
-cycintrdel(Cycintr *dci)
+timerdel(Timer *dci)
 {
-	Cycintr *ci, **last;
+	Timer *ci, **last;
 
-	ilock(&cycintrs);
-	last = &cycintrs.ci;
+	ilock(&timers);
+	last = &timers.ci;
 	while(ci = *last){
 		if(ci == dci){
 			*last = ci->next;
@@ -92,5 +92,5 @@ cycintrdel(Cycintr *dci)
 		}
 		last = &ci->next;
 	}
-	iunlock(&cycintrs);
+	iunlock(&timers);
 }

@@ -26,8 +26,8 @@ char *edf_statename[] = {
 	[EdfDeadline] =		"Deadline",
 };
 
-static Cycintr	cycdeadline;		/* Time of next deadline */
-static Cycintr	cycrelease;		/* Time of next release */
+static Timer	cycdeadline;		/* Time of next deadline */
+static Timer	cycrelease;		/* Time of next release */
 
 static int		initialized;
 static uvlong	fasthz;	
@@ -70,8 +70,8 @@ static void		edf_resched(Task *t);
 static void		setdelta(void);
 static void		testdelta(Task *thetask);
 static char *	edf_testschedulability(Task *thetask);
-static void		edfreleaseintr(Ureg *, Cycintr *cy);
-static void		edfdeadlineintr(Ureg*, Cycintr*);
+static void		edfreleaseintr(Ureg *, Timer *cy);
+static void		edfdeadlineintr(Ureg*, Timer*);
 
 void
 edf_init(void)
@@ -214,11 +214,11 @@ edfreleasetimer(void)
 		return;
 	DPRINT("edfreleasetimer clock\n");
 	if (cycrelease.when)
-		cycintrdel(&cycrelease);
+		timerdel(&cycrelease);
 	cycrelease.when = t->r;
 	if (cycrelease.when <= now)
 		cycrelease.when = now;
-	cycintradd(&cycrelease);
+	timeradd(&cycrelease);
 	clockintrsched();
 }
 
@@ -271,7 +271,7 @@ edfdeadline(Proc *p, SEvent why)
 		assert(0 && p == nil || nt == t);
 	}
 	if (cycdeadline.when){
-		cycintrdel(&cycdeadline);
+		timerdel(&cycdeadline);
 		cycdeadline.when = 0;
 		clockintrsched();
 	}
@@ -406,13 +406,13 @@ edf_expel(Task *t)
 }
 
 static void
-edfreleaseintr(Ureg*, Cycintr*)
+edfreleaseintr(Ureg*, Timer*)
 {
 	Task *t;
 
 	DPRINT("%d edfreleaseintr\n", m->machno);
 
-	cycintrdel(&cycrelease);
+	timerdel(&cycrelease);
 	cycrelease.when = 0;
 	clockintrsched();
 
@@ -433,7 +433,7 @@ edfreleaseintr(Ureg*, Cycintr*)
 }
 
 static void
-edfdeadlineintr(Ureg*, Cycintr*)
+edfdeadlineintr(Ureg*, Timer*)
 {
 	/* Task reached deadline */
 
@@ -442,7 +442,7 @@ edfdeadlineintr(Ureg*, Cycintr*)
 
 	DPRINT("%d edfdeadlineintr\n", m->machno);
 
-	cycintrdel(&cycdeadline);
+	timerdel(&cycdeadline);
 	cycdeadline.when = 0;
 	clockintrsched();
 
@@ -743,10 +743,10 @@ edf_runproc(void)
 			iunlock(&edflock);
 			return p;
 		}
-		cycintrdel(&cycdeadline);
+		timerdel(&cycdeadline);
 	}
 	cycdeadline.when = when;
-	cycintradd(&cycdeadline);
+	timeradd(&cycdeadline);
 	clockintrsched();
 	iunlock(&edflock);
 	return p;
