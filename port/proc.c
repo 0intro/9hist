@@ -737,29 +737,37 @@ pexit(char *exitstr, int freemem)
 	long utime, stime;
 	Waitq *wq, *f, *next;
 	Fgrp *fgrp;
+	Egrp *egrp;
+	Rgrp *rgrp;
+	Pgrp *pgrp;
+	Chan *dot;
 
 	up->alarm = 0;
 
-	if(up->fgrp){
-		qlock(&up->debug);
-		fgrp = up->fgrp;
-		up->fgrp = nil;
-		closefgrp(fgrp);
-		qunlock(&up->debug);
-	}
-	if(up->egrp){
-		closeegrp(up->egrp);
-		up->egrp = nil;
-	}
-	if(up->rgrp){
-		closergrp(up->rgrp);
-		up->rgrp = nil;
-	}
-
-	cclose(up->dot);
-	up->dot = nil;
-	closepgrp(up->pgrp);
+	/* nil out all the resources under lock (free later) */
+	qlock(&up->debug);
+	fgrp = up->fgrp;
+	up->fgrp = nil;
+	egrp = up->egrp;
+	up->egrp = nil;
+	rgrp = up->rgrp;
+	up->rgrp = nil;
+	pgrp = up->pgrp;
 	up->pgrp = nil;
+	dot = up->dot;
+	up->dot = nil;
+	qunlock(&up->debug);
+
+	if(fgrp)
+		closefgrp(fgrp);
+	if(egrp)
+		closeegrp(egrp);
+	if(rgrp)
+		closergrp(rgrp);
+	if(dot)
+		cclose(dot);
+	if(pgrp)
+		closepgrp(pgrp);
 
 	/*
 	 * if not a kernel process and have a parent,

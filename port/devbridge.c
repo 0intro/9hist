@@ -36,8 +36,8 @@ enum
 	CacheSize=	(CacheHash+CacheLook-1),
 	CacheTimeout=	5*60,		// timeout for cache entry in seconds
 
-	TcpMssMax = 1360,			// max desirable Tcp MSS value
-
+	TcpMssMax = 1300,			// max desirable Tcp MSS value
+	TunnelMtu = 1400,
 };
 
 static Dirtab bridgedirtab[]={
@@ -128,6 +128,7 @@ struct Port
 	int	out;		// number of packets read
 	int	outmulti;	// multicast or broadcast
 	int	outunknown;	// unknown address
+	int outfrag;	// fragmented the packet
 	int	nentry;		// number of cache entries for this port
 };
 
@@ -183,6 +184,7 @@ static void	etherread(void *a);
 static char	*cachedump(Bridge *b);
 static void	portfree(Port *port);
 static void	cacheflushport(Bridge *b, int port);
+static void etherwrite(Port *port, Block *bp);
 
 extern ulong	parseip(uchar*, char*);
 
@@ -814,7 +816,7 @@ cachedump(Bridge *b)
 static void
 ethermultiwrite(Bridge *b, Block *bp, Port *port)
 {
-	Chan *c;
+	Port *oport;
 	Block *bp2;
 	Etherpkt *ep;
 	int i, mcast, bcast;
@@ -833,35 +835,34 @@ ethermultiwrite(Bridge *b, Block *bp, Port *port)
 	else
 		bcast = 0;
 
-	c = nil;
+	oport = nil;
 	for(i=0; i<b->nport; i++) {
 		if(i == port->id || b->port[i] == nil)
 			continue;
 		if(mcast && !bcast && !b->port[i]->mcast)
 			continue;
-		b->port[i]->out++;
 		if(mcast)
 			b->port[i]->outmulti++;
 		else
 			b->port[i]->outunknown++;
 
 		// delay one so that the last write does not copy
-		if(c != nil) {
+		if(oport != nil) {
 			b->copy++;
 			bp2 = copyblock(bp, blocklen(bp));
 			if(!waserror()) {
-				devtab[c->type]->bwrite(c, bp2, 0);
+				etherwrite(oport, bp2);
 				poperror();
 			}
 		}
-		c = b->port[i]->data[1];
+		oport = b->port[i];
 	}
 
 	// last write free block
-	if(c) {
+	if(oport) {
 		bp2 = bp; bp = nil; USED(bp);
 		if(!waserror()) {
-			devtab[c->type]->bwrite(c, bp2, 0);
+			etherwrite(oport, bp2);
 			poperror();
 		}
 	} else
@@ -961,7 +962,7 @@ print("tcpmsshack: odd alignment!\n");
 static void
 etherread(void *a)
 {
-	Port *port = a, *oport;
+	Port *port = a;
 	Bridge *b = port->bridge;
 	Block *bp, *bp2;
 	Etherpkt *ep;
@@ -1016,9 +1017,7 @@ if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 			} else if (ce->port != port->id) {
 				b->hit++;
 				bp2 = bp; bp = nil;
-				oport = b->port[ce->port];
-				oport->out++;
-				devtab[oport->data[1]->type]->bwrite(oport->data[1], bp2, 0);
+				etherwrite(b->port[ce->port], bp2);
 			}
 		}
 
@@ -1031,6 +1030,13 @@ if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 	portfree(port);
 	qunlock(b);
 	pexit("hangup", 1);
+}
+
+static void
+etherwrite(Port *port, Block *bp)
+{
+	port->out++;
+	devtab[port->data[1]->type]->bwrite(port->data[1], bp, 0);
 }
 
 // hold b lock

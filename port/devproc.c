@@ -169,7 +169,11 @@ procopen(Chan *c, int omode)
 		return devopen(c, omode, 0, 0, procgen);
 
 	p = proctab(SLOT(c->qid));
-	pg = p->pgrp;
+	qlock(&p->debug);
+	if(waserror()){
+		qunlock(&p->debug);
+		nexterror();
+	}
 	pid = PID(c->qid);
 	if(p->pid != pid)
 		error(Eprocdied);
@@ -182,6 +186,8 @@ procopen(Chan *c, int omode)
 			error(Eperm);
 		tc = proctext(c, p);
 		tc->offset = 0;
+		qunlock(&p->debug);
+		poperror();
 		return tc;
 
 	case Qproc:
@@ -210,6 +216,9 @@ procopen(Chan *c, int omode)
 		break;
 
 	case Qnotepg:
+		pg = p->pgrp;
+		if(pg == nil)
+			error(Eprocdied);
 		if(omode!=OWRITE || pg->pgrpid == 1)
 			error(Eperm);
 		c->pgrpid.path = pg->pgrpid+1;
@@ -230,7 +239,11 @@ procopen(Chan *c, int omode)
 	if(p->pid != pid)
 		error(Eprocdied);
 
-	return devopen(c, omode, 0, 0, procgen);
+	tc = devopen(c, omode, 0, 0, procgen);
+	qunlock(&p->debug);
+	poperror();
+
+	return tc;
 }
 
 static void
@@ -277,17 +290,19 @@ procfds(Proc *p, char *va, int count, long offset)
 	Chan *c;
 	int n, i;
 
+	qlock(&p->debug);
 	f = p->fgrp;
-	if(f == nil)
+	if(f == nil){
+		qunlock(&p->debug);
 		return 0;
+	}
+	lock(f);
 	if(waserror()){
 		unlock(f);
 		qunlock(&p->debug);
 		nexterror();
 	}
 
-	qlock(&p->debug);
-	lock(f);
 	n = readstr(0, va, count, p->dot->name->s);
 	n += snprint(va+n, count-n, "\n");
 	for(i = 0; i <= f->maxfd; i++) {
@@ -560,15 +575,25 @@ procread(Chan *c, void *va, long n, vlong off)
 		return sizeof(Waitmsg);
 
 	case Qns:
-		if(p->pgrp == nil)
-			error(Ebadusefd);
+		qlock(&p->debug);
+		if(waserror()){
+			qunlock(&p->debug);
+			nexterror();
+		}
+		if(p->pgrp == nil || p->pid != PID(c->qid))
+			error(Eprocdied);
 		mw = c->aux;
-		if(mw->cddone)
+		if(mw->cddone){
+			qunlock(&p->debug);
+			poperror();
 			return 0;
+		}
 		mntscan(mw, p);
 		if(mw->mh == 0){
 			mw->cddone = 1;
 			i = snprint(a, n, "cd %s\n", p->dot->name->s);
+			qunlock(&p->debug);
+			poperror();
 			return i;
 		}
 		int2flag(mw->cm->flag, flag);
@@ -581,13 +606,13 @@ procread(Chan *c, void *va, long n, vlong off)
 		}else
 			i = snprint(a, n, "bind %s %s %s\n", flag,
 				mw->cm->to->name->s, mw->mh->from->name->s);
+		qunlock(&p->debug);
+		poperror();
 		return i;
 
 	case Qnoteid:
 		return readnum(offset, va, n, p->noteid, NUMSIZE);
 	case Qfd:
-		if(p->fgrp == nil)
-			error(Ebadusefd);
 		return procfds(p, va, n, offset);
 	}
 	error(Egreg);
@@ -897,8 +922,18 @@ procctlreq(Proc *p, char *va, int n)
 		ready(p);
 	}
 	else
-	if(strncmp(buf, "closefiles", 10) == 0)
+	if(strncmp(buf, "closefiles", 10) == 0){
+		qlock(&p->debug);
+		if(waserror()){
+			qunlock(&p->debug);
+			nexterror();
+		}
+		if(p->fgrp == nil)
+			error(Eprocdied);
 		procctlfgrp(p->fgrp);
+		qunlock(&p->debug);
+		poperror();
+	}
 	else
 	if(strncmp(buf, "pri", 3) == 0) {
 		if(n < 4)

@@ -1009,7 +1009,7 @@ drawread(Chan *c, void *a, long n, vlong off)
 	}
 	switch(QID(c->qid)){
 	case Qctl:
-		if(n <= 12*12)
+		if(n < 12*12)
 			error(Eshortread);
 		if(cl->infoid < 0)
 			error(Enodrawimage);
@@ -1146,15 +1146,15 @@ drawwrite(Chan *c, void *a, long n, vlong off)
 			m -= i;
 			*q = 0;
 			if(getfields(buf, fields, nelem(fields), 1, " ") != 4)
-				error("eb1"); //error(Ebadarg);
+				error(Ebadarg);
 			i = strtoul(fields[0], 0, 0);
 			red = strtoul(fields[1], 0, 0);
 			green = strtoul(fields[2], 0, 0);
 			blue = strtoul(fields[3], &q, 0);
 			if(fields[3] == q)
-				error("eb2"); //error(Ebadarg);
+				error(Ebadarg);
 			if(red>255 || green>255 || blue>255 || i<0 || i>255)
-				error("eb3"); //error(Ebadarg);
+				error(Ebadarg);
 			red |= red<<8;
 			red |= red<<16;
 			green |= green<<8;
