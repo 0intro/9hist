@@ -17,7 +17,7 @@ static Lock physseglock;
 #define NFREECHAN	64
 #define IHASHSIZE	64
 #define ihash(s)	imagealloc.hash[s%IHASHSIZE]
-static struct
+static struct Imagealloc
 {
 	Lock;
 	Image	*free;

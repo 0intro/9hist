@@ -8,7 +8,7 @@
 Ref	pidalloc;
 Ref	noteidalloc;
 
-struct
+struct Procalloc
 {
 	Lock;
 	Proc*	arena;
