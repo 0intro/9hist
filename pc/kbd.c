@@ -418,6 +418,7 @@ kbdintr0(void)
 	}
 
 	if(esc1){
+print("\nescape1 %lux\n", c);
 		c = kbtabesc1[c];
 		esc1 = 0;
 	} else if(esc2){

@@ -9,7 +9,7 @@ struct
 	Lock;
 	int	init;
 	KMap	*free;
-	KMap	arena[4*1024*1024/BY2PG];	/* kernel mmu maps up to 4MB */
+	KMap	arena[MB4/BY2PG];	/* kernel mmu maps up to 4MB */
 }kmapalloc;
 
 /*
@@ -120,15 +120,18 @@ kmapinit(void)
 
 	if(kmapalloc.init == 0){
 		k = &kmapalloc.arena[0];
-		k->va = KZERO|(4*1024*1024-256*1024-BY2PG);
+		k->va = KZERO|(MB4-256*1024-BY2PG);
 		k->next = 0;
 		kmapalloc.free = k;
 		kmapalloc.init = 1;
 		return;
 	}
-	e = (4*1024*1024 - 256*1024)/BY2PG;	/* screen lives at top 256K */
+
+	e = (MB4 - 256*1024)/BY2PG;	/* screen lives at top 256K */
 	i = PGROUND(((ulong)ialloc(0, 0))&~KZERO)/BY2PG;
+
 	print("%lud free map registers\n", e-i);
+
 	kmapalloc.free = 0;
 	for(k=&kmapalloc.arena[i]; i<e; i++,k++){
 		k->va = i*BY2PG|KZERO;
@@ -140,12 +143,7 @@ KMap*
 kmap(Page *pg)
 {
 	KMap *k;
-	int s;
 
-	if(u && u->p){
-		s = u->p->state;
-		u->p->state = MMUing;
-	}
 	lock(&kmapalloc);
 	k = kmapalloc.free;
 	if(k == 0){
@@ -154,10 +152,9 @@ kmap(Page *pg)
 	}
 	kmapalloc.free = k->next;
 	unlock(&kmapalloc);
+
 	k->pa = pg->pa;
 	putkmmu(k->va, PPN(k->pa) | PTEVALID | PTEKERNEL);
-	if(u && u->p)
-		u->p->state = s;
 	return k;
 }
 
@@ -165,10 +162,11 @@ void
 kunmap(KMap *k)
 {
 	k->pa = 0;
+	putkmmu(k->va, INVALIDPTE);
+
 	lock(&kmapalloc);
 	k->next = kmapalloc.free;
 	kmapalloc.free = k;
-	putkmmu(k->va, INVALIDPTE);
 	unlock(&kmapalloc);
 }
 

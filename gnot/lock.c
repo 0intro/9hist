@@ -12,24 +12,15 @@ lock(Lock *l)
 {
 	int i;
 
-	/*
-	 * Try the fast grab first
-	 */
-    	if(tas(&l->key) == 0){
-		if(u)
-			u->p->hasspin = 1;
-		l->pc = ((ulong*)&l)[PCOFF];
-		return;
-	}
-	for(i = 0; i < 100000; i++){
-		if(u && u->p->state == Running)
-			sched();
+	for(i = 0; i < 1000000; i++){
     		if (tas(&l->key) == 0){
 			if(u)
 				u->p->hasspin = 1;
 			l->pc = ((ulong*)&l)[PCOFF];
 			return;
 		}
+		if(u && u->p->state == Running)
+			sched();
 	}
 	i = l->key;
 	l->key = 0;

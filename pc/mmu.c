@@ -102,7 +102,7 @@ mmudump(void)
 void
 mmuinit(void)
 {
-	int i, n, nkpt;
+	int i, nkpt, npage, nbytes;
 	ulong x;
 	ulong y;
 
@@ -124,12 +124,14 @@ mmuinit(void)
 	 */
 
 	/*  allocate and fill low level page tables for kernel mem */
-	nkpt = ROUNDUP(conf.npage, 4*1024);
-	nkpt = nkpt/(4*1024);
-	kpt = ialloc(nkpt*BY2PG, 1);
-	n = ROUNDUP(conf.npage, 1024);
-	for(i = 0; i < n; i++)
+	npage = (1024*1024)/BY2PG + conf.npage1;
+	nbytes = PGROUND(npage*BY2WD);		/* words of page map */
+	nkpt = nbytes/BY2PG;			/* pages of page map */
+	kpt = ialloc(nbytes, 1);
+	for(i = 0; i < npage; i++)
 		kpt[i] = (i<<PGSHIFT) | PTEVALID | PTEKERNEL | PTEWRITE;
+
+print("%d low level pte's, %d high level pte's\n", npage, nkpt);
 
 	/*  allocate page table for u-> */
 	upt = ialloc(BY2PG, 1);

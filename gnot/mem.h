@@ -14,6 +14,7 @@
 #define	PGSHIFT		13			/* log(BY2PG) */
 #define PGROUND(s)	(((s)+(BY2PG-1))&~(BY2PG-1))
 #define ICACHESIZE	0
+#define MB4		(4*1024*1024)		/* Lots of things are 4Mb in size */
 
 #define	MAXMACH		1			/* max # cpus system can run */
 

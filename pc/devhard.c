@@ -41,11 +41,11 @@ enum
 	Qdir=		0,
 
 	Maxxfer=	4*1024,		/* maximum transfer size/cmd */
-	Npart=		8+2,		/* 8 sub partitions, disk, and partiiton */
+	Npart=		8+2,		/* 8 sub partitions, disk, and partition */
 };
-#define PART(x)		((x)&0x3)
-#define DRIVE(x)	(((x)>>3)&0x7)
-#define MKQID(d,p)	(((d)<<3) | (p))
+#define PART(x)		((x)&0xF)
+#define DRIVE(x)	(((x)>>4)&0x7)
+#define MKQID(d,p)	(((d)<<4) | (p))
 
 /*
  *  ident sector from drive
@@ -166,15 +166,14 @@ hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 		return -1;
 	dp = &hard[drive];
 
-	if(s < dp->npart){
-		pp = &dp->p[s];
-		sprint(name, "hd%d%s", drive, pp->name);
-		name[NAMELEN] = 0;
-		qid.path = MKQID(drive, s);
-		l = (pp->end - pp->start) * dp->bytes;
-	} else
+	if(s >= dp->npart)
 		return 0;
 
+	pp = &dp->p[s];
+	sprint(name, "hd%d%s", drive, pp->name);
+	name[NAMELEN] = 0;
+	qid.path = MKQID(drive, s);
+	l = (pp->end - pp->start) * dp->bytes;
 	devdir(c, qid, name, l, 0600, dirp);
 	return 1;
 }
@@ -319,13 +318,6 @@ hardread(Chan *c, void *a, long n)
 		i -= skip;
 		if(i > n - rv)
 			i = n - rv;
-{int j;
-
- print("0x%lux(%d) <- ", aa+rv, i);
- for(j = 0; j<32; j++)
-	print("%.2ux ", cp->buf[j+skip]);
- print("\n");
-}
 		memmove(aa+rv, cp->buf + skip, i);
 		skip = 0;
 	}
@@ -482,7 +474,8 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 	cp->cmd = cmd;
 	cp->dp = dp;
 	cp->sofar = 0;
-print("xfer:\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
+	cp->status = 0;
+/*print("xfer:\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
 print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);/**/
 	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, cp->tsec);
@@ -654,6 +647,9 @@ hardintr(Ureg *ur)
 	Controller *cp;
 	Drive *dp;
 	long loop;
+	int x;
+
+	x = spllo();	/* let in other interrupts */
 
 	/*
  	 *  BUG!! if there is ever more than one controller, we need a way to
@@ -662,7 +658,10 @@ hardintr(Ureg *ur)
 	cp = &hardc[0];
 	dp = cp->dp;
 
-	cp->status = inb(cp->pbase+Pstatus);
+	loop = 0;
+	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy)
+		if(++loop > 10000)
+			panic("hardintr 0");
 	switch(cp->cmd){
 	case Cwrite:
 		if(cp->status & Serr){
@@ -673,6 +672,7 @@ hardintr(Ureg *ur)
 		}
 		cp->sofar++;
 		if(cp->sofar < cp->nsecs){
+			loop = 0;
 			while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
 				if(++loop > 10000)
 					panic("hardintr 1");

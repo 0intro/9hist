@@ -219,6 +219,7 @@ TEXT	inss(SB),$0
 	MOVL	p+0(FP),DX
 	MOVL	a+4(FP),DI
 	MOVL	c+8(FP),CX
+	CLD
 	REP; OP16; INSL
 	RET
 
@@ -229,6 +230,7 @@ TEXT	outss(SB),$0
 	MOVL	p+0(FP),DX
 	MOVL	a+4(FP),SI
 	MOVL	c+8(FP),CX
+	CLD
 	REP; OP16; OUTSL
 	RET
 

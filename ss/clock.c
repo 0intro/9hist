@@ -57,8 +57,12 @@ clock(Ureg *ur)
 	kbdclock();
 	mouseclock();
 	if((ur->psr&SPL(0xF))==0 && p && p->state==Running){
-		if(anyready())
-			sched();
+		if(anyready()){
+			if(p->hasspin)
+				p->hasspin = 0;
+			else
+				sched();
+		}
 		if((ur->psr&PSRPSUPER) == 0){
 /*			*(ulong*)(USTKTOP-BY2WD) += TK2MS(1); /**/
 			if(u->nnote)

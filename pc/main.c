@@ -175,7 +175,7 @@ confinit(void)
 	/*
 	 *  the last 128k belongs to the roms
 	 */
-	conf.npage1 = (i)*1024/4;
+	conf.npage1 = (i-1)*1024/4;
 	conf.base1 = 1024*1024;
 
 	conf.npage = conf.npage0 + conf.npage1;
