@@ -96,7 +96,7 @@ delay(int l)
 void
 printcpufreq(void)
 {
-	print("CPU is a %ud Hz %d\n", cpufreq, cputype);
+	print("CPU is a %ud MHz %d\n", cpufreq, cputype);
 }
 
 void
@@ -150,7 +150,7 @@ clockinit(void)
 	 */
 	switch(cputype = x86()){
 	case 386:
-		cycles = 30;
+		cycles = 32;
 		break;
 	case 486:
 		cycles = 22;
@@ -161,4 +161,7 @@ clockinit(void)
 	}
 	cpufreq = loops*((cycles*Freq)/x);
 	loopconst = (cpufreq/1000)/cycles;	/* AAM+LOOP's for 1 ms */
+
+	/* convert to MHz */
+	cpufreq = cpufreq/1000000;
 }
