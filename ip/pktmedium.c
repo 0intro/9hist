@@ -18,8 +18,8 @@ Medium pktmedium =
 {
 	"pkt",
 	14,
-	60,
-	1514,
+	40,
+	4*1024,
 	6,
 	pktbind,
 	pktunbind,

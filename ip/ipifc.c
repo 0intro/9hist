@@ -286,6 +286,25 @@ ipifcclose(Conv *c)
 }
 
 /*
+ *  change an interface's mtu
+ */
+char*
+ipifcsetmtu(Ipifc *ifc, char **argv, int argc)
+{
+	int mtu;
+
+	if(argc < 2)
+		return Ebadarg;
+	if(ifc->m == nil)
+		return Ebadarg;
+	mtu = strtoul(argv[1], 0, 0);
+	if(mtu < ifc->m->minmtu || mtu > ifc->m->maxmtu)
+		return Ebadarg;
+	ifc->maxmtu = mtu;
+	return nil;
+}
+
+/*
  *  add an address to an interface.
  */
 char*
@@ -566,6 +585,8 @@ ipifcctl(Conv* c, char**argv, int argc)
 		return ipifcjoinmulti(ifc, argv, argc);
 	else if(strcmp(argv[0], "leavemulti") == 0)
 		return ipifcleavemulti(ifc, argv, argc);
+	else if(strcmp(argv[0], "mtu") == 0)
+		return ipifcsetmtu(ifc, argv, argc);
 	else if(strcmp(argv[0], "iprouting") == 0){
 		i = 1;
 		if(argc > 1)
