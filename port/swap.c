@@ -134,6 +134,7 @@ loop:
 					case SG_BSS:
 					case SG_STACK:
 					case SG_SHARED:
+					case SG_MAP:
 						up->psstate = "Pageout";
 						pageout(p, s);
 						if(ioptr != 0) {

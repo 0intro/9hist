@@ -52,10 +52,12 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 {
 	int type;
 	Pte **p, *etp;
-	ulong mmuphys=0, soff;
+	char buf[ERRLEN];
+	ulong va, mmuphys=0, soff;
 	Page **pg, *lkp, *new;
 	Page *(*fn)(Segment*, ulong);
 
+	va = addr;
 	addr &= ~(BY2PG-1);
 	soff = addr-s->base;
 	p = &s->map[soff/PTEMAPMEM];
@@ -97,8 +99,13 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 	case SG_BSS:
 	case SG_SHARED:			/* Zero fill on demand */
-	case SG_STACK:	
+	case SG_STACK:
+	case SG_MAP:	
 		if(*pg == 0) {
+			if(type == SG_MAP) {
+				sprint(buf, "map 0x%lux %c", va, read ? 'r' : 'w');
+				postnote(up, 1, buf, NDebug);
+			}
 			new = newpage(1, &s, addr);
 			if(s == 0)
 				return -1;

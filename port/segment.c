@@ -144,6 +144,7 @@ dupseg(Segment **seg, int segno, int share)
 		break;
 
 	case SG_BSS:		/* Just copy on write */
+	case SG_MAP:
 		qlock(&s->lk);
 		if(share && s->ref == 1) {
 			s->type = (s->type&~SG_TYPE)|SG_SHARED;
