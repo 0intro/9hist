@@ -100,18 +100,7 @@ enum
 
 typedef struct I82365	I82365;
 typedef struct Slot	Slot;
-typedef struct PCMmap	PCMmap;
 typedef struct Conftab	Conftab;
-
-/* maps between ISA memory space and the card memory space */
-struct PCMmap
-{
-	ulong	ca;		/* card address */
-	ulong	cea;		/* card end address */
-	ulong	isa;		/* ISA address */
-	int	attr;		/* attribute memory */
-	int	time;
-};
 
 /* a controller */
 enum
@@ -182,17 +171,19 @@ struct Slot
 	uchar	*cisbase;
 
 	/* memory maps */
-	QLock	mlock;		/* lock down the maps */
+	Lock	mlock;		/* lock down the maps */
 	int	time;
 	PCMmap	mmap[Nmap];	/* maps, last is always for the kernel */
-	int	nmap;		/* number of maps */
 };
 static Slot	*slot;
 static Slot	*lastslot;
 static nslot;
 
-static void cisread(Slot*);
-static void i82365intr(Ureg*, void*);
+static void	cisread(Slot*);
+static void	i82365intr(Ureg*, void*);
+static int	pcmio(int, ISAConf*);
+static long	pcmread(int, int, void*, long, ulong);
+static long	pcmwrite(int, int, void*, long, ulong);
 
 /*
  *  reading and writing card registers
@@ -304,52 +295,107 @@ i82365intr(Ureg *ur, void *a)
 	}
 }
 
+enum
+{
+	Mshift=	12,
+	Mgran=	(1<<Mshift),	/* granularity of maps */
+	Mmask=	~(Mgran-1),	/* mask for address bits important to the chip */
+};
+
 /*
  *  get a map for pc card region, return corrected len
  */
-static PCMmap*
-getmap(Slot *pp, ulong offset, int attr)
+PCMmap*
+pcmmap(int slotno, ulong offset, int len, int attr)
 {
+	Slot *pp;
 	uchar we, bit;
-	PCMmap *m, *lru;
+	PCMmap *m, *nm;
 	int i;
+	ulong e;
 
-	/* look for a map that starts in the right place */
+	pp = slot + slotno;
+	lock(&pp->mlock);
+
+	/* convert offset to granularity */
+	if(len <= 0)
+		len = 1;
+	e = ROUND(offset+len, Mgran);
+	offset &= Mmask;
+	len = e - offset;
+
+	/* look for a map that covers the right area */
 	we = rdreg(pp, Rwe);
 	bit = 1;
-	lru = pp->mmap;
-	for(m = pp->mmap; m < &pp->mmap[pp->nmap]; m++){
-		if((we & bit) && m->attr == attr && offset >= m->ca && offset < m->cea){
-			m->time = pp->time++;
+	nm = 0;
+	for(m = pp->mmap; m < &pp->mmap[Nmap]; m++){
+		if((we & bit))
+		if(m->attr == attr)
+		if(offset >= m->ca && e <= m->cea){
+
+			m->ref++;
+			unlock(&pp->mlock);
 			return m;
 		}
 		bit <<= 1;
-		if(lru->time > m->time)
-			lru = m;
+		if(nm == 0 && m->ref == 0)
+			nm = m;
+	}
+	m = nm;
+	if(m == 0){
+		unlock(&pp->mlock);
+		return 0;
 	}
 
-	/* use the least recently used */
-	m = lru;
-	offset &= ~(Mchunk - 1);
+	/* if isa space isn't big enough, free it and get more */
+	if(m->len < len){
+		if(m->isa){
+			putisa(m->isa, m->len);
+			m->len = 0;
+		}
+		m->isa = getisa(0, len, Mgran)&~KZERO;
+		if(m->isa == 0){
+			print("pcmmap: out of isa space\n");
+			unlock(&pp->mlock);
+			return 0;
+		}
+		m->len = len;
+	}
+
+	/* set up new map */
 	m->ca = offset;
-	m->cea = m->ca + Mchunk;
+	m->cea = m->ca + m->len;
 	m->attr = attr;
-	m->time = pp->time++;
-	i = m - pp->mmap;
+	i = m-pp->mmap;
 	bit = 1<<i;
 	wrreg(pp, Rwe, we & ~bit);		/* disable map before changing it */
-	wrreg(pp, MAP(i, Mbtmlo), m->isa>>12);
-	wrreg(pp, MAP(i, Mbtmhi), (m->isa>>(12+8)) | F16bit);
-	wrreg(pp, MAP(i, Mtoplo), (m->isa+Mchunk-1)>>12);
-	wrreg(pp, MAP(i, Mtophi), ((m->isa+Mchunk-1)>>(12+8)) /*| Ftimer1/**/);
+	wrreg(pp, MAP(i, Mbtmlo), m->isa>>Mshift);
+	wrreg(pp, MAP(i, Mbtmhi), (m->isa>>(Mshift+8)) | F16bit);
+	wrreg(pp, MAP(i, Mtoplo), (m->isa+m->len-1)>>Mshift);
+	wrreg(pp, MAP(i, Mtophi), ((m->isa+m->len-1)>>(Mshift+8)));
 	offset -= m->isa;
 	offset &= (1<<25)-1;
-	offset >>= 12;
+	offset >>= Mshift;
 	wrreg(pp, MAP(i, Mofflo), offset);
 	wrreg(pp, MAP(i, Moffhi), (offset>>8) | (attr ? Fregactive : 0));
 	wrreg(pp, Rwe, we | bit);		/* enable map */
+	m->ref = 1;
+
+	unlock(&pp->mlock);
 	return m;
 }
+
+void
+pcmunmap(int slotno, PCMmap* m)
+{
+	Slot *pp;
+
+	pp = slot + slotno;
+	lock(&pp->mlock);
+	m->ref--;
+	unlock(&pp->mlock);
+}
+
 
 static void
 increfp(Slot *pp)
@@ -554,15 +600,6 @@ i82365reset(void)
 		}
 	}
 
-	/* get ISA address space for memory maps */
-	for(i = 0; i < Nmap; i++)
-		for(pp = slot; pp < lastslot; pp++){
-			pp->mmap[i].isa = getisa(0, Mchunk, BY2PG);
-			if(pp->mmap[i].isa == 0)
-				break;
-			pp->nmap++;
-		}
-
 	/* for card management interrupts */
 	setvec(PCMCIAvec, i82365intr, 0);
 }
@@ -665,7 +702,7 @@ memmoves(uchar *to, uchar *from, int n)
 	}
 }
 
-long
+static long
 pcmread(int slotno, int attr, void *a, long n, ulong offset)
 {
 	int i, len;
@@ -677,22 +714,33 @@ pcmread(int slotno, int attr, void *a, long n, ulong offset)
 	pp = slot + slotno;
 	if(pp->memlen < offset)
 		return 0;
-	ac = a;
 	if(pp->memlen < offset + n)
 		n = pp->memlen - offset;
+
+	m = 0;
+	if(waserror()){
+		if(m)
+			pcmunmap(pp->slotno, m);
+		nexterror();
+	}
+
+	ac = a;
 	for(len = n; len > 0; len -= i){
-		if(pp->occupied == 0 || pp->enabled == 0)
-			error(Eio);
-		m = getmap(pp, offset, attr);
+		m = pcmmap(pp->slotno, offset, 0, attr);
+		if(m == 0)
+			error("can't map PCMCIA card");
 		if(offset + len > m->cea)
 			i = m->cea - offset;
 		else
 			i = len;
-		ka = KZERO|(m->isa + (offset&(Mchunk-1)));
+		ka = KZERO|(m->isa + offset - m->ca);
 		memmoveb(ac, (void*)ka, i);
+		pcmunmap(pp->slotno, m);
 		offset += i;
 		ac += i;
 	}
+
+	poperror();
 	return n;
 }
 
@@ -715,13 +763,7 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 		return devdirread(c, a, n, 0, 0, pcmgen);
 	case Qmem:
 	case Qattr:
-		pp = slot + SLOTNO(c);
-		qlock(&pp->mlock);
-		n = pcmread(SLOTNO(c), p==Qattr, a, n, offset);
-		qunlock(&pp->mlock);
-		if(n < 0)
-			error(Eio);
-		break;
+		return pcmread(SLOTNO(c), p==Qattr, a, n, offset);
 	case Qctl:
 		cp = buf;
 		pp = slot + SLOTNO(c);
@@ -765,7 +807,7 @@ i82365bwrite(Chan *c, Block *bp, ulong offset)
 	return devbwrite(c, bp, offset);
 }
 
-long
+static long
 pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 {
 	int i, len;
@@ -777,20 +819,33 @@ pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 	pp = slot + dev;
 	if(pp->memlen < offset)
 		return 0;
-	ac = a;
 	if(pp->memlen < offset + n)
 		n = pp->memlen - offset;
+
+	m = 0;
+	if(waserror()){
+		if(m)
+			pcmunmap(pp->slotno, m);
+		nexterror();
+	}
+
+	ac = a;
 	for(len = n; len > 0; len -= i){
-		m = getmap(pp, offset, attr);
+		m = pcmmap(pp->slotno, offset, 0, attr);
+		if(m == 0)
+			error("can't map PCMCIA card");
 		if(offset + len > m->cea)
 			i = m->cea - offset;
 		else
 			i = len;
-		ka = KZERO|(m->isa + (offset&(Mchunk-1)));
+		ka = KZERO|(m->isa + offset - m->ca);
 		memmoveb((void*)ka, ac, i);
+		pcmunmap(pp->slotno, m);
 		offset += i;
 		ac += i;
 	}
+
+	poperror();
 	return n;
 }
 
@@ -807,9 +862,7 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 		pp = slot + SLOTNO(c);
 		if(pp->occupied == 0 || pp->enabled == 0)
 			error(Eio);
-		qlock(&pp->mlock);
 		n = pcmwrite(pp->slotno, p == Qattr, a, n, offset);
-		qunlock(&pp->mlock);
 		if(n < 0)
 			error(Eio);
 		break;
@@ -823,24 +876,26 @@ i82365write(Chan *c, void *a, long n, ulong offset)
  *  configure the Slot for IO.  We assume very heavily that we can read
  *  cofiguration info from the CIS.  If not, we won't set up correctly.
  */
-int
-pcmio(int dev, ISAConf *isa)
+static int
+pcmio(int slotno, ISAConf *isa)
 {
-	uchar we, x;
+	uchar we, x, *p;
 	Slot *pp;
 	Conftab *ct;
+	PCMmap *m;
 
-	if(dev > nslot)
+	if(slotno > nslot)
 		return -1;
-	pp = slot + dev;
+	pp = slot + slotno;
 
 	if(!pp->occupied)
 		return -1;
 
 	/* find a configuration with the right port */
-	for(ct = pp->ctab; ct < &pp->ctab[pp->nctab]; ct++)
+	for(ct = pp->ctab; ct < &pp->ctab[pp->nctab]; ct++){
 		if(ct->nioregs && ct->port == isa->port)
 			break;
+	}
 
 	/* if non found, settle for one with the some ioregs */
 	if(ct == &pp->ctab[pp->nctab])
@@ -851,14 +906,12 @@ pcmio(int dev, ISAConf *isa)
 	if(ct == &pp->ctab[pp->nctab])
 		return -1;
 
-print("%s\n\tindex %d vpp1 %d bit16 %d nioregs %d\n", pp->verstr, ct->index, ct->vpp1, ct->bit16, ct->nioregs);
-
 	/* route interrupts */
 	if(isa->irq == 2)
 		isa->irq = 9;
 	wrreg(pp, Rigc, isa->irq | Fnotreset | Fiocard);
 	
-	/* set power and enable device */
+	/* set power and enable slotnoice */
 	x = vcode(ct->vpp1);
 	wrreg(pp, Rpc, x|Fautopower|Foutena|Fcardena);
 
@@ -868,7 +921,7 @@ print("%s\n\tindex %d vpp1 %d bit16 %d nioregs %d\n", pp->verstr, ct->index, ct-
 
 	/* enable io port map 0 */
 	if(isa->port == 0)
-		isa->port = 0x300;
+		isa->port = ct->port;
 	we = rdreg(pp, Rwe);
 	wrreg(pp, Riobtm0lo, isa->port);
 	wrreg(pp, Riobtm0hi, isa->port>>8);
@@ -879,11 +932,11 @@ print("%s\n\tindex %d vpp1 %d bit16 %d nioregs %d\n", pp->verstr, ct->index, ct-
 	/* only touch Rconfig if it is present */
 	if(pp->cpresent & (1<<Rconfig)){
 		/*  Reset adapter */
-		x = Creset;
-		pcmwrite(dev, 1, &x, 1, pp->caddr + Rconfig);
+		m = pcmmap(slotno, pp->caddr + Rconfig, 1, 1);
+		p = (uchar*)(KZERO|(m->isa + pp->caddr + Rconfig - m->ca));
+		*p = Creset;
 		delay(5);
-		x = 0;
-		pcmwrite(dev, 1, &x, 1, pp->caddr + Rconfig);
+		*p = 0;
 		delay(5);
 	
 		/*
@@ -892,11 +945,11 @@ print("%s\n\tindex %d vpp1 %d bit16 %d nioregs %d\n", pp->verstr, ct->index, ct-
 		 *  Setting the configuration number enables IO port access.
 		 */
 		if(isa->irq > 7)
-			x = Clevel | ct->index;
+			*p = Clevel | ct->index;
 		else
-			x = ct->index;
-		pcmwrite(dev, 1, &x, 1, pp->caddr + Rconfig);
+			*p = ct->index;
 		delay(5);
+		pcmunmap(slotno, m);
 	}
 	return 0;
 }
@@ -940,7 +993,7 @@ cisread(Slot *pp)
 	pp->configed = 0;
 	pp->nctab = 0;
 
-	m = getmap(pp, 0, 1);
+	m = pcmmap(pp->slotno, 0, 0, 1);
 	if(m == 0)
 		return;
 	pp->cisbase = (uchar*)(KZERO|m->isa);
@@ -959,6 +1012,7 @@ cisread(Slot *pp)
 			break;
 		pp->cispos = this + (2+link);
 	}
+	pcmunmap(pp->slotno, m);
 }
 
 static ulong

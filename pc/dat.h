@@ -7,6 +7,7 @@ typedef struct MMU	MMU;
 typedef struct Mach	Mach;
 typedef struct Notsave	Notsave;
 typedef struct PCArch	PCArch;
+typedef struct PCMmap	PCMmap;
 typedef struct Page	Page;
 typedef struct PMMU	PMMU;
 typedef struct Segdesc	Segdesc;
@@ -189,6 +190,20 @@ struct ISAConf {
 	ulong	freq;
 	uchar	ea[6];
 };
+
+/*
+ *  maps between ISA memory space and PCMCIA card memory space
+ */
+struct PCMmap
+{
+	ulong	ca;		/* card address */
+	ulong	cea;		/* card end address */
+	ulong	isa;		/* ISA address */
+	int	len;		/* length of the ISA area */
+	int	attr;		/* attribute memory */
+	int	ref;
+};
+
 
 /*
  *  SCSI bus

@@ -32,7 +32,8 @@ reset(Ether *ether)
 	Dp8390 *dp8390;
 	ulong port;
 	int i, slot;
-	uchar x;
+	uchar x, *p;
+	PCMmap *m;
 
 	/*
 	 * Set up the software configuration.
@@ -80,8 +81,13 @@ reset(Ether *ether)
 	dp8390reset(ether);
 
 	/* set the ether address */
+	m = pcmmap(slot, 0, 0x1000, 1);
+	if(m == 0)
+		return -1;
+	p = (uchar*)(KZERO|m->isa);
 	for(i = 0; i < sizeof(ether->ea); i++)
-		pcmread(slot, 1, &ether->ea[i], 1, 0xff0+2*i);
+		ether->ea[i] = p[0xff0+2*i];
+	pcmunmap(slot, m);
 	dp8390setea(ether);
 
 	return 0;
