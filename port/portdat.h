@@ -109,7 +109,6 @@ enum
 	CCEXEC	= 0x0008,		/* close on exec */
 	CFREE	= 0x0010,		/* not in use */
 	CRCLOSE	= 0x0020,		/* remove on close */
-	CRECOV	= 0x0040,		/* requires recovery */
 	CCACHE	= 0x0080,		/* client cache */
 };
 
@@ -243,11 +242,9 @@ struct Mnt
 	Chan	*c;		/* Channel to file service */
 	Proc	*rip;		/* Reader in progress */
 	Mntrpc	*queue;		/* Queue of pending requests on this channel */
-	Mntrpc	*recwait;	/* List of rpc's with recovery pending */
-	ulong	id;		/* Multiplexor id for channel check */
+	ulong	id;		/* Multiplexer id for channel check */
 	Mnt	*list;		/* Free list */
-	int	flags;		/* recover/cache */
-	char	recprog;	/* Recovery in progress */
+	int	flags;		/* cache */
 	int	blocksize;	/* read/write block size */
 	ushort	flushtag;	/* Tag to send flush on */
 	ushort	flushbase;	/* Base tag of flush window for this buffer */

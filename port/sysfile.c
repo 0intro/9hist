@@ -607,7 +607,7 @@ bindmount(ulong *arg, int ismount)
 	if(flag>MMASK || (flag&MORDER)==(MBEFORE|MAFTER))
 		error(Ebadarg);
 
-	bogus.flags = flag & (MRECOV|MCACHE);
+	bogus.flags = flag & MCACHE;
 
 	if(ismount){
 		bc = fdtochan(fd, ORDWR, 0, 1);

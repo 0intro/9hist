@@ -47,18 +47,6 @@ decref(Ref *r)
 }
 
 void
-chanrec(Mnt *m)
-{
-	Chan *c;
-
-	lock(&chanalloc);
-	for(c = chanalloc.list; c; c = c->link)
-		if(c->mntptr == m)
-			c->flag |= CRECOV;
-	unlock(&chanalloc);
-}
-
-void
 chandevreset(void)
 {
 	int i;

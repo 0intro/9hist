@@ -86,7 +86,6 @@ extern	char	end[];
 #define	MBEFORE	0x0001	/* mount goes before others in union directory */
 #define	MAFTER	0x0002	/* mount goes after others in union directory */
 #define	MCREATE	0x0004	/* permit creation in mounted directory */
-#define	MRECOV	0x0008	/* perform recovery if mount channel is lost */
 #define	MCACHE	0x0010	/* cache some data */
 #define	MMASK	0x001F	/* all bits on */
 

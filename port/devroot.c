@@ -7,7 +7,6 @@
 
 enum{
 	Qdir=	0,
-	Qrecover,
 
 	Nfiles=32,	/* max root files */
 };
@@ -15,14 +14,10 @@ enum{
 extern ulong	bootlen;
 extern uchar	bootcode[];
 
-Dirtab rootdir[Nfiles]=
-{
-	"recover",	{Qrecover},	0,	0777,
-};
+Dirtab rootdir[Nfiles];
 
 static uchar	*rootdata[Nfiles];
-static int	nroot = 1;
-static int	recovbusy;
+static int	nroot = 0;
 
 typedef struct Recover Recover;
 struct Recover
@@ -125,13 +120,6 @@ rootopen(Chan *c, int omode)
 	switch(c->qid.path & ~CHDIR) {
 	default:
 		break;
-	case Qrecover:
-		if(recovbusy)
-			error(Einuse);
-		if(strcmp(up->user, eve) != 0)
-			error(Eperm);
-		recovbusy = 1;
-		break;
 	}
 
 	return devopen(c, omode, rootdir, nroot, devgen);
@@ -145,10 +133,6 @@ rootclose(Chan *c)
 {
 	switch(c->qid.path) {
 	default:
-		break;
-	case Qrecover:
-		if(c->flag&COPEN)
-			recovbusy = 0;
 		break;
 	}
 }
@@ -172,29 +156,6 @@ rootread(Chan *c, void *buf, long n, vlong off)
 	switch(t){
 	case Qdir:
 		return devdirread(c, buf, n, rootdir, nroot, devgen);
-	case Qrecover:
-		qlock(&reclist);
-		if(waserror()) {
-			qunlock(&reclist);
-			nexterror();
-		}
-
-		sleep(&reclist, rdrdy, 0);
-
-		lock(&reclist);
-		r = reclist.q;
-		reclist.q = r->next;
-		unlock(&reclist);
-
-		qunlock(&reclist);
-
-		poperror();
-		if(n < r->len)
-			n = r->len;
-		memmove(buf, r->req, n);
-		free(r->req);
-		free(r);
-		return n;
 	}
 
 	d = &rootdir[t-1];
@@ -210,19 +171,9 @@ rootread(Chan *c, void *buf, long n, vlong off)
 static long
 rootwrite(Chan *c, void *buf, long n, vlong)
 {
-	char tmp[256];
-
 	switch(c->qid.path & ~CHDIR){
 	default:
 		error(Egreg);
-	case Qrecover:
-		if(n > sizeof(tmp)-1)
-			error(Etoosmall);
-		/* Nul terminate */
-		memmove(tmp, buf, n);
-		tmp[n] = '\0';
-		mntrepl(tmp);
-		return n;
 	}
 	return 0;
 }
@@ -258,18 +209,3 @@ Dev rootdevtab = {
 	devremove,
 	devwstat,
 };
-
-void
-rootrecover(Chan *c, char *mntname)
-{
-	Recover *r;
-
-	r = malloc(sizeof(Recover));
-	r->req = smalloc(c->name->len+strlen(mntname)+2);
-	sprint(r->req, "%s %s", c->name->s, mntname);
-	lock(&reclist);
-	r->next = reclist.q;
-	reclist.q = r;
-	unlock(&reclist);
-	wakeup(&reclist);
-}

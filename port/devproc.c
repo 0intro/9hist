@@ -341,8 +341,6 @@ int2flag(int flag, char *s)
 		*s++ = 'c';
 	if(flag & MCACHE)
 		*s++ = 'C';
-	if(flag & MRECOV)
-		*s++ = 'r';
 	*s = '\0';
 }
 

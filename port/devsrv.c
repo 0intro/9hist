@@ -305,21 +305,3 @@ Dev srvdevtab = {
 	srvremove,
 	srvwstat,
 };
-
-void
-srvrecover(Chan *old, Chan *new)
-{
-	Srv *sp;
-
-	qlock(&srvlk);
-	for(sp = srv; sp; sp = sp->link) {
-		if(sp->chan == old) {
-			sp->chan = new;
-			incref(new);
-			qunlock(&srvlk);
-			cclose(old);
-			return;
-		}
-	}
-	qunlock(&srvlk);
-}

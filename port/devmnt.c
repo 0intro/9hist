@@ -55,7 +55,6 @@ void	mountmux(Mnt*, Mntrpc*);
 void	mountrpc(Mnt*, Mntrpc*);
 int	rpcattn(void*);
 void	mclose(Mnt*, Chan*);
-void	mntrecover(Mnt*, Mntrpc*);
 Chan*	mntchan(void);
 
 int defmaxmsg = MAXFDATA;
@@ -621,13 +620,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 	r->reply.tag = 0;
 	r->reply.type = 4;
 
-	while(waserror()) {
-		if((m->flags&MRECOV) == 0)
-			nexterror();
-		mntrecover(m, r);
-	}
 	mountio(m, r);
-	poperror();
 
 	t = r->reply.type;
 	switch(t) {
@@ -898,62 +891,6 @@ mntqrm(Mnt *m, Mntrpc *r)
 	unlock(m);
 }
 
-void
-recoverchan(Mnt*, Chan*)
-{
-panic("recoverchan");
-#ifdef asdf
-BUG: WON'T WORK WITH PATHS GONE?
-	int i, n, flg;
-	Path *safe, *p, **pav;
-
-	if(m->c == 0)
-		error(Eshutdown);
-
-	flg = c->flag;
-	/* Don't recursively recover */
-	c->flag &= ~(COPEN|CRECOV);
-
-	n = 0;
-	for(p = c->path; p; p = p->parent)
-		n++;
-	pav = smalloc(sizeof(Path*)*n);
-	i = n;
-	for(p = c->path; p; p = p->parent)
-		pav[--i] = p;
-
-	safe = c->path;
-
-	if(waserror()) {
-		c->flag = flg;
-		free(pav);
-		nexterror();
-	}
-
-	/* Attach the fid onto the file server (sets c->path to #Mxxx) */
-	mattach(m, c, c->xmh->mount->spec);
-	poperror();
-
-	/*
-	 * c is now at the root so we free where
-	 * the chan was before the server connection was lost
-	 */
-	decref(safe);
-
-	for(i = 1; i < n; i++) {
-		if(mntwalk(c, pav[i]->elem) == 0) {
-			free(pav);
-			/* Shut down the channel */
-			c->dev = m->id-1;
-			error(Erecover);
-		}
-	}
-	free(pav);
-	if(flg&COPEN)
-		mntopen(c, c->mode);
-#endif
-}
-
 Mnt*
 mntchk(Chan *c)
 {
@@ -966,12 +903,6 @@ mntchk(Chan *c)
 	 */
 	if(m->id == 0 || m->id >= c->dev)
 		error(Eshutdown);
-
-	/*
-	 * Try and get the channel back after a crash
-	 */
-	if((c->flag&CRECOV) && m->recprog == 0)
-		recoverchan(m, c);
 
 	return m;
 }
@@ -995,116 +926,6 @@ rpcattn(void *v)
 
 	r = v;
 	return r->done || r->m->rip == 0;
-}
-
-int
-recdone(void *v)
-{
-	Mnt *m;
-
-	m = v;
-	return m->recprog == 0;
-}
-
-void
-mntrecdel(Mnt *m, Mntrpc *r)
-{
-	Mntrpc *f, **l;
-
-	lock(m);
-	l = &m->recwait;
-	for(f = *l; f; f = f->list) {
-		if(f == r) {
-			*l = r->list;
-			break;
-		}
-	}
-	unlock(m);
-}
-
-void
-mntrecover(Mnt *m, Mntrpc *r)
-{
-	char *ps;
-
-	lock(m);
-	if(m->recprog == 0) {
-		m->recprog = 1;
-		unlock(m);
-		chanrec(m);
-		/*
-		 * Send a message to boot via #/recover
-		 */
-panic("mntrecover\n");
-//		rootrecover(m->c->path, m->tree.root->elem);
-		lock(m);
-	}
-	r->list = m->recwait;
-	m->recwait = r;
-	unlock(m);
-
-	pprint("lost server connection, wait...\n");
-
-	ps = up->psstate;
-	up->psstate = "Recover";
-
-	if(waserror()) {
-		up->psstate = ps;
-		mntrecdel(m, r);
-		nexterror();
-	}
-	sleep(&r->r, recdone, m);
-	poperror();
-
-	r->done = 0;
-	mntrecdel(m, r);
-	if(r->c != 0)
-		recoverchan(m, r->c);
-
-	up->psstate = ps;
-}
-
-void
-mntrepl(char*)
-{
-panic("mntrepl");
-#ifdef asdf
-	int fd;
-	Mnt *m;
-	char *p;
-	Chan *c1, *c2;
-	Mntrpc *r;
-
-	/* reply from boot is 'fd #M23' */
-	fd = strtoul(buf, &p, 0);
-
-	p++;
-	lock(&mntalloc);
-	for(m = mntalloc.list; m; m = m->list) {
-		if(strcmp(p, m->tree.root->elem) == 0)
-			break;
-	}
-	unlock(&mntalloc);
-	if(m == 0)
-		error(Eunmount);
-
-	c1 = fdtochan(fd, ORDWR, 0, 1);	/* error check and inc ref */
-
-	/* If the channel was posted fix it up */
-	srvrecover(m->c, c1);
-
-	lock(m);
-	c2 = m->c;
-	m->c = c1;
-	m->recprog = 0;
-
-	/* Wakeup partially complete rpc */
-	for(r = m->recwait; r; r = r->list)
-		wakeup(&r->r);
-
-	unlock(m);
-	cclose(c2);
-#endif
 }
 
 Dev mntdevtab = {

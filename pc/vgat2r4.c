@@ -328,6 +328,13 @@ t2r4curenable(VGAscr* scr)
 	t2r4xo(scr, CursorCtl, CursorMode);
 }
 
+static void
+t2r4drawinit(VGAscr *scr)
+{
+	scr->fill = nil;
+	scr->scroll = nil;
+}
+
 VGAdev vgat2r4dev = {
 	"t2r4",
 
@@ -335,6 +342,7 @@ VGAdev vgat2r4dev = {
 	nil,
 	nil,
 	t2r4linear,
+	t2r4drawinit,
 };
 
 VGAcur vgat2r4cur = {
