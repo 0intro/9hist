@@ -181,7 +181,14 @@ TEXT	getcallerpc(SB), $0
 	MOVW	0(SP), R1
 	RET
 
-TEXT	gotopc(SB), $-4
+TEXT	gotopc(SB), $8
+
+	MOVW	R1, 0(FP)
+	MOVW	$(64*1024), R1
+	MOVW	R1, 8(SP)
+	MOVW	R0, R1
+	JAL	icflush(SB)
+	MOVW	0(FP), R1
 
 	MOVW	_argc(SB), R4
 	MOVW	_argv(SB), R5

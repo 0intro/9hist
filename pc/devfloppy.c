@@ -616,7 +616,6 @@ floppyon(Drive *dp)
 		tsleep(&dp->r, return0, 0, 750);
 
 		/* clear any pending interrupts */
-		setvec(Floppyvec, floppyintr);
 		floppysense();
 	}
 
