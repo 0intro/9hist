@@ -135,12 +135,16 @@ struct Port
 enum {
 	IP_VER		= 0x40,		/* Using IP version 4 */
 	IP_HLEN		= 0x05,		/* Header length in characters */
+	IP_DF		= 0x4000,	/* Don't fragment */
+	IP_MF		= 0x2000,	/* More fragments */
+	IP_MAX		= (32*1024),	/* Maximum Internet packet size */
 	IP_TCPPROTO = 6,
 	EOLOPT		= 0,
 	NOOPOPT		= 1,
 	MSSOPT		= 2,
 	MSS_LENGTH	= 4,		/* Mean segment size */
 	SYN		= 0x02,		/* Pkt. is synchronise */
+	IPHDR		= 20,		/* sizeof(Iphdr) */
 };
 
 struct Iphdr
@@ -187,6 +191,7 @@ static void	cacheflushport(Bridge *b, int port);
 static void etherwrite(Port *port, Block *bp);
 
 extern ulong	parseip(uchar*, char*);
+extern ushort	ipcsum(uchar *addr);
 
 static void
 bridgeinit(void)
@@ -326,9 +331,9 @@ bridgeread(Chan *c, void *a, long n, vlong off)
 			}
 			ingood = port->in-port->inmulti-port->inunknown;
 			outgood = port->out-port->outmulti-port->outunknown;
-			i += snprint(buf+i, sizeof(buf)-i, "in=%d(%d:%d:%d) out=%d(%d:%d:%d)\n",
+			i += snprint(buf+i, sizeof(buf)-i, "in=%d(%d:%d:%d) out=%d(%d:%d:%d:%d)\n",
 				port->in, ingood, port->inmulti, port->inunknown,
-				port->out, outgood, port->outmulti, port->outunknown);
+				port->out, outgood, port->outmulti, port->outunknown, port->outfrag);
 			USED(i);
 		}
 		n = readstr(off, a, n, buf);
@@ -887,7 +892,7 @@ tcpmsshack(Etherpkt *epkt, int n)
 		return;
 	iphdr = (Iphdr*)(epkt->data);
 	n -= ETHERHDRSIZE;
-	if(n < sizeof(Iphdr))
+	if(n < IPHDR)
 		return;
 
 	// check it is ok IP packet
@@ -1032,11 +1037,120 @@ if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 	pexit("hangup", 1);
 }
 
+static int
+fragment(Etherpkt *epkt, int n)
+{
+	Iphdr *iphdr;
+
+	if(n <= TunnelMtu)
+		return 0;
+
+	// check it is an ip packet
+	if(nhgets(epkt->type) != 0x800)
+		return 0;
+	iphdr = (Iphdr*)(epkt->data);
+	n -= ETHERHDRSIZE;
+	if(n < IPHDR)
+		return 0;
+
+	// check it is ok IP packet - I don't handle IP options for the momment
+	if(iphdr->vihl != (IP_VER|IP_HLEN))
+		return 0;
+
+	// check for don't fragment
+	if(iphdr->frag[0] & (IP_DF>>8))
+		return 0;
+
+	// check for short block
+	if(nhgets(iphdr->length) > n)
+		return 0;
+
+	return 1;
+}
+
+
 static void
 etherwrite(Port *port, Block *bp)
 {
+	Iphdr *eh, *feh;
+	Etherpkt *epkt;
+	int n, lid, len, seglen, chunk, dlen, blklen, offset, mf;
+	Block *xp, *nb;
+	ushort fragoff, frag;
+
 	port->out++;
-	devtab[port->data[1]->type]->bwrite(port->data[1], bp, 0);
+	epkt = (Etherpkt*)bp->rp;
+	n = blocklen(bp);
+	if(port->type != Ttun || !fragment(epkt, n)) {
+		devtab[port->data[1]->type]->bwrite(port->data[1], bp, 0);
+		return;
+	}
+	port->outfrag++;
+	if(waserror()){
+		freeblist(bp);	
+		nexterror();
+	}
+
+	seglen = (TunnelMtu - ETHERHDRSIZE - IPHDR) & ~7;
+	eh = (Iphdr*)(epkt->data);
+	len = nhgets(eh->length);
+	frag = nhgets(eh->frag);
+	mf = frag & IP_MF;
+	frag <<= 3;
+	dlen = len - IPHDR;
+	xp = bp;
+	lid = nhgets(eh->id);
+	offset = ETHERHDRSIZE+IPHDR;
+	while(xp != nil && offset && offset >= BLEN(xp)) {
+		offset -= BLEN(xp);
+		xp = xp->next;
+	}
+	xp->rp += offset;
+	
+if(0) print("seglen=%d, dlen=%d, mf=%x, frag=%d\n", seglen, dlen, mf, frag);
+	for(fragoff = 0; fragoff < dlen; fragoff += seglen) {
+		nb = allocb(ETHERHDRSIZE+IPHDR+seglen);
+		
+		feh = (Iphdr*)(nb->wp+ETHERHDRSIZE);
+
+		memmove(nb->wp, epkt, ETHERHDRSIZE+IPHDR);
+		nb->wp += ETHERHDRSIZE+IPHDR;
+
+		if((fragoff + seglen) >= dlen) {
+			seglen = dlen - fragoff;
+			hnputs(feh->frag, (frag+fragoff)>>3 | mf);
+		}
+		else	
+			hnputs(feh->frag, (frag+fragoff>>3) | IP_MF);
+
+		hnputs(feh->length, seglen + IPHDR);
+		hnputs(feh->id, lid);
+
+		/* Copy up the data area */
+		chunk = seglen;
+		while(chunk) {
+			blklen = chunk;
+			if(BLEN(xp) < chunk)
+				blklen = BLEN(xp);
+			memmove(nb->wp, xp->rp, blklen);
+			nb->wp += blklen;
+			xp->rp += blklen;
+			chunk -= blklen;
+			if(xp->rp == xp->wp)
+				xp = xp->next;
+		} 
+
+		feh->cksum[0] = 0;
+		feh->cksum[1] = 0;
+		hnputs(feh->cksum, ipcsum(&feh->vihl));
+	
+		// don't generate small packets
+		if(BLEN(nb) < ETHERMINTU)
+			nb->wp = nb->rp + ETHERMINTU;
+		devtab[port->data[1]->type]->bwrite(port->data[1], nb, 0);
+	}
+	poperror();
+	freeblist(bp);	
 }
 
 // hold b lock
