@@ -379,9 +379,9 @@ i8250baud(Uart* uart, int baud)
 	Ctlr *ctlr;
 
 	/*
-	 * Set the baudrate by calculating and setting the baudrate
-	 * generator constant. This will work with fairly non-standard
-	 * baudrates.
+	 * Set the Baud rate by calculating and setting the Baud rate
+	 * Generator Constant. This will work with fairly non-standard
+	 * Baud rates.
 	 */
 	if(uart->freq == 0 || baud <= 0)
 		return -1;

@@ -405,9 +405,9 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 		type |= Rptpt;
 	}
 	if(isv4(ip))
-		v4addroute(f, tifc, rem+IPv4off, mask+IPv4off, ip+IPv4off, type);
+		v4addroute(f, tifc, rem+IPv4off, mask+IPv4off, rem+IPv4off, type);
 	else
-		v6addroute(f, tifc, rem, mask, ip, type);
+		v6addroute(f, tifc, rem, mask, rem, type);
 
 	addselfcache(f, ifc, lifc, ip, Runi);
 
@@ -502,6 +502,8 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 			wunlock(ifc);
 		return "address not on this interface";
 	}
+
+	ifc->ifcid++;
 
 	/* disassociate any addresses */
 	while(lifc->link)

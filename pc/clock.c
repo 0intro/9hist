@@ -10,7 +10,7 @@ void
 clockintr(Ureg* ureg, void*)
 {
 	// this needs to be here for synchronizing mp clocks
-	// see mp.c's squidboy()
+	// see pc/mp.c's squidboy()
 	fastticks(nil);
 
 	if(m->flushmmu){

@@ -383,6 +383,7 @@ struct	RouteTree
 	uchar	ifcid;		/* must match ifc->id */
 	Ipifc	*ifc;
 	char	tag[4];
+	int	ref;
 };
 
 struct V4route

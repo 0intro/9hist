@@ -57,6 +57,7 @@ allocroute(int type)
 	memset(r, 0, n);
 	r->type = type;
 	r->ifc = nil;
+	r->ref = 1;
 
 	return r;
 }
@@ -271,7 +272,8 @@ addnode(Fs *f, Route **cur, Route *new)
 			p->type = new->type;
 			p->ifcid = -1;
 			copygate(p, new);
-		}
+		} else if(new->type & Rifc)
+			p->ref++;
 		freeroute(new);
 		break;
 	case Rcontained:
@@ -404,15 +406,17 @@ v4delroute(Fs *f, uchar *a, uchar *mask, int dolock)
 		r = looknode(&f->v4root[h], &rt);
 		if(r) {
 			p = *r;
-			*r = 0;
-			addqueue(&f->queue, p->left);
-			addqueue(&f->queue, p->mid);
-			addqueue(&f->queue, p->right);
-			freeroute(p);
-			while(p = f->queue) {
-				f->queue = p->mid;
-				walkadd(f, &f->v4root[h], p->left);
+			if(--(p->ref) == 0){
+				*r = 0;
+				addqueue(&f->queue, p->left);
+				addqueue(&f->queue, p->mid);
+				addqueue(&f->queue, p->right);
 				freeroute(p);
+				while(p = f->queue) {
+					f->queue = p->mid;
+					walkadd(f, &f->v4root[h], p->left);
+					freeroute(p);
+				}
 			}
 		}
 		if(dolock)
@@ -445,15 +449,17 @@ v6delroute(Fs *f, uchar *a, uchar *mask, int dolock)
 		r = looknode(&f->v6root[h], &rt);
 		if(r) {
 			p = *r;
-			*r = 0;
-			addqueue(&f->queue, p->left);
-			addqueue(&f->queue, p->mid);
-			addqueue(&f->queue, p->right);
-			freeroute(p);
-			while(p = f->queue) {
-				f->queue = p->mid;
-				walkadd(f, &f->v6root[h], p->left);
+			if(--(p->ref) == 0){
+				*r = 0;
+				addqueue(&f->queue, p->left);
+				addqueue(&f->queue, p->mid);
+				addqueue(&f->queue, p->right);
 				freeroute(p);
+				while(p = f->queue) {
+					f->queue = p->mid;
+					walkadd(f, &f->v6root[h], p->left);
+					freeroute(p);
+				}
 			}
 		}
 		if(dolock)
