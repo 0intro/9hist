@@ -33,25 +33,25 @@ typedef struct Wltv 	Wltv;
 typedef struct WFrame	WFrame;
 typedef struct Stats	Stats;
 typedef struct WStats	WStats;
-typedef struct WKey		WKey;
+typedef struct WKey	WKey;
 
 struct WStats 
 {
-	ulong	ntxuframes;			// unicast frames
-	ulong	ntxmframes;			// multicast frames
-	ulong	ntxfrags;			// fragments
-	ulong	ntxubytes;			// unicast bytes
-	ulong	ntxmbytes;			// multicast bytes
+	ulong	ntxuframes;		// unicast frames
+	ulong	ntxmframes;		// multicast frames
+	ulong	ntxfrags;		// fragments
+	ulong	ntxubytes;		// unicast bytes
+	ulong	ntxmbytes;		// multicast bytes
 	ulong	ntxdeferred;		// deferred transmits
 	ulong	ntxsretries;		// single retries
 	ulong	ntxmultiretries;	// multiple retries
 	ulong	ntxretrylimit;
 	ulong	ntxdiscards;
-	ulong	nrxuframes;			// unicast frames
-	ulong	nrxmframes;			// multicast frames
-	ulong	nrxfrags;			// fragments
-	ulong	nrxubytes;			// unicast bytes
-	ulong	nrxmbytes;			// multicast bytes
+	ulong	nrxuframes;		// unicast frames
+	ulong	nrxmframes;		// multicast frames
+	ulong	nrxfrags;		// fragments
+	ulong	nrxubytes;		// unicast bytes
+	ulong	nrxmbytes;		// multicast bytes
 	ulong	nrxfcserr;
 	ulong	nrxdropnobuf;
 	ulong	nrxdropnosa;
@@ -63,55 +63,55 @@ struct WStats
 
 struct WFrame
 {
-	ushort		sts;
-	ushort		rsvd0;
-	ushort		rsvd1;
-	ushort		qinfo;
-	ushort		rsvd2;
-	ushort		rsvd3;
-	ushort		txctl;
-	ushort		framectl;
-	ushort		id;
-	uchar		addr1[Eaddrlen];
-	uchar		addr2[Eaddrlen];
-	uchar		addr3[Eaddrlen];
-	ushort		seqctl;
-	uchar		addr4[Eaddrlen];
-	ushort		dlen;
-	uchar		dstaddr[Eaddrlen];
-	uchar		srcaddr[Eaddrlen];
-	ushort		len;
-	ushort		dat[3];
-	ushort		type;
+	ushort	sts;
+	ushort	rsvd0;
+	ushort	rsvd1;
+	ushort	qinfo;
+	ushort	rsvd2;
+	ushort	rsvd3;
+	ushort	txctl;
+	ushort	framectl;
+	ushort	id;
+	uchar	addr1[Eaddrlen];
+	uchar	addr2[Eaddrlen];
+	uchar	addr3[Eaddrlen];
+	ushort	seqctl;
+	uchar	addr4[Eaddrlen];
+	ushort	dlen;
+	uchar	dstaddr[Eaddrlen];
+	uchar	srcaddr[Eaddrlen];
+	ushort	len;
+	ushort	dat[3];
+	ushort	type;
 };
 
 // Lucent's Length-Type-Value records  to talk to the wavelan.
 // most operational parameters are read/set using this. 
 enum 
 {
-	WTyp_Stats	=	0xf100,
-	WTyp_Ptype	= 	0xfc00,
-	WTyp_Mac	= 	0xfc01,
-	WTyp_WantName= 	0xfc02,
-	WTyp_Chan	= 	0xfc03,
-	WTyp_NetName = 	0xfc04,
-	WTyp_ApDens	= 	0xfc06,
-	WTyp_MaxLen	= 	0xfc07,
-	WTyp_PM		=	0xfc09,
-	WTyp_PMWait	=	0xfc0c,
-	WTyp_NodeName= 	0xfc0e,
-	WTyp_Crypt	=	0xfc20,
-	WTyp_XClear=	0xfc22,
-	WTyp_Tick 	= 	0xfce0,
-	WTyp_RtsThres= 	0xfc83,
-	WTyp_TxRate	= 	0xfc84,
-		WTx1Mbps	= 	0x0,
-		WTx2Mbps	= 	0x1,
-		WTxAuto		= 	0x3,
-	WTyp_Prom	=	0xfc85,
-	WTyp_Keys	=	0xfcb0,
-	WTyp_TxKey	=	0xfcb1,
-	WTyp_HasCrypt=	0xfd4f,
+	WTyp_Stats	= 0xf100,
+	WTyp_Ptype	= 0xfc00,
+	WTyp_Mac	= 0xfc01,
+	WTyp_WantName	= 0xfc02,
+	WTyp_Chan	= 0xfc03,
+	WTyp_NetName	= 0xfc04,
+	WTyp_ApDens	= 0xfc06,
+	WTyp_MaxLen	= 0xfc07,
+	WTyp_PM		= 0xfc09,
+	WTyp_PMWait	= 0xfc0c,
+	WTyp_NodeName	= 0xfc0e,
+	WTyp_Crypt	= 0xfc20,
+	WTyp_XClear	= 0xfc22,
+	WTyp_Tick 	= 0xfce0,
+	WTyp_RtsThres	= 0xfc83,
+	WTyp_TxRate	= 0xfc84,
+		WTx1Mbps	= 0x0,
+		WTx2Mbps	= 0x1,
+		WTxAuto		= 0x3,
+	WTyp_Prom	= 0xfc85,
+	WTyp_Keys	= 0xfcb0,
+	WTyp_TxKey	= 0xfcb1,
+	WTyp_HasCrypt	= 0xfd4f,
 };
 
 
@@ -119,12 +119,12 @@ enum
 // Controller
 enum
 {
-	WDfltIRQ = 3,		// default irq
-	WDfltIOB = 0x100,	// default IO base
+	WDfltIRQ	 = 3,		// default irq
+	WDfltIOB	 = 0x100,	// default IO base
 
-	WIOLen = 0x40,	// Hermes IO length
+	WIOLen		 = 0x40,	// Hermes IO length
 
-	WTmOut = 65536,	// Cmd time out
+	WTmOut		 = 65536,	// Cmd time out
 
 	WPTypeManaged	= 1,
 	WPTypeWDS	= 2,
@@ -133,7 +133,7 @@ enum
 
 	WDfltApDens	= 1,
 	WDfltRtsThres	= 2347,		// == disabled
-	WDfltTxRate	= WTxAuto,		// 2Mbps
+	WDfltTxRate	= WTxAuto,	// 2Mbps
 
 	WMaxLen		= 2304,
 	WNameLen	= 32,
@@ -148,7 +148,7 @@ enum
 		WCmdEna		= 0x0001,
 		WCmdDis		= 0x0002,
 		WCmdMalloc	= 0x000a,
-		WCmdAskStats= 0x0011,
+		WCmdAskStats	= 0x0011,
 		WCmdMsk		= 0x003f,
 		WCmdAccRd	= 0x0021,
 		WCmdAccWr	= 0x0121,
@@ -205,8 +205,8 @@ enum
 };
 
 #define csr_outs(ctlr,r,arg) 	outs((ctlr)->iob+(r),(arg))
-#define csr_ins(ctlr,r)			ins((ctlr)->iob+(r))
-#define csr_ack(ctlr,ev)		outs((ctlr)->iob+WR_EvAck,(ev))
+#define csr_ins(ctlr,r)		ins((ctlr)->iob+(r))
+#define csr_ack(ctlr,ev)	outs((ctlr)->iob+WR_EvAck,(ev))
 
 struct WKey
 {
@@ -248,10 +248,10 @@ struct Stats
 	ulong	ntxrq;
 	ulong	nrxerr;
 	ulong	ntxerr;
-	ulong	nalloc;		// allocation (reclaim) events
+	ulong	nalloc;			// allocation (reclaim) events
 	ulong	ninfo;
 	ulong	nidrop;
-	ulong	nwatchdogs;	// transmits time outs, actually
+	ulong	nwatchdogs;		// transmits time outs, actually
 };
 
 struct Ctlr 
@@ -259,31 +259,31 @@ struct Ctlr
 	Lock;
 	Rendez	timer;
 
-	int		attached;
-	int		slot;
-	int		iob;
-	int		ptype;
-	int		apdensity;
-	int		rtsthres;
-	int		txbusy;
-	int		txrate;
-	int		txdid;
-	int		txmid;
-	int		txtmout;
-	int		maxlen;
-	int		chan;
-	int		pmena;
-	int		pmwait;
+	int	attached;
+	int	slot;
+	int	iob;
+	int	ptype;
+	int	apdensity;
+	int	rtsthres;
+	int	txbusy;
+	int	txrate;
+	int	txdid;
+	int	txmid;
+	int	txtmout;
+	int	maxlen;
+	int	chan;
+	int	pmena;
+	int	pmwait;
 
 	char	netname[WNameLen];
 	char	wantname[WNameLen];
 	char	nodename[WNameLen];
 	WFrame	txf;
 	uchar	txbuf[1536];
-	int		txlen;
+	int	txlen;
 
-	int		keyid;			// 0 if not using WEP
-	int		xclear;
+	int	keyid;			// 0 if not using WEP
+	int	xclear;
 	WKey	key[WNKeys];
 
 	Stats;
@@ -312,6 +312,7 @@ w_cmd(Ctlr *ctlr, ushort cmd, ushort arg)
 {
 	int i;
 	int rc;
+
 	csr_outs(ctlr, WR_Parm0, arg);
 	csr_outs(ctlr, WR_Cmd, cmd);
 	for (i = 0; i<WTmOut; i++){
@@ -428,12 +429,12 @@ ltv_outstr(Ctlr* ctlr, int type, char *val)
 	memset(&l,0,sizeof(l));
 	l.type = type;
 	l.len = (len/2)+2;
-	l.val = len;					// l.s[0] and l.s[1]
+	l.val = len;			// l.s[0] and l.s[1]
 	strncpy(l.s+2,val,strlen(val));
 	w_outltv(ctlr, &l);
 }
 
-static char	Unkname[] = "who knows";
+static char Unkname[] = "who knows";
 static char Nilname[] = "card does not tell";
 
 static char*
@@ -457,8 +458,8 @@ ltv_inkey(Ctlr* ctlr, int id)
 {
 	static char k[WKeyLen+1];
 	Wltv l;
-	int	len;
-	int i;
+	int i, len;
+
 	id--; 
 	memset(&l, 0, sizeof(l));
 	l.type = WTyp_Keys;
@@ -485,8 +486,8 @@ ltv_inkey(Ctlr* ctlr, int id)
 		if (l.key[id].dat[0] != 0){
 			DEBUG("%s ", l.key[id].dat);
 		} 
-		else 
-			DEBUG("none ");
+//		else 
+//			DEBUG("none ");
 	}
 	DEBUG("\n");
 	if (l.key[id].dat[0] == 0)
@@ -504,7 +505,7 @@ static int
 w_read(Ctlr* ctlr, int type, int off, void* buf, ulong len)
 {
 	ushort *p = (ushort*)buf;
-	int		i, n;
+	int i, n;
 
 	n=0;
 	if (w_seek(ctlr, type, off, 1) == 0){
@@ -524,8 +525,8 @@ static int
 w_write(Ctlr* ctlr, int type, int off, void* buf, ulong len)
 {
 	ushort *p = (ushort*)buf;
-	ulong	l = len / 2;
-	int		i,tries;
+	ulong l = len / 2;
+	int i,tries;
 
 	for (tries=0; tries < WTmOut; tries++){	
 		if (w_seek(ctlr, type, off, 0)){
@@ -576,9 +577,9 @@ w_alloc(Ctlr* ctlr, int len)
 static int 
 w_enable(Ether* ether)
 {
-	Wltv	l;
-	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
-	ushort	wep;
+	Wltv l;
+	Ctlr* ctlr = (Ctlr*) ether->ctlr;
+	ushort wep;
 
 	if (!ctlr)
 		return -1;
@@ -596,8 +597,8 @@ w_enable(Ether* ether)
 	ltv_outs(ctlr, WTyp_RtsThres, ctlr->rtsthres);
 	ltv_outs(ctlr, WTyp_TxRate, ctlr->txrate);
 	ltv_outs(ctlr, WTyp_ApDens, ctlr->apdensity);
-	ltv_outs(ctlr, WTyp_PM, ctlr->pmena);
 	ltv_outs(ctlr, WTyp_PMWait, ctlr->pmwait);
+	ltv_outs(ctlr, WTyp_PM, ctlr->pmena);
 	if (*ctlr->netname)
 		ltv_outstr(ctlr, WTyp_NetName, ctlr->netname);
 	if (*ctlr->wantname)
@@ -613,7 +614,6 @@ w_enable(Ether* ether)
 	ltv_outs(ctlr, WTyp_Prom, (ether->prom?1:0));
 
 	wep = ltv_ins(ctlr, WTyp_HasCrypt);
-iprint("wep %d\n", wep);
 	if (wep)
 		if (ctlr->keyid == 0)
 			ltv_outs(ctlr, WTyp_Crypt, 0);
@@ -653,11 +653,11 @@ iprint("wep %d\n", wep);
 static void
 w_rxdone(Ether* ether)
 {
-	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
-	ushort	sp;
-	WFrame	f;
-	Block*	bp=0;
-	ulong	l;
+	Ctlr* ctlr = (Ctlr*) ether->ctlr;
+	ushort sp;
+	WFrame f;
+	Block* bp=0;
+	ulong l;
 	Etherpkt* ep;
 
 	sp = csr_ins(ctlr, WR_RXId);
@@ -715,8 +715,8 @@ w_txstart(Ether* ether, int again)
 {
 
 	Etherpkt* ep;
-	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
-	Block*	bp; 
+	Ctlr* ctlr = (Ctlr*) ether->ctlr;
+	Block* bp; 
 	int		txid;
 	if (ctlr == 0 || ctlr->attached == 0 )
 		return -1;
@@ -795,11 +795,11 @@ w_txdone(Ctlr* ctlr, int sts)
 static int
 w_stats(Ctlr* ctlr)
 {
-	int		sp,i;
-	ushort	rc;
-	Wltv	l;
-	ulong*	p = (ulong*)&ctlr->WStats;
-	ulong*	pend= (ulong*)&ctlr->end;
+	int sp,i;
+	ushort rc;
+	Wltv l;
+	ulong* p = (ulong*)&ctlr->WStats;
+	ulong* pend= (ulong*)&ctlr->end;
 
 	sp = csr_ins(ctlr, WR_InfoId);
 	l.type = l.len = 0;
@@ -820,8 +820,8 @@ w_stats(Ctlr* ctlr)
 static void
 w_intr(Ether *ether)
 {
-	int 	rc, txid, i;
-	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
+	int  rc, txid, i;
+	Ctlr* ctlr = (Ctlr*) ether->ctlr;
 
 	if (ctlr->attached == 0){
 		csr_ack(ctlr, 0xffff);
@@ -876,8 +876,8 @@ w_intr(Ether *ether)
 static void
 w_timer(void* arg)
 {
-	Ether*	ether = (Ether*) arg;
-	Ctlr*	ctlr = (Ctlr*)ether->ctlr;
+	Ether* ether = (Ether*) arg;
+	Ctlr* ctlr = (Ctlr*)ether->ctlr;
 	int tick=0;
 
 	for(;;){
@@ -949,9 +949,9 @@ multicast(void*, uchar*, int)
 static void
 attach(Ether* ether)
 {
-	Ctlr*	ctlr;
-	char	name[NAMELEN];
-	int		rc;
+	Ctlr* ctlr;
+	char name[NAMELEN];
+	int rc;
 
 	if (ether->ctlr == 0)
 		return;
@@ -971,16 +971,14 @@ attach(Ether* ether)
 }
 
 #define PRINTSTAT(fmt,val)	l += snprint(p+l, READSTR-l, (fmt), (val))
-#define PRINTSTR(fmt)	l += snprint(p+l, READSTR-l, (fmt))
+#define PRINTSTR(fmt)		l += snprint(p+l, READSTR-l, (fmt))
 
 static long
 ifstat(Ether* ether, void* a, long n, ulong offset)
 {
-	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
-	char*	p;
-	int		l, i;
-	int		txid;
-	char*	k;
+	Ctlr *ctlr = (Ctlr*) ether->ctlr;
+	char *k, *p;
+	int l, i, txid;
 
 	if (n == 0 || ctlr == 0){
 		return 0;
@@ -1081,18 +1079,16 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 #undef PRINTSTAT
 
 		
-#define min(a,b) (((a)<(b))?(a):(b))
 static long 
 ctl(Ether* ether, void* buf, long n)
 {
-	int i;
+	int i, key;
 	Ctlr *ctlr;
 	Cmdbuf *cb;
 	char *nessid;
 	WKey *kp;
 	char k[64];
 	char *kn= &k[3];
-	int	 key;
 
 	if((ctlr = ether->ctlr) == nil)
 		error(Enonexist);
@@ -1141,7 +1137,7 @@ ctl(Ether* ether, void* buf, long n)
 			error("port type not in [1-3]");
 		ctlr->ptype = i;
 	}
-	else if(strncmp(cb->f[0], "key", 3) == 0){
+	else if(strcmp(cb->f[0], "key") == 0){
 		strncpy(k,cb->f[0],64);
 		if (strcmp(cb->f[1], "off") == 0)
 			ctlr->keyid = 0;
@@ -1168,6 +1164,20 @@ ctl(Ether* ether, void* buf, long n)
 				kp->len = WMinKeyLen;
 		}
 	} 
+	else if(strcmp(cb->f[0], "pm") == 0){
+		if(strcmp(cb->f[1], "off") == 0)
+			ctlr->pmena = 0;
+		else if(strcmp(cb->f[1], "on") == 0){
+			ctlr->pmena = 1;
+			if(cb->nf == 3){
+				i = atoi(cb->f[2]);
+				// check range here? what are the units?
+				ctlr->pmwait = i;
+			}
+		}
+		else
+			error(Ebadctl);
+	}
 	else
 		error(Ebadctl);
 
@@ -1199,8 +1209,8 @@ transmit(Ether* ether)
 static void
 promiscuous(void* arg, int on)
 {
-	Ether*	ether = (Ether*)arg;
-	Ctlr*	ctlr = ether->ctlr;
+	Ether* ether = (Ether*)arg;
+	Ctlr* ctlr = ether->ctlr;
 
 	if (ctlr == nil)
 		error("card not found");
@@ -1216,8 +1226,8 @@ promiscuous(void* arg, int on)
 static void 
 interrupt(Ureg* ,void* arg)
 {
-	Ether*	ether = (Ether*) arg;
-	Ctlr*	ctlr = (Ctlr*) ether->ctlr;
+	Ether* ether = (Ether*) arg;
+	Ctlr* ctlr = (Ctlr*) ether->ctlr;
 
 	if (ctlr == 0)
 		return;
@@ -1230,19 +1240,17 @@ interrupt(Ureg* ,void* arg)
 static void
 setopt(Ctlr* ctlr, char* opt, int no)
 {
-	int i;
+	int i, key;
 	char k[64];
 	char *kn = &k[3];
 	WKey *kp;
 	char *ke;
-	int key;
 
 	if (strncmp(opt,"essid=",6) == 0){
 		if (ctlr->ptype == 3)
 			strncpy(ctlr->netname,opt+6,WNameLen);
 		else
 			strncpy(ctlr->wantname,opt+6,WNameLen);
-iprint("essid %d %s\n", ctlr->ptype, opt+6);
 	} 
 	else if (strncmp(opt,"station_name=",13) == 0){
 		// BUG?
@@ -1250,7 +1258,6 @@ iprint("essid %d %s\n", ctlr->ptype, opt+6);
 		// opt is 16, and I get "na" as node name
 		// when I say station_name=nautilus.
 		strncpy(ctlr->nodename, opt+13,WNameLen);
-iprint("nodename %s\n", ctlr->nodename);
 	} 
 	else if (strncmp(opt, "channel=",8) == 0){
 		i = atoi(opt+8);
@@ -1258,7 +1265,6 @@ iprint("nodename %s\n", ctlr->nodename);
 			print("#l%d: channel (%d) not in [1-16]\n",no,i);
 		else
 			ctlr->chan = i;
-iprint("chan %d\n", i);
 	} 
 	else if (strncmp(opt, "ptype=",6) == 0){
 		i = atoi(opt+6);
@@ -1266,7 +1272,6 @@ iprint("chan %d\n", i);
 			print("#l%d: port type (%d) not in [1-3]\n",no,i);
 		else
 			ctlr->ptype = i;
-iprint("ptype %d\n", i);
 	}
 	else if (strncmp(opt, "key", 3) == 0){
 		if (opt[3] == 0 || opt[4] != '='){
@@ -1294,16 +1299,15 @@ iprint("ptype %d\n", i);
 			kp->len = WKeyLen;
 		else if (kp->len > 0)
 			kp->len = WMinKeyLen;
-iprint("key %d <%s> len %d\n", key, kp->dat, kp->len);
 	}
 }
 
 static int
 reset(Ether* ether)
 {
-	Ctlr*	ctlr;
-	Wltv	ltv;
-	int		i;
+	Ctlr* ctlr;
+	Wltv ltv;
+	int i;
 
 	if (ether->ctlr){
 		print("#l%d: only one card supported\n", ether->ctlrno);
@@ -1405,4 +1409,3 @@ etherwavelanlink(void)
 {
 	addethercard("wavelan", reset);
 }
-
