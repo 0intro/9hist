@@ -453,9 +453,10 @@ Block	*btrim(Block*, int, int);
 Block	*ip_reassemble(int, Block*, Etherhdr*);
 Ipconv	*portused(Ipconv *, Port);
 Port	nextport(Ipconv *, Port);
-void	arp_enter(Arpentry*, int);
-void	arp_flush(void);
-int	arp_delete(char*);
+void	arpenter(Arpentry*, int);
+void	arpflush(void);
+int	arpdelete(char*);
+void	pusharpq(void);
 void	arplinkhead(Arpcache*);
 Fragq   *ipfragallo(void);
 void	ipfragfree(Fragq*);
@@ -509,6 +510,7 @@ void	tcp_acktimer(void *);
 Ipconv  *ipclonecon(Chan *);
 void	iplisten(Chan *, Ipconv *, Ipconv *);
 void	iloutoforder(Ipconv*, Ilhdr*, Block*);
+void	arpsendpkt(uchar*, uchar*, Queue*, Block*);
 
 #define	fmtaddr(xx)	(xx>>24)&0xff,(xx>>16)&0xff,(xx>>8)&0xff,xx&0xff
 #define	MIN(a, b)	((a) < (b) ? (a) : (b))

@@ -1324,11 +1324,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
  *  like andrew's getmfields but no hidden state
  */
 int
-getfields(char *lp,	/* to be parsed */
-	char **fields,	/* where to put pointers */
-	int n,		/* number of pointers */
-	char sep	/* separator */
-)
+getfields(char *lp, char **fields, int n, char sep)
 {
 	int i;
 

@@ -684,7 +684,6 @@ lanceup(Ethertype *e, Etherpkt *p, int len)
 
 	if(waserror())
 		return;
-
 	if(e->q && e->q->next->len<=Streamhi){
 		bp = allocb(len);
 		memmove(bp->rptr, (uchar *)p, len);
@@ -704,6 +703,7 @@ isinput(void *arg)
 	Lancemem *lm = LANCEMEM;
 	return l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0;
 }
+
 static void
 lancekproc(void *arg)
 {
@@ -740,7 +740,6 @@ lancekproc(void *arg)
 			len = MPus(m->cntflags) - 4;
 			for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
 				if(e->q!=0 && (t==e->type||e->type==-1) && canqlock(e)){
-if(p->type[0] == 0x80 || p->type[0] == 0x8) print("*");
 					if(t==e->type||e->type==-1)
 						lanceup(e, p, len);
 					qunlock(e);
@@ -761,7 +760,6 @@ stage:
 		}
 		qunlock(&l.rlock);
 		sleep(&l.rr, isinput, 0);
-print("!");
 	}
 }
 

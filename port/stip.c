@@ -200,12 +200,7 @@ ipetheroput(Queue *q, Block *bp)
 
 		/* Finally put in the ethernet level information */
 		hnputs(eh->type, ET_IP);
-		if(!arp_lookup(eh->dst, eh->d)) {
-			freeb(bp);
-			return;
-		}
-
-		PUTNEXT(Etherq, bp);
+		arpsendpkt(eh->dst, eh->d, Etherq, bp);
 		return;
 	}
 
@@ -218,10 +213,6 @@ ipetheroput(Queue *q, Block *bp)
 
 	/* Make prototype output header */
 	hnputs(eh->type, ET_IP);
-	if(!arp_lookup(eh->dst, eh->d)) {
-		freeb(bp);
-		return;
-	}
 	
 	dlen = len - (ETHER_HDR+ETHER_IPHDR);
 	xp = bp;
@@ -271,9 +262,8 @@ ipetheroput(Queue *q, Block *bp)
 		feh->cksum[0] = 0;
 		feh->cksum[1] = 0;
 		hnputs(feh->cksum, ip_csum(&feh->vihl));
-
 		nb->flags |= S_DELIM;
-		PUTNEXT(Etherq, nb);
+		arpsendpkt(feh->dst, feh->d, Etherq, nb);
 	}
 
 drop:
