@@ -335,7 +335,7 @@ drawcmp(char *a, char *b, int n)
 }
 
 DName*
-drawlookupname(int n, char *str, int err)
+drawlookupname(int n, char *str)
 {
 	DName *name, *ename;
 
@@ -344,8 +344,6 @@ drawlookupname(int n, char *str, int err)
 	for(; name<ename; name++)
 		if(drawcmp(name->name, str, n) == 0)
 			return name;
-	if(err)
-		error(Enoname);
 	return 0;
 }
 
@@ -361,7 +359,7 @@ drawgoodname(DImage *d)
 			return 0;
 	if(d->name == nil)
 		return 1;
-	n = drawlookupname(strlen(d->name), d->name, 0);
+	n = drawlookupname(strlen(d->name), d->name);
 	if(n==nil || n->vers!=d->vers)
 		return 0;
 	return 1;
@@ -1382,7 +1380,9 @@ drawmesg(Client *client, void *av, int n)
 			dstid = BGLONG(a+1);
 			if(drawlookup(client, dstid, 0))
 				error(Eimageexists);
-			dn = drawlookupname(j, (char*)a+6, 1);
+			dn = drawlookupname(j, (char*)a+6);
+			if(dn == nil)
+				error(Enoname);
 			if(drawinstall(client, dstid, dn->dimage->image, 0) == 0)
 				error(Edrawmem);
 			di = drawlookup(client, dstid, 0);
@@ -1415,7 +1415,9 @@ drawmesg(Client *client, void *av, int n)
 			if(c)
 				drawaddname(client, di, j, (char*)a+7);
 			else{
-				dn = drawlookupname(j, (char*)a+7, 1);
+				dn = drawlookupname(j, (char*)a+7);
+				if(dn == nil)
+					error(Enoname);
 				if(dn->dimage != di)
 					error(Ewrongname);
 				drawdelname(dn);
