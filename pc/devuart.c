@@ -37,7 +37,7 @@ enum
 	 Rts=	(1<<1),		/*  request to send */
 	 Ri=	(1<<2),		/*  ring */
 	 Inton=	(1<<3),		/*  turn on interrupts */
-	 Loop=	(1<<4),		/*  loop bask */
+	 Loop=	(1<<4),		/*  loop back */
 	Lstat=	5,		/* line status */
 	 Inready=(1<<0),	/*  receive buffer full */
 	 Oerror=(1<<1),		/*  receiver overrun */
@@ -147,6 +147,58 @@ uartbreak(Uart *up, int ms)
 }
 
 /*
+ *  set bits/char
+ */
+void
+uartbits(Uart *up, int bits)
+{
+	if(bits < 5 || bits > 8)
+		error(Ebadarg);
+	up->sticky[Format] &= ~3;
+	up->sticky[Format] |= bits-5;
+	uartwrreg(up, Format, 0);
+}
+
+/*
+ *  set parity
+ */
+void
+uartparity(Uart *up, int c)
+{
+	switch(c&0xff){
+	case 'e':
+		up->sticky[Format] |= Pena|Peven;
+		break;
+	case 'o':
+		up->sticky[Format] &= ~Peven;
+		up->sticky[Format] |= Pena;
+		break;
+	default:
+		up->sticky[Format] &= ~(Pena|Peven);
+		break;
+	}
+	uartwrreg(up, Format, 0);
+}
+
+/*
+ *  set stop bits
+ */
+void
+uartstop(Uart *up, int n)
+{
+	switch(n){
+	case 1:
+		up->sticky[Format] &= ~Stop2;
+		break;
+	case 2:
+	default:
+		up->sticky[Format] |= Stop2;
+		break;
+	}
+	uartwrreg(up, Format, 0);
+}
+
+/*
  *  default is 9600 baud, 1 stop bit, 8 bit chars, no interrupts,
  *  transmit and receive enabled, interrupts disabled.
  */
@@ -182,6 +234,9 @@ uartsetup(void)
 		uartwrreg(up, Format, 0);
 		up->sticky[Mctl] |= Inton;
 		uartwrreg(up, Mctl, 0x0);
+
+		uartdtr(up, 1);
+		uartrts(up, 1);
 	}
 }
 
@@ -355,9 +410,9 @@ uartdisable(Uart *up)
 
 	/*
 	 *  turn off DTR and RTS
-	 */
 	uartdtr(up, 0);
 	uartrts(up, 0);
+	 */
 	up->enabled = 0;
 
 	/*
@@ -487,9 +542,21 @@ uartoput(Queue *q, Block *bp)
 		case 'k':
 			uartbreak(up, n);
 			break;
+		case 'L':
+		case 'l':
+			uartbits(up, n);
+			break;
+		case 'P':
+		case 'p':
+			uartparity(up, *(bp->rptr+1));
+			break;
 		case 'R':
 		case 'r':
 			uartrts(up, n);
+			break;
+		case 'S':
+		case 's':
+			uartstop(up, n);
 			break;
 		}
 	}else while((m = BLEN(bp)) > 0){

@@ -409,12 +409,11 @@ interrupt(EtherCtlr *cp)
 		 * the transmitter.
 		 */
 		txstatus = 0;
-		while(ins(hw->addr+Status) & TxComplete){
-			x = inb(hw->addr+TxStatus);
-			if(x)
+		do{
+			if(x = inb(hw->addr+TxStatus))
 				outb(hw->addr+TxStatus, 0);
 			txstatus |= x;
-		}
+		}while(ins(hw->addr+Status) & TxComplete);
 		if(txstatus & (TxJabber|TxUnderrun))
 			COMMAND(hw, TxReset, 0);
 		COMMAND(hw, TxEnable, 0);
@@ -422,6 +421,11 @@ interrupt(EtherCtlr *cp)
 	}
 
 	if(status & (TxAvailable|TxComplete)){
+		/*
+		 * Reset the Tx FIFO threshold.
+		 */
+		if(status & TxAvailable)
+			COMMAND(hw, AckIntr, TxAvailable);
 		(*cp->hw->transmit)(cp);
 		wakeup(&cp->tr);
 		status &= ~(TxAvailable|TxComplete);

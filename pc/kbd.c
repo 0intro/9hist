@@ -179,17 +179,17 @@ mousecmd(int cmd)
 		if(tries++ > 5)
 			break;
 		if(outready() < 0)
-			continue;
+			break;
 		outb(Cmd, 0xD4);
 		if(outready() < 0)
-			continue;
+			break;
 		outb(Data, cmd);
 		if(outready() < 0)
-			continue;
+			break;
 		if(inready() < 0)
-			continue;
+			break;
 		c = inb(Data);
-	} while(c == 0xFE);
+	} while(c == 0xFE || c == 0);
 	if(c != 0xFA){
 		print("mouse returns %2.2ux to the %2.2ux command\n", c, cmd);
 		return -1;
@@ -270,7 +270,7 @@ kbdinit(void)
 void
 mouseserial(int port)
 {
-	if(mousetype == Mouseserial)
+	if(mousetype)
 		return;
 
 	/* set up /dev/eia0 as the mouse */
@@ -306,7 +306,7 @@ mouseps2(void)
 		print("mouse init failed\n");
 
 	/* make mouse streaming, enabled */
-	mousecmd(0xEA);
+	mousecmd(0xF6);
 	mousecmd(0xF4);
 	splx(x);
 
@@ -319,13 +319,16 @@ mouseps2(void)
 void
 mouseaccelerate(int on)
 {
+	int x;
 
 	switch(mousetype){
 	case MousePS2:
+		x = splhi();
 		if(on)
 			mousecmd(0xE7);
 		else
 			mousecmd(0xE6);
+		splx(x);
 		break;
 	}
 }
@@ -336,11 +339,14 @@ mouseaccelerate(int on)
 void
 mouseres(int res)
 {
+	int x;
 
 	switch(mousetype){
 	case MousePS2:
+		x = splhi();
 		mousecmd(0xE8);
 		mousecmd(res);
+		splx(x);
 		break;
 	}
 }

@@ -13,7 +13,8 @@ typedef	struct Drive		Drive;
 typedef	struct Controller	Controller;
 typedef struct Type		Type;
 
-#define DPRINT if(0)print
+#define DPRINT if(floppydebug)print
+int floppydebug;
 
 /* bits in the registers */
 enum
@@ -408,6 +409,7 @@ changed(Chan *c, Drive *dp)
 			if(dp->t == start)
 				nexterror();
 			floppyon(dp);
+			DPRINT("changed: trying %s\n", dp->t->name);
 		}
 		floppyxfer(dp, Fread, dp->cache, 0, dp->t->tsize);
 		poperror();
@@ -540,6 +542,8 @@ floppywrite(Chan *c, void *a, long n, ulong offset)
 			floppyon(dp);
 		} else if(SNCMP(ctlmsg, "format") == 0){
 			floppyformat(dp, ctlmsg);
+		} else if(SNCMP(ctlmsg, "debug") == 0){
+			floppydebug = 1;
 		}
 		poperror();
 		qunlock(&fl);
@@ -638,10 +642,12 @@ floppycmd(void)
 	int i;
 	int tries;
 
+	fl.nstat = 0;
 	for(i = 0; i < fl.ncmd; i++){
 		for(tries = 0; ; tries++){
 			if(tries > 1000){
-			DPRINT("cmd %ux can't be sent (%d %ux)\n", fl.cmd[0], i, inb(Pmsr));
+				DPRINT("cmd %ux can't be sent (%d %ux)\n",
+					fl.cmd[0], i, inb(Pmsr));
 				fl.confused = 1;
 				return -1;
 			}
@@ -754,6 +760,7 @@ static int
 floppyrecal(Drive *dp)
 {
 	dp->ccyl = -1;
+	dp->cyl = -1;
 
 	fl.ncmd = 0;
 	fl.cmd[fl.ncmd++] = Frecal;
@@ -762,16 +769,18 @@ floppyrecal(Drive *dp)
 		return -1;
 	floppywait();
 	if(fl.nstat < 2){
+		DPRINT("recalibrate: confused\n");
 		fl.confused = 1;
 		return -1;
 	}
 	if((fl.stat[0] & (Codemask|Seekend)) != Seekend){
+		DPRINT("recalibrate: failed\n");
 		dp->confused = 1;
 		return -1;
 	}
 	dp->cyl = fl.stat[1];
 	if(dp->cyl != 0){
-		DPRINT("recalibrate went to wrong cylinder %d\n", dp->cyl);
+		DPRINT("recalibrate: wrong cylinder %d\n", dp->cyl);
 		dp->cyl = -1;
 		dp->confused = 1;
 		return -1;
@@ -822,24 +831,23 @@ floppyseek(Drive *dp, long off)
 	floppypos(dp, off);
 	if(dp->cyl == dp->tcyl)
 		return dp->tcyl;
+	dp->cyl = -1;
 
-	DPRINT("seeking tcyl %d, thead %d\n", dp->tcyl, dp->thead);
+	DPRINT("seek: tcyl %d, thead %d\n", dp->tcyl, dp->thead);
 	fl.ncmd = 0;
 	fl.cmd[fl.ncmd++] = Fseek;
 	fl.cmd[fl.ncmd++] = (dp->thead<<2) | dp->dev;
 	fl.cmd[fl.ncmd++] = dp->tcyl * dp->t->steps;
-	if(floppycmd() < 0){
-		DPRINT("seek cmd failed\n");
+	if(floppycmd() < 0)
 		return -1;
-	}
 	floppywait();
 	if(fl.nstat < 2){
-		DPRINT("seek cmd confused\n");
+		DPRINT("seek: confused\n");
 		fl.confused = 1;
 		return -1;
 	}
 	if((fl.stat[0] & (Codemask|Seekend)) != Seekend){
-		DPRINT("seek failed\n");
+		DPRINT("seek: failed\n");
 		dp->confused = 1;
 		return -1;
 	}
@@ -855,7 +863,7 @@ static long
 floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 {
 	long offset;
-	int tries = 0;
+	int tries;
 
 	if(off >= dp->t->cap)
 		return 0;
@@ -863,15 +871,21 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 		n = dp->t->cap - off;
 
 	/* retry on error 3 times */
-	while(waserror())
+	tries = 0;
+	while(waserror()){
+		DPRINT("floppyxfer: retrying\n");
 		if(tries++ >= 3)
 			nexterror();
+	}
 
 	dp->len = n;
-	if(floppyseek(dp, off) < 0)
+	if(floppyseek(dp, off) < 0){
+		DPRINT("xfer: seek failed\n");
+		dp->confused = 1;
 		error(Eio);
+	}
 
-	DPRINT("tcyl %d, thead %d, tsec %d, addr %lux, n %d\n",
+	DPRINT("floppyxfer: tcyl %d, thead %d, tsec %d, addr %lux, n %d\n",
 	dp->tcyl, dp->thead, dp->tsec, a, dp->len);
 
 	/*
@@ -897,11 +911,8 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	fl.cmd[fl.ncmd++] = dp->t->sectors;
 	fl.cmd[fl.ncmd++] = dp->t->gpl;
 	fl.cmd[fl.ncmd++] = 0xFF;
-	if(floppycmd() < 0){
-		spllo();
-		DPRINT("xfer cmd failed\n");
+	if(floppycmd() < 0)
 		error(Eio);
-	}
 
 	/*
 	 *  give bus to DMA, floppyintr() will read result
@@ -914,12 +925,12 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	 *  check for errors
 	 */
 	if(fl.nstat < 7){
-		DPRINT("xfer result failed %lux\n", inb(Pmsr));
+		DPRINT("xfer: confused\n");
 		fl.confused = 1;
 		error(Eio);
 	}
 	if((fl.stat[0] & Codemask)!=0 || fl.stat[1] || fl.stat[2]){
-		DPRINT("xfer failed %lux %lux %lux\n", fl.stat[0],
+		DPRINT("xfer: failed %lux %lux %lux\n", fl.stat[0],
 			fl.stat[1], fl.stat[2]);
 		DPRINT("offset %lud len %d\n", off, dp->len);
 		dp->confused = 1;
@@ -933,7 +944,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	offset = offset*dp->t->sectors + fl.stat[5] - 1;
 	offset = offset * c2b[fl.stat[6]];
 	if(offset != off+dp->len){
-		DPRINT("xfer ends on wrong cyl\n");
+		DPRINT("xfer: ends on wrong cyl\n");
 		dp->confused = 1;
 		error(Eio);
 	}
@@ -979,6 +990,13 @@ floppyformat(Drive *dp, char *params)
 		nexterror();
 	}
 
+	/* force a recalibrate to cylinder 0 */
+	dp->confused = 1;
+	if(!waserror()){
+		floppyon(dp);
+		poperror();
+	}
+
 	/*
 	 *  format a track at time
 	 */
@@ -989,10 +1007,6 @@ floppyformat(Drive *dp, char *params)
 		/*
 		 *  seek to track, ignore errors
 		 */
-		if(!waserror()){
-			floppyon(dp);
-			poperror();
-		}
 		floppyseek(dp, track*t->tsize);
 		dp->cyl = cyl;
 		dp->confused = 0;
@@ -1023,10 +1037,8 @@ floppyformat(Drive *dp, char *params)
 		fl.cmd[fl.ncmd++] = t->sectors;
 		fl.cmd[fl.ncmd++] = t->fgpl;
 		fl.cmd[fl.ncmd++] = 0x5a;
-		if(floppycmd() < 0){
-			DPRINT("xfer cmd failed\n");
+		if(floppycmd() < 0)
 			error(Eio);
-		}
 
 		/*
 		 *  give bus to DMA, floppyintr() will read result
@@ -1039,12 +1051,12 @@ floppyformat(Drive *dp, char *params)
 		 *  check for errors
 		 */
 		if(fl.nstat < 7){
-			DPRINT("format result failed %lux\n",inb(Pmsr));
+			DPRINT("format: confused\n");
 			fl.confused = 1;
 			error(Eio);
 		}
 		if((fl.stat[0]&Codemask)!=0 || fl.stat[1]|| fl.stat[2]){
-			DPRINT("format failed %lux %lux %lux\n",
+			DPRINT("format: failed %lux %lux %lux\n",
 				fl.stat[0], fl.stat[1], fl.stat[2]);
 			dp->confused = 1;
 			error(Eio);
