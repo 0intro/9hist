@@ -125,7 +125,7 @@ lapictimerinit(void)
 	ulong lo, v;
 	vlong tsc;
 
-	v = m->cpumhz*1000;
+	v = m->cpuhz/1000;
 	lapicw(LapicTDCR, LapicX1);
 	lapicw(LapicTIMER, ApicIMASK|LapicCLKIN|LapicONESHOT|(VectorPIC+IrqTIMER));
 

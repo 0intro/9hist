@@ -153,6 +153,7 @@ main(void)
 	kbdinit();
 	if(arch->clockenable)
 		arch->clockenable();
+print("arch %s\n", arch->id);
 	procinit0();
 	initseg();
 	links();
