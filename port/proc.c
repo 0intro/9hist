@@ -60,12 +60,13 @@ schedinit(void)		/* never returns */
 			ready(p);
 		else if(p->state == Moribund){
 			p->pid = 0;
-			unlock(&p->debug);
-			p->upage->ref--;
+			memset(p->pidonmach, 0, sizeof p->pidonmach);
 			/* procalloc already locked */
 			p->qnext = procalloc.free;
 			procalloc.free = p;
+			p->upage->ref--;
 			p->upage = 0;
+			unlock(&p->debug);
 			unlock(&procalloc);
 			p->state = Dead;
 		}
@@ -334,6 +335,9 @@ postnote(Proc *p, int dolock, char *n, int flag)
 
 	if(dolock)
 		lock(&p->debug);
+
+	if(p->upage == 0)
+		errors("noted process disappeared");
 
 	if(p != u->p){
 		k = kmap(p->upage);

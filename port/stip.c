@@ -70,8 +70,10 @@ ipetheropen(Queue *q, Stream *s)
 	/* First open is by ipconfig and sets up channel
 	 * to ethernet
 	 */
-	if(!Etherq)
+	if(!Etherq) {
 		Etherq = WR(q);
+		s->opens++;		/* Hold this queue in place */
+	}
 
 	DPRINT("ipetheropen EQ %lux dev=%d id=%d RD %lux WR %lux\n",
 		Etherq, s->dev, s->id, RD(q), WR(q));
@@ -127,12 +129,6 @@ newipifc(uchar ptcl, void (*recvfun)(Ipconv *, Block *bp),
 static void
 ipetherclose(Queue *q)
 {
-	if(q == Etherq) {
-		print("stip: Clearing ether channel\n");
-		Etherq = 0;
-	}
-
-	DPRINT("ipetherclose RD %lux WR %lux\n", RD(q), WR(q));
 }
 
 void

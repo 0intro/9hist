@@ -66,6 +66,12 @@ main(int argc, char *argv[])
 	if(write(i, argv[0], strlen(argv[0])) != strlen(argv[0]))
 		error("sysname");
 	close(i);
+	i = create("#e/terminal", 1, 0666);
+	if(i < 0)
+		error("terminal");
+	if(write(i, "sgi power 4D", strlen("sgi power 4D")) < 0)
+		error("terminal");
+	close(i);
 
 	argv++;
 	argc--;	

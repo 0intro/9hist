@@ -134,9 +134,9 @@ sysfork(ulong *arg)
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
 	memmove(p->text, u->p->text, NAMELEN);
-	ready(p);
 	flushmmu();
 	clearmmucache();
+	ready(p);
 	return pid;
 }
 

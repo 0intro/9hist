@@ -595,12 +595,18 @@ void
 tcpstopen(Queue *q, Stream *s)
 {
 	Ipconv *ipc;
+	static int donekproc;
 
 	/* Start tcp service processes */
 	if(!Tcpoutput) {
 		Tcpoutput = WR(q);
+		/* This never goes away - we use this queue to send acks/rejects */
+		s->opens++;
+
+		/* Flow control and tcp timer processes */
 		kproc("tcpack", tcpackproc, 0);
 		kproc("tcpflow", tcpflow, &ipconv[s->dev]);
+
 	}
 
 	ipc = &ipconv[s->dev][s->id];

@@ -21,13 +21,26 @@ int	cache(int);
 
 main(int argc, char *argv[])
 {
-	int fd, f;
+	int fd, f, i;
 	char buf[256];
 	Dir dir;
 
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
+
+	i = create("#e/sysname", 1, 0666);
+	if(i < 0)
+		error("sysname");
+	if(write(i, argv[0], strlen(argv[0])) != strlen(argv[0]))
+		error("sysname");
+	close(i);
+	i = create("#e/terminal", 1, 0666);
+	if(i < 0)
+		error("terminal");
+	if(write(i, "at&t gnot 1", strlen("at&t gnot 1")) < 0)
+		error("terminal");
+	close(i);
 
 	bootparams();
 	dkconfig();
