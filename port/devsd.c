@@ -184,36 +184,11 @@ sdinit(void)
 Chan*
 sdattach(char *spec)
 {
-	int i, nfound;
-	Disk *d;
+	int i;
 
-	/*
-	 * If the drive wasn't ready when we tried to do a
-	 * read-capacity earlier (in sdinit()), try again.
-	 * It might be possible to be smarter here, and look at the
-	 * response from a test-unit-ready which would show if the
-	 * target was in the process of becoming ready.
-	 */
-	nfound = 0;
-	for(i = 0; i < ndisk; i++){	
-		d = &disk[i];
-		if(waserror()){
-			poperror();
-			continue;
-		}
-		if(d->size == 0 || d->bsize == 0){
-			if(scsicap(d->t, d->lun, &d->size, &d->bsize) != STok){
-				d->size = d->bsize = 0;
-				continue;
-			}
-		}
-		sdrdpart(d);
-		nfound++;
-		poperror();
-	}
-
-	if(nfound == 0)
-		return 0;
+	for(i = 0; i < ndisk; i++)
+		sdrdpart(&disk[i]);
+	
 	return devattach('w', spec);
 }
 
@@ -309,6 +284,20 @@ sdrdpart(Disk *d)
 	char *b, *line[Npart+2], *field[3];
 	static char MAGIC[] = "plan9 partitions";
 
+	/*
+	 * If the drive wasn't ready when we tried to do a
+	 * read-capacity earlier (in sdinit()), try again.
+	 * It might be possible to be smarter here, and look at the
+	 * response from a test-unit-ready which would show if the
+	 * target was in the process of becoming ready.
+	 */
+	if(d->size == 0 || d->bsize == 0){
+		if(scsicap(d->t, d->lun, &d->size, &d->bsize) != STok){
+			d->size = d->bsize = 0;
+			error(Eio);
+		}
+	}
+
 	b = scsialloc(d->bsize);
 	if(b == 0)
 		error(Enomem);
@@ -373,9 +362,6 @@ sdio(Chan *c, int write, char *a, ulong len, ulong offset)
 
 	d = &disk[DRIVE(c->qid)];
 	p = &d->table[PART(c->qid)];
-
-	if(d->bsize == 0)
-		error(Eio);
 
 	if(write && (d->inquire[0] & 0x1F) == TypeCD)
 		error(Eperm);
