@@ -74,7 +74,7 @@ int asyncdebug = 3;
 int asyncerror;
 
 static ushort crc_table[256] = {
-#include "crc_16.h"
+#include "../port/crc_16.h"
 };
 
 #define	BOT	0050		/* begin trailer */

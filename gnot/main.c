@@ -74,7 +74,6 @@ machinit(void)
 	n = m->machno;
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
-	m->mmask = 1<<m->machno;
 	m->fpstate = FPinit;
 	fprestore(&initfp);
 }
