@@ -12,6 +12,7 @@ typedef struct	Ipmux	Ipmux;
 typedef struct	IProuter IProuter;
 typedef struct	Ipifc	Ipifc;
 typedef struct	Log	Log;
+typedef struct	Ifclog	Ifclog;
 typedef struct	Medium	Medium;
 typedef struct	Proto	Proto;
 typedef struct	Pstate	Pstate;
@@ -258,6 +259,7 @@ struct Fs
 	Route	*queue;			/* used as temp when reinjecting routes */
 
 	Log	*alog;
+	Ifclog	*ilog;
 };
 
 int	Fsconnected(Conv*, char*);
@@ -302,6 +304,11 @@ void	netlogclose(Fs*);
 char*	netlogctl(Fs*, char*, int);
 long	netlogread(Fs*, void*, ulong, long);
 void	netlog(Fs*, int, char*, ...);
+void	ifcloginit(Fs*);
+long	ifclogread(Fs*, Chan *,void*, ulong, long);
+void	ifclog(Fs*, uchar *, int);
+void	ifclogopen(Fs*, Chan*);
+void	ifclogclose(Fs*, Chan*);
 
 /*
  *  iproute.c

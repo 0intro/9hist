@@ -38,6 +38,7 @@ enum
 	MSPTICK		= 50,		/* Milliseconds per timer tick */
 	DEF_MSS		= 1024,		/* Default mean segment */
 	DEF_RTT		= 150,		/* Default round trip */
+	DEF_KAT		= 10000,	/* Default keep alive trip in ms */
 	TCP_LISTEN	= 0,		/* Listen connection */
 	TCP_CONNECT	= 1,		/* Outgoing connection */
 
@@ -171,11 +172,11 @@ struct Tcpctl
 	Timer	timer;			/* Activity timer */
 	Timer	acktimer;		/* Acknowledge timer */
 	Timer	rtt_timer;		/* Round trip timer */
+	Timer	katimer;		/* keep alive timer */
 	ulong	rttseq;			/* Round trip sequence */
 	int	srtt;			/* Shortened round trip */
 	int	mdev;			/* Mean deviation of round trip */
 	int	kacounter;		/* count down for keep alive */
-	int	f2counter;		/* count down for finwait2 state */
 	uint	sndsyntime;		/* time syn sent */
 
 	Tcphdr	protohdr;		/* prototype header */
@@ -237,6 +238,7 @@ void	tcptimeout(void*);
 void	tcpsndsyn(Tcpctl*);
 void	tcprcvwin(Conv*);
 void	tcpacktimer(Conv*);
+void	tcpkeepalive(Conv*);
 
 void
 tcpsetstate(Conv *s, uchar newstate)
@@ -554,6 +556,7 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 	tcphalt(tpriv, &tcb->timer);
 	tcphalt(tpriv, &tcb->rtt_timer);
 	tcphalt(tpriv, &tcb->acktimer);
+	tcphalt(tpriv, &tcb->katimer);
 
 	/* Flush reassembly queue; nothing more can arrive */
 	for(rp = tcb->reseq; rp != nil; rp = rp1) {
@@ -594,6 +597,10 @@ inittcpctl(Conv *s)
 	tcb->acktimer.start = TCP_ACK / MSPTICK;
 	tcb->acktimer.func = tcpacktimer;
 	tcb->acktimer.arg = s;
+	tcb->kacounter = 0;
+	tcb->katimer.start = DEF_KAT / MSPTICK;
+	tcb->katimer.func = tcpkeepalive;
+	tcb->katimer.arg = s;
 
 	/* create a prototype(pseudo) header */
 	if(ipcmp(s->laddr, IPnoaddr) == 0)
@@ -1007,8 +1014,6 @@ update(Conv *s, Tcp *seg)
 	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
 
-	tcb->kacounter = MAXBACKOFF;	/* keep alive count down */
-
 	if(seq_gt(seg->ack, tcb->snd.nxt)) {
 		tcb->flags |= FORCE;
 		return;
@@ -1224,6 +1229,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	tcb = (Tcpctl*)s->ptcl;
 	qlock(tcb);
 
+	if(tcb->kacounter > 0)
+		tcb->kacounter = MAXBACKOFF;
+
 	switch(tcb->state) {
 	case Closed:
 		sndrst(tcp, source, dest, length, &seg);
@@ -1343,9 +1351,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 		case Finwait1:
 			update(s, &seg);
 			if(tcb->sndcnt == 0){
-				tcb->f2counter = MAXBACKOFF;
+				tcb->kacounter = MAXBACKOFF;
 				tcpsetstate(s, Finwait2);
-				tcb->timer.start = MSL2 * (1000 / MSPTICK);
+				tcb->katimer.start = MSL2 * (1000 / MSPTICK);
 				tcpgo(tpriv, &tcb->timer);
 			}
 			break;
@@ -1686,6 +1694,8 @@ tcpoutput(Conv *s)
 		}
 
 		tpriv->tstats.tcpOutSegs++;
+		if(tcb->kacounter > 0)
+			tcpgo(tpriv, &tcb->katimer);
 		ipoput(f, hbp, 0, s->ttl);
 	}
 }
@@ -1694,7 +1704,7 @@ tcpoutput(Conv *s)
  *  the BSD convention (hack?) for keep alives.  resend last uchar acked.
  */
 void
-tcpkeepalive(Conv *s)
+tcpsendka(Conv *s)
 {
 	Tcp seg;
 	Tcpctl *tcb;
@@ -1728,6 +1738,47 @@ tcpkeepalive(Conv *s)
 	}
 
 	ipoput(s->p->f, hbp, 0, s->ttl);
+}
+
+/*
+ *  if we've timed out, close the connection
+ *  otherwise, send a keepalive and restart the timer
+ */
+void
+tcpkeepalive(Conv *s)
+{
+	Tcpctl *tcb;
+
+	tcb = (Tcpctl*)s->ptcl;
+	if(--(tcb->kacounter) <= 0)
+		localclose(s, Etimedout);
+	else {
+		qlock(tcb);
+		tcpsendka(s);
+		qunlock(tcb);
+		tcpgo(s->p->priv, &tcb->katimer);
+	}
+}
+
+/*
+ *  start keepalive timer
+ */
+char*
+tcpstartka(Conv *s, char **f, int n)
+{
+	Tcpctl *tcb;
+	int x;
+
+	tcb = (Tcpctl*)s->ptcl;
+	if(n > 1){
+		x = atoi(f[1]);
+		if(x >= MSPTICK)
+			tcb->katimer.start = x/MSPTICK;
+	}
+	tcb->kacounter = MAXBACKOFF;
+	tcpgo(s->p->priv, &tcb->katimer);
+
+	return nil;
 }
 
 void
@@ -1781,16 +1832,6 @@ tcptimeout(void *arg)
 			break;
 		}
 		tcprxmit(s);
-		break;
-	case Finwait2:
-		if(--(tcb->f2counter) <= 0)
-			localclose(s, Etimedout);
-		else {
-			qlock(tcb);
-			tcpkeepalive(s);
-			qunlock(tcb);
-			tcpgo(s->p->priv, &tcb->timer);
-		}
 		break;
 	case Time_wait:
 		localclose(s, nil);
@@ -2001,6 +2042,8 @@ tcpctl(Conv* c, char** f, int n)
 {
 	if(n == 1 && strcmp(f[0], "hangup") == 0)
 		return tcphangup(c);
+	if(n >= 1 && strcmp(f[0], "keepalive") == 0)
+		return tcpstartka(c, f, n);
 	return "unknown control request";
 }
 

@@ -161,10 +161,6 @@ struct Rudppriv
 static ulong generation = 0;
 static Rendez rend;
 
-/* Used only for debugging */
-static ushort drop = 0;
-static ushort drop_rate = 10;
-
 /*
  *  protocol specific part of Conv
  */
@@ -173,6 +169,7 @@ struct Rudpcb
 {
 	QLock;
 	uchar	headers;
+	uchar	randdrop;
 	Reliable *r;
 };
 
@@ -261,6 +258,15 @@ rudpclose(Conv *c)
 	Rudpcb *ucb;
 	Reliable *r, *nr;
 
+	/* force out any delayed acks */
+	ucb = (Rudpcb*)c->ptcl;
+	qlock(ucb);
+	for(r = ucb->r; r; r = r->next){
+		if(r->acksent != r->rcvseq)
+			relsendack(c, r);
+	}
+	qunlock(ucb);
+
 	qclose(c->rq);
 	qclose(c->wq);
 	qclose(c->eq);
@@ -269,10 +275,12 @@ rudpclose(Conv *c)
 	c->lport = 0;
 	c->rport = 0;
 
-	ucb = (Rudpcb*)c->ptcl;
 	ucb->headers = 0;
+	ucb->randdrop = 0;
 	qlock(ucb);
 	for(r = ucb->r; r; r = nr){
+		if(r->acksent != r->rcvseq)
+			relsendack(c, r);
 		nr = r->next;
 		relhangup(c, r);
 		free(r);
@@ -282,6 +290,21 @@ rudpclose(Conv *c)
 	qunlock(ucb);
 
 	unlock(c);
+}
+
+/*
+ *  randomly don't send packets
+ */
+static void
+doipoput(Conv *c, Fs *f, Block *bp, int x, int ttl)
+{
+	Rudpcb *ucb;
+
+	ucb = (Rudpcb*)c->ptcl;
+	if(ucb->randdrop && nrand(10) == 1)
+		freeblist(bp);
+	else
+		ipoput(f, bp, x, ttl);
 }
 
 int
@@ -411,7 +434,7 @@ rudpkick(Conv *c, int)
 	DPRINT("sent: %lud/%lud, %lud/%lud\n", 
 		r->sndseq, r->sndgen, r->rcvseq, r->rcvgen);
 
-	ipoput(f, bp, 0, c->ttl);
+	doipoput(c, f, bp, 0, c->ttl);
 
 	/* flow control of sorts */
 	qlock(&r->lock);
@@ -592,6 +615,9 @@ rudpctl(Conv *c, char **f, int n)
 			return nil;
 		} else if(strcmp(f[0], "headers") == 0){
 			ucb->headers = 6;
+			return nil;
+		} else if(strcmp(f[0], "randdrop") == 0){
+			ucb->randdrop = 1;
 			return nil;
 		}
 	}
@@ -802,6 +828,19 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 	DPRINT("rcvd %lud/%lud, %lud/%lud, r->sndgen = %lud\n", 
 		seq, sgen, ack, agen, r->sndgen);
 
+	/* make sure we're not talking to a new remote side */
+	if(r->rcvgen != sgen){
+		if(seq != 1)
+			return -1;
+
+		/* new connection */
+		if(r->rcvgen != 0){
+			DPRINT("new con r->rcvgen = %lud, sgen = %lud\n", r->rcvgen, sgen);
+			relhangup(c, r);
+		}
+		r->rcvgen = sgen;
+	}
+
 	/* dequeue acked packets */
 	if(ack && agen == r->sndgen){
 		ackreal = 0;
@@ -833,28 +872,9 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 		
 	}
 
-	/* make sure we're not talking to a new remote side */
-	if(r->rcvgen != sgen){
-		if(seq != 1)
-			return -1;
-
-		/* new connection */
-		if(r->rcvgen != 0){
-			DPRINT("new con r->rcvgen = %lud, sgen = %lud\n", r->rcvgen, sgen);
-			relhangup(c, r);
-		}
-		r->rcvgen = sgen;
-	}
-
 	/* no message or input queue full */
 	if(seq == 0 || qfull(c->rq))
 		return -1;
-
-	if(DEBUG && ++drop == drop_rate){
-		DPRINT("drop pkt on purpose\n");
-		drop = 0;
-		return -1;
-	}
 
 	/* refuse out of order delivery */
 	if(seq != NEXTSEQ(r->rcvseq)){
@@ -913,16 +933,21 @@ relsendack(Conv *c, Reliable *r)
 	hnputs(uh->udpcksum, ptclcsum(bp, UDP_IPHDR, UDP_RHDRSIZE));
 
 	DPRINT("sendack: %lud/%lud, %lud/%lud\n", 0L, r->sndgen, r->rcvseq, r->rcvgen);
-	ipoput(f, bp, 0, c->ttl);
+	doipoput(c, f, bp, 0, c->ttl);
 }
 
 /*
  *  called with ucb locked (and c locked if user initiated close)
  */
 void
-relhangup(Conv *, Reliable *r)
+relhangup(Conv *c, Reliable *r)
 {
+	int n;
 	Block *bp;
+	char hup[ERRLEN];
+
+	n = snprint(hup, sizeof(hup), "hangup %I!%d", r->addr, r->port);
+	qproduce(c->eq, hup, n);
 
 	/*
 	 *  dump any unacked outgoing messages
@@ -965,5 +990,5 @@ relrexmit(Conv *c, Reliable *r)
 	upriv->rxmits++;
 	np = copyblock(r->unacked, blocklen(r->unacked));
 	DPRINT("rxmit r->ackrvcd+1 = %lud\n", r->ackrcvd+1);
-	ipoput(f, np, 0, c->ttl);
+	doipoput(c, f, np, 0, c->ttl);
 }
