@@ -358,7 +358,7 @@ unionread(Chan *c, void *va, long n)
 }
 
 static long
-read(ulong *arg, uvlong *offp)
+read(ulong *arg, vlong *offp)
 {
 	int dir;
 	long n;
@@ -414,22 +414,22 @@ sys_read(ulong *arg)
 long
 syspread(ulong *arg)
 {
-	uvlong v;
+	vlong v;
 	va_list list;
 
 	/* use varargs to guarantee alignment of vlong */
 	va_start(list, arg[2]);
-	v = va_arg(list, uvlong);
+	v = va_arg(list, vlong);
 	va_end(list);
 
-	if(v ==~0ULL)
+	if(v == ~0ULL)
 		return read(arg, nil);
 
 	return read(arg, &v);
 }
 
 static long
-write(ulong *arg, uvlong *offp)
+write(ulong *arg, vlong *offp)
 {
 	Chan *c;
 	long m, n;
@@ -487,15 +487,15 @@ sys_write(ulong *arg)
 long
 syspwrite(ulong *arg)
 {
-	uvlong v;
+	vlong v;
 	va_list list;
 
 	/* use varargs to guarantee alignment of vlong */
 	va_start(list, arg[2]);
-	v = va_arg(list, uvlong);
+	v = va_arg(list, vlong);
 	va_end(list);
 
-	if(v ==~0ULL)
+	if(v == ~0ULL)
 		return write(arg, nil);
 
 	return write(arg, &v);

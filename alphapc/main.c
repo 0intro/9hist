@@ -189,7 +189,7 @@ userinit(void)
 	 * Kernel Stack
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = (ulong)p->kstack+KSTACK-(1+MAXSYSARG)*BY2WD;
+	p->sched.sp = (ulong)p->kstack+KSTACK-MAXSYSARG*BY2WD;
 	/*
 	 * User Stack, pass input arguments to boot process
 	 */

@@ -24,6 +24,8 @@ typedef struct Uart		Uart;
 
 typedef void IntrHandler(Ureg*, void*);
 
+#define MAXSYSARG	5	/* for mount(fd, mpt, flag, arg, srv) */
+
 /*
  *  parameters for sysproc.c
  */

@@ -15,6 +15,8 @@ typedef struct Sys	Sys;
 typedef struct Ureg	Ureg;
 typedef struct Vctl	Vctl;
 
+#define MAXSYSARG	6	/* for mount(fd, mpt, flag, arg, srv) */
+
 /*
  *  parameters for sysproc.c
  */

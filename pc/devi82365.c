@@ -7,15 +7,7 @@
 #include "io.h"
 
 /*
- *  Support for up to 4 PCMslot card slots.  Generalizing above that is hard
- *  since addressing is not obvious. - presotto
- *
- *  WARNING: This has never been tried with more than one card slot.
- */
-
-/*
- *  Intel 82365SL PCIC controller for the PCMCIA or
- *  Cirrus Logic PD6710/PD6720 which is mostly register compatible
+ *  Intel 82365SL PCIC controller and compatibles.
  */
 enum
 {
@@ -159,6 +151,7 @@ slotinfo(PCMslot *pp)
 	pp->wrprot = isr & (1<<4);
 	pp->busy = isr & (1<<5);
 	pp->msec = TK2MS(MACHP(0)->ticks);
+print("isr %2.2uX misc1 %2.2uX\n", isr, rdreg(pp, Rmisc1));
 }
 
 static int
@@ -467,8 +460,8 @@ pcmgen(Chan *c, char*, Dirtab *, int , int i, Dir *dp)
 static char *chipname[] =
 {
 [Ti82365]	"Intel 82365SL",
-[Tpd6710]	"Cirrus Logic PD6710",
-[Tpd6720]	"Cirrus Logic PD6720",
+[Tpd6710]	"Cirrus Logic CL-PD6710",
+[Tpd6720]	"Cirrus Logic CL-PD6720",
 [Tvg46x]	"Vadem VG-46x",
 };
 
@@ -609,7 +602,6 @@ i82365reset(void)
 		nslot += controller[i]->nslot;
 	slot = xalloc(nslot * sizeof(PCMslot));
 
-	/* if the card is there turn on 5V power to keep its battery alive */
 	lastslot = slot;
 	for(i = 0; i < ncontroller; i++){
 		cp = controller[i];

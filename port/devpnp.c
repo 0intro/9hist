@@ -21,6 +21,7 @@ struct Card
 	int		csn;
 	ulong	id1;
 	ulong	id2;
+	char		*cfgstr;
 	int		ncfg;
 	Card*	next;
 };
@@ -62,6 +63,7 @@ static Dirtab pnpdir[] = {
 };
 
 extern Dev pnpdevtab;
+static int wrconfig(Card*, char*);
 
 static char key[32] =
 {
@@ -230,7 +232,7 @@ pnpncfg(int rddata)
 
 /* look for cards, and assign them CSNs */
 static int
-pnpscan(int rddata)
+pnpscan(int rddata, int dawn)
 {
 	Card *c;
 	int csn, ok;
@@ -238,7 +240,7 @@ pnpscan(int rddata)
 
 	ilock(&pnp);
 	pnp.rddata = rddata;
-	initiation();
+	initiation();				/* upsilon sigma */
 	cmd(0x02, 0x04+0x01);		/* reset CSN on all cards and reset logical devices */
 	delay(1);					/* delay after resetting cards */
 
@@ -254,8 +256,14 @@ pnpscan(int rddata)
 			c->id1 = id1;
 			c->id2 = id2;
 		}
+		else if(c->cfgstr != nil) {
+			if(!wrconfig(c, c->cfgstr))
+				print("pnp%d: bad cfg: %s\n", c->csn, c->cfgstr);
+			c->cfgstr = nil;
+		}
 		cmd(0x06, c->csn);		/* set the card's csn */
-		print("pnp%d: %s\n", c->csn, serial(id1, id2));
+		if(dawn)
+			print("pnp%d: %s\n", c->csn, serial(id1, id2));
 		c->ncfg = pnpncfg(rddata);
 		cmd(0x03, 0);		/* Wake all cards with a CSN of 0, putting this card to sleep */
 	}
@@ -296,13 +304,18 @@ bad:
 		x = strtoul(&s[3], 0, 16);
 		id1 = (i1<<2)|((i2>>3)&3)|((i2&7)<<13)|(i3<<8)|((x&0xff)<<24)|((x&0xff00)<<8);
 		id2 = strtoul(&s[8], &p, 16);
-		if(*p != ' ' && *p != '\0')
+		if(*p == ' ')
+			p++;
+		else if(*p == '\0')
+			p = nil;
+		else
 			goto bad;
 		c = findcsn(csn, 1);
 		c->id1 = id1;
 		c->id2 = id2;
+		c->cfgstr = p;
 	}
-	pnpscan(isa.port);
+	pnpscan(isa.port, 1);
 }
 
 static int
@@ -334,7 +347,6 @@ pnpgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	Card *cp;
 	char name[KNAMELEN];
 
-DPRINT("pnpgen s %d offset %uld qid %lux\n", s, (ulong)c->offset, (ulong)c->qid.path);
 	switch(TYPE(c->qid)){
 	case Qtopdir:
 		if(s == DEVDOTDOT){
@@ -351,11 +363,9 @@ DPRINT("pnpgen s %d offset %uld qid %lux\n", s, (ulong)c->offset, (ulong)c->qid.
 			devdir(c, q, name, 0, eve, 0555, dp);
 			return 1;
 		}
-DPRINT("Qpnpdir s %d\n", s);
-		if(s < nelem(pnpdir))
+		if(s < nelem(pnpdir)-1)
 			return devgen(c, nil, pnpdir, nelem(pnpdir), s, dp);
-		s -= nelem(pnpdir);
-DPRINT("Qpnpdir s now %d\n", s);
+		s -= nelem(pnpdir)-1;
 		ilock(&pnp);
 		cp = pnp.cards;
 		while(s >= 2 && cp != nil) {
@@ -363,7 +373,6 @@ DPRINT("Qpnpdir s now %d\n", s);
 			cp = cp->next;
 		}
 		iunlock(&pnp);
-DPRINT("Qpnpdir s now %d, cp %p\n", s, cp);
 		if(cp == nil)
 			return -1;
 		return pnpgen1(c, s+Qcsnctl, cp->csn, cp, dp);
@@ -472,22 +481,25 @@ pnpread(Chan *c, void *va, long n, vlong offset)
 }
 
 static long
-pnpwrite(Chan *c, void *a, long n, vlong offset)
+pnpwrite(Chan *c, void *a, long n, vlong)
 {
+	int csn;
+	Card *cp;
 	ulong port;
 	char buf[256];
 
+	if(n >= sizeof(buf))
+		n = sizeof(buf)-1;
+	strncpy(buf, a, n);
+	buf[n] = 0;
+
 	switch(TYPE(c->qid)){
 	case Qpnpctl:
-		if(n >= sizeof(buf))
-			n = sizeof(buf)-1;
-		strncpy(buf, a, n);
-		buf[n] = 0;
-		if(strncmp(buf, "rddata ", 7) == 0) {
-			port = strtoul(buf+7, 0, 0);
+		if(strncmp(buf, "port ", 5) == 0) {
+			port = strtoul(buf+5, 0, 0);
 			if(port < 0x203 || port > 0x3ff)
 				error("bad value for rddata port");
-			if(!pnpscan(port))
+			if(!pnpscan(port, 0))
 				error("no cards found");
 		}
 		else if(strncmp(buf, "debug ", 6) == 0)
@@ -495,12 +507,44 @@ pnpwrite(Chan *c, void *a, long n, vlong offset)
 		else
 			error(Ebadctl);
 		break;
+	case Qcsnctl:
+		csn = CSN(c->qid);
+		ilock(&pnp);
+		cp = findcsn(csn, 0);
+		iunlock(&pnp);
+		if(cp == nil)
+			error(Egreg);
+		if(!wrconfig(cp, buf))
+			error(Ebadctl);
+		break;
 	default:
-USED(offset);
 		error(Egreg);
 	}
 	return n;
 }
+
+static int
+wrconfig(Card *c, char *cmd)
+{
+	for(;;) {
+		while(*cmd == ' ' || *cmd == '\t' || *cmd == '\n')
+			cmd++;
+		if(*cmd == '\0')
+			break;
+		if(strncmp(cmd, "foo ", 4) == 0) {
+			print("pnp%d: got foo\n", c->csn);
+			cmd += 4;
+		}
+		else if(strncmp(cmd, "bar ", 4) == 0) {
+			print("pnp%d: got bar\n", c->csn);
+			cmd += 4;
+		}
+		else
+			return 0;
+	}
+	return 1;
+}
+
 
 Dev pnpdevtab = {
 	'$',

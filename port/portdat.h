@@ -92,7 +92,6 @@ struct Alarms
 	Proc	*head;
 };
 
-#define MAXSYSARG	5	/* for mount(fd, mpt, flag, arg, srv) */
 struct Sargs
 {
 	ulong	args[MAXSYSARG];

@@ -88,8 +88,7 @@ sa1100_power_off(void)
 	powerregs->pcfr = PCFR_opde | PCFR_fp | PCFR_fs;
 	powerregs->pgsr = 0;
 	/* set resume address. The loader jumps to it */
-//	powerregs->pspr = (ulong)sa1100_power_resume;
-	powerregs->pspr = (ulong)_start;
+	powerregs->pspr = (ulong)sa1100_power_resume;
 	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
 
 	delay(90);
@@ -128,10 +127,10 @@ deepsleep(void) {
 	void *xsp, *xlink;
 
 	power_pl = splhi();
-	xsp = getsp();
-	xlink = getlink();
-	iprint("starting power down, sp = %lux, link = %lux\n", xsp, xlink);
-	delay(1000);
+xsp = getsp();
+xlink = getlink();
+iprint("starting power down, sp = %lux, link = %lux\n", xsp, xlink);
+delay(1000);
 	cachewb();
 	delay(500);
 	if (setpowerlabel()) {
@@ -157,10 +156,10 @@ deepsleep(void) {
 		iprint("\nresuming execution\n");
 //		dumpitall();
 		delay(800);
-		delay(1000);
-		xsp = getsp();
-		xlink = getlink();
-		iprint("power restored, sp = %lux, link = %lux\n", xsp, xlink);
+xsp = getsp();
+xlink = getlink();
+iprint("power restored, sp = %lux, link = %lux\n", xsp, xlink);
+delay(1000);
 
 		splx(power_pl);
 		return;
@@ -174,9 +173,9 @@ deepsleep(void) {
 	clockpower(0);
 	irpower(0);
 	audiopower(0);
-//	screenpower(0);
+	screenpower(0);
 	µcpower(0);
-//	rs232power(0);
+	rs232power(0);
 	sa1100_power_off();
 	/* no return */
 }
@@ -189,13 +188,11 @@ powerkproc(void*)
 		while(powerflag == 0)
 			sleep(&powerr, powerdown, 0);
 
-
 		deepsleep();
 
 		delay(2000);
 
 		powerflag = 0;
-
 	}
 }
 
@@ -217,9 +214,8 @@ onoffintr(Ureg* , void*)
 			return;	/* bounced */
 	}
 
-	deepsleep();
-//	powerflag = 1;
-//	wakeup(&powerr);
+	powerflag = 1;
+	wakeup(&powerr);
 }
 
 void
