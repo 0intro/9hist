@@ -163,7 +163,8 @@ floppykproc(Alarm* a)
 	for(dp = floppy.d; dp < &floppy.d[Nfloppy]; dp++){
 		if(dp->motoron && TK2SEC(m->ticks - dp->lasttouched) > 5
 		&& canqlock(dp)){
-			floppystop(dp);
+			if(TK2SEC(m->ticks - dp->lasttouched) > 5)
+				floppystop(dp);
 			qunlock(dp);
 		}
 	}
