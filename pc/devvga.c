@@ -121,6 +121,7 @@ vgaread(Chan* c, void* a, long n, vlong off)
 					physgscreenr.max.x, physgscreenr.max.y);
 		}
 
+		len += snprint(p+len, READSTR-len, "blanktime %lud\n", blanktime);
 		len += snprint(p+len, READSTR-len, "hwaccel %s\n", hwaccel ? "on" : "off");
 		len += snprint(p+len, READSTR-len, "hwblank %s\n", hwblank ? "on" : "off");
 		snprint(p+len, READSTR-len, "addr 0x%lux\n", scr->aperture);
@@ -303,6 +304,11 @@ vgactl(char* a)
 			error(Ebadarg);
 		drawblankscreen(1);
 		return;
+	}
+	else if(strcmp(field[0], "blanktime") == 0){
+		if(n < 2)
+			error(Ebadarg);
+		blanktime = strtoul(field[1], 0, 0);
 	}
 	else if(strcmp(field[0], "hwaccel") == 0){
 		if(n < 2)

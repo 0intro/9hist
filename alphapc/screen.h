@@ -139,7 +139,7 @@ extern void	blankscreen(int);
 /* devdraw.c */
 extern void	deletescreenimage(void);
 extern int		drawhasclients(void);
-
+extern ulong	blanktime;
 /* vga.c */
 extern void	vgascreenwin(VGAscr*);
 extern void	vgaimageinit(ulong);

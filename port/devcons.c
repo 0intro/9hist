@@ -278,7 +278,7 @@ echo(Rune r, char *buf, int n)
 				consdebug = rdb;
 			else
 				consdebug = nil;
-			print("consdebug now 0x%lx\n", consdebug);
+			print("consdebug now 0x%p\n", consdebug);
 			return;
 		case 'D':
 			if(consdebug == nil)

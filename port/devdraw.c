@@ -49,7 +49,7 @@ typedef struct Refresh Refresh;
 typedef struct Refx Refx;
 typedef struct DName DName;
 
-#define	BLANKTIME	30*60*1000	/* half hour */
+ulong blanktime = 30;	/* in minutes; a half hour */
 
 struct Draw
 {
@@ -2018,7 +2018,7 @@ drawactive(int active)
 		drawblankscreen(0);
 		sdraw.blanktime = 0;
 	}else{
-		if(TK2MS(sdraw.blanktime) > BLANKTIME)
+		if(blanktime && TK2SEC(sdraw.blanktime)/60 >= blanktime)
 			drawblankscreen(1);
 		else
 			sdraw.blanktime++;
