@@ -1326,6 +1326,7 @@ reset(Ether* ether)
 	uchar ea[Eaddrlen];
 	static int scandone;
 
+pcihinv(nil);
 	if(scandone == 0){
 		dec2114xpci();
 		scandone = 1;
@@ -1418,5 +1419,5 @@ reset(Ether* ether)
 void
 ether2114xlink(void)
 {
-	addethercard("21140",  reset);
+	addethercard("2114x",  reset);
 }

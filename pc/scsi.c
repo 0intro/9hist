@@ -222,7 +222,7 @@ scsiinv(int devno, int *type, Target **rt, uchar **inq, char *id)
 }
 
 int
-scsitest(Target *t, char lun)
+scsitest(Target *t, int lun)
 {
 	uchar cmd[6];
 
@@ -233,7 +233,7 @@ scsitest(Target *t, char lun)
 }
 
 int
-scsistart(Target *t, char lun, int s)
+scsistart(Target *t, int lun, int s)
 {
 	uchar cmd[6];
 
@@ -245,7 +245,7 @@ scsistart(Target *t, char lun, int s)
 }
 
 int
-scsiinquiry(Target *t, char lun, void *data, int *datalen)
+scsiinquiry(Target *t, int lun, void *data, int *datalen)
 {
 	uchar cmd[6];
 
@@ -257,7 +257,7 @@ scsiinquiry(Target *t, char lun, void *data, int *datalen)
 }
 
 int
-scsicap(Target *t, char lun, ulong *size, ulong *bsize)
+scsicap(Target *t, int lun, ulong *size, ulong *bsize)
 {
 	int s, nbytes;
 	uchar cmd[10], *d;
@@ -281,7 +281,7 @@ scsicap(Target *t, char lun, ulong *size, ulong *bsize)
 }
 
 int
-scsibio(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
+scsibio(Target *t, int lun, int dir, void *b, long n, long bsize, long bno)
 {
 	uchar cmd[10];
 	int s, cdbsiz, nbytes;
@@ -331,7 +331,7 @@ static char *key[] =
 };
 
 int
-scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
+scsireqsense(Target *t, int lun, void *data, int *nbytes, int quiet)
 {
 	char *s;
 	int n, status, try;

@@ -56,14 +56,12 @@ enum
 FType floppytype[] =
 {
  { "3½HD",	T1440kb, 512, 18, 2, 1, 80, 0x1B, 0x54,	0, },
-/*
  { "3½DD",	T1440kb, 512,  9, 2, 1, 80, 0x1B, 0x54, 2, },
  { "3½DD",	T720kb,  512,  9, 2, 1, 80, 0x1B, 0x54, 2, },
  { "5¼HD",	T1200kb, 512, 15, 2, 1, 80, 0x2A, 0x50, 0, },
  { "5¼DD",	T1200kb, 512,  9, 2, 2, 40, 0x2A, 0x50, 1, },
  { "ATT3B1",	T1200kb, 512,  8, 2, 2, 48, 0x2A, 0x50, 1, },
  { "5¼DD",	T360kb,  512,  9, 2, 1, 40, 0x2A, 0x50, 2, },
- */
 };
 
 /*
@@ -806,6 +804,8 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
 		return 0;
 	if(off + n > dp->t->cap)
 		n = dp->t->cap - off;
+if(cmd == Fread)
+    memset(a, 0x55, n);
 
 	/* retry on error (until it gets ridiculous) */
 	tries = 0;

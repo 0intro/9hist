@@ -271,16 +271,16 @@ void		scheddump(void);
 void		schedinit(void);
 int		screenbits(void);
 #define		scsialloc(n)	mallocz((n)+512, 0)
-int		scsibio(Target*, char, int, void*, long, long, long);
-int		scsicap(Target*, char, ulong*, ulong*);
+int		scsibio(Target*, int, int, void*, long, long, long);
+int		scsicap(Target*, int, ulong*, ulong*);
 int		scsierrstr(int);
 int		scsiexec(Target*, int, uchar*, int, void*, int*);
 #define		scsifree(p)	free(p)
-int		scsiinquiry(Target*, char, void*, int*);
+int		scsiinquiry(Target*, int, void*, int*);
 int		scsiinv(int, int*, Target**, uchar**, char*);
-int		scsireqsense(Target*, char, void*, int*, int);
-int		scsistart(Target*, char, int);
-int		scsitest(Target*, char);
+int		scsireqsense(Target*, int, void*, int*, int);
+int		scsistart(Target*, int, int);
+int		scsitest(Target*, int);
 Target*		scsiunit(int, int);
 long		seconds(void);
 ulong		segattach(Proc*, ulong, char *, ulong, ulong);

@@ -2,7 +2,7 @@ enum
 {
 	Bufsize		= 16*1024,	/* 92 ms each */
 	Nbuf		= 16,		/* 1.5 seconds total */
-	Dma		= 1,
+	Dma		= 5,
 	IrqAUDIO	= 5,
 	SBswab		= 0,
 };

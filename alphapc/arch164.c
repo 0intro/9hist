@@ -42,9 +42,11 @@ sginit(void)
 	for(pa = 0; pa < 8*1024*1024; pa += BY2PG)
 		*pte++ = ((pa>>PGSHIFT)<<1)|1;
 
-	wind[0x400/4] = ISAWINDOW|4|2|1;
+	wind[0x400/4] = ISAWINDOW|2|1;
 	wind[0x440/4] = 0x00700000;
-	wind[0x480/4] = PADDR(sgmap);
+	wind[0x480/4] = PADDR(sgmap)>>2;
+
+	wind[0x100/4] = 3;	/* invalidate tlb cache */
 }
 
 static void *
@@ -110,7 +112,7 @@ ciaerror(void)
 static void
 corehello(void)
 {
-	print("cpu%d: CIA revision %d; cnfg %lux cntrl %lux\n",
+	print("cpu%d: CIA revision %ld; cnfg %lux cntrl %lux\n",
 			0,	/* BUG */
 			core[0x80/4] & 0x7f, core[0x140/4], core[0x100/4]);
 	print("cpu%d: HAE_IO %lux\n", 0, core[0x440/4]);

@@ -274,14 +274,18 @@ char *confname[] =
 {
 	"ether0",
 	"scsi0",
+	"scsi1",
+	"scsi2",
 	"audio0",
 
 };
 
 char *confval[] =
 {
-	"type=21140",
-	"type=aic7xxx",
+	"type=2114x",
+	"type=ata",
+	"type=ata",
+	"type=ata",
 	"type=sb16",
 };
 

@@ -40,11 +40,12 @@ pciscan(int bno, Pcidev** list)
 		maxfno = 0;
 		for(fno = 0; fno <= maxfno; fno++){
 			/*
-			 * For this possible device, form the bus+device+function
-			 * triplet needed to address it and try to read the vendor
-			 * and device ID. If successful, allocate a device struct
-			 * and start to fill it in with some useful information from
-			 * the device's configuration space.
+			 * For this possible device, form the
+			 * bus+device+function triplet needed to address it
+			 * and try to read the vendor and device ID.
+			 * If successful, allocate a device struct and
+			 * start to fill it in with some useful information
+			 * from the device's configuration space.
 			 */
 			tbdf = MKBUS(BusPCI, bno, dno, fno);
 			l = pcicfgrw32(tbdf, PciVID, 0, 1);
@@ -70,7 +71,9 @@ pciscan(int bno, Pcidev** list)
 			pcitail = p;
 
 			p->intl = pcicfgr8(p, PciINTL);
-			p->ccru = pcicfgr16(p, PciCCRu);
+			p->ccrp = pcicfgr8(p, PciCCRp);
+			p->ccru = pcicfgr8(p, PciCCRu);
+			p->ccrb = pcicfgr8(p, PciCCRb);
 
 			/*
 			 * If the device is a multi-function device adjust the
@@ -84,7 +87,7 @@ pciscan(int bno, Pcidev** list)
 			 * If appropriate, read the base address registers
 			 * and work out the sizes.
 			 */
-			switch(p->ccru>>8){
+			switch(p->ccrb){
 
 			case 0x01:		/* mass storage controller */
 			case 0x02:		/* network controller */
@@ -129,7 +132,7 @@ pciscan(int bno, Pcidev** list)
 		/*
 		 * Find PCI-PCI bridges and recursively descend the tree.
 		 */
-		if(p->ccru != ((0x06<<8)|0x04))
+		if(p->ccrb != 0x06 || p->ccru != 0x04)
 			continue;
 
 		/*
@@ -311,14 +314,16 @@ pcihinv(Pcidev* p)
 	int i;
 	Pcidev *t;
 
+	if(pcicfgmode == -1)
+		pcicfginit();
 	if(p == nil) {
 		p = pciroot;
 		print("bus dev type vid  did intl memory\n");
 	}
 	for(t = p; t != nil; t = t->link) {
-		print("%d  %2d/%d %.4ux %.4ux %.4ux %2d  ",
+		print("%d  %2d/%d %.2ux %.2ux %.2ux %.4ux %.4ux %2d  ",
 			BUSBNO(t->tbdf), BUSDNO(t->tbdf), BUSFNO(t->tbdf),
-			t->ccru, t->vid, t->did, t->intl);
+			t->ccrb, t->ccru, t->ccrp, t->vid, t->did, t->intl);
 
 		for(i = 0; i < nelem(p->mem); i++) {
 			if(t->mem[i].size == 0)

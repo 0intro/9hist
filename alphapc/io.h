@@ -152,11 +152,12 @@ typedef struct Pcidev {
 	struct {
 		ulong	bar;		/* base address */
 		int	size;
-	} mem[3];
+	} mem[6];
 
 	uchar	intl;			/* interrupt line */
-	ushort	ccru;
-
+	uchar	ccrp;
+	uchar	ccru;
+	uchar	ccrb;
 
 	Pcidev*	list;
 	Pcidev*	bridge;			/* down a bus */
@@ -182,12 +183,18 @@ struct PCMmap {
  *  SCSI bus
  */
 enum {
-	MaxScsi		= 8,
-	NTarget		= 8,		/* should be 16... */
+	MaxTarget	= 16,
 };
-struct Target {
+
+typedef struct Scsi Scsi;
+typedef struct Target Target;
+typedef struct SCSIdev SCSIdev;
+
+typedef struct Target {
 	int	ctlrno;
-	int	target;
+	Scsi*	ctlr;
+	int	targetno;
+
 	uchar*	inq;
 	uchar*	scratch;
 
@@ -196,11 +203,21 @@ struct Target {
 	int	ok;
 };
 
-typedef int (*Scsiio)(Target*, int, uchar*, int, void*, int*);
+typedef struct Scsi {
+	ISAConf;
+	int	ctlrno;
+	Pcidev*	pcidev;
+	int	(*io)(Target*, int, uchar*, int, void*, int*);
+	void	*ctlr;
+	int	ntarget;
+
+	Scsi*	next;
+} Scsi;
 
 typedef struct SCSIdev {
 	char*	type;
-	Scsiio	(*reset)(int, ISAConf*);
+	Scsi*	(*pnp)(void);
+	int	(*reset)(Scsi*);
 } SCSIdev;
 
 #define PCIWINDOW	0x40000000

@@ -42,7 +42,7 @@ struct Disk
 {
 	QLock;
 	Target*	t;
-	uchar	lun;
+	int	lun;
 	char	id[NAMELEN];
 	char	vol[NAMELEN];
 

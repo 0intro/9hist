@@ -4,6 +4,8 @@
 #include	"dat.h"
 #include	"fns.h"
 
+#include	"io.h"
+
 typedef struct DMAport	DMAport;
 typedef struct DMA	DMA;
 typedef struct DMAxfer	DMAxfer;
@@ -166,13 +168,13 @@ dmasetup(int chan, void *va, long len, int isread)
 
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
+	xp = &dp->x[chan];
 //print("va%lux+", va);
 #define tryPCI
 #ifndef PCIWADDR
 #define PCIWADDR(va)	PADDR(va)
 #endif /* PCIWADDR */
 #ifdef notdef
-	xp = &dp->x[chan];
 
 	/*
 	 *  if this isn't kernel memory or crossing 64k boundary or above 16 meg
@@ -201,6 +203,20 @@ dmasetup(int chan, void *va, long len, int isread)
 #endif /* tryISA */
 #ifdef tryPCI
 	pa = PCIWADDR(va);
+	if((((ulong)va)&0xF0000000) != KZERO){
+		if(xp->bva == nil)
+			return -1;
+		if(len > xp->blen)
+			len = xp->blen;
+		if(!isread)
+			memmove(xp->bva, va, len);
+		xp->va = va;
+		xp->len = len;
+		xp->isread = isread;
+		pa = PCIWADDR(xp->bva);
+	}
+	else
+		xp->len = 0;
 #endif /* tryPCI */
 
 	/*
