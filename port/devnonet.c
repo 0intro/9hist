@@ -238,7 +238,7 @@ nonetopenclone(Chan *c, Noifc *ifc)
 		}
 	}
 	if(cp == ep)
-		error(Enodev);;
+		error(Enodev);
 	return cp;
 }
 
@@ -276,7 +276,7 @@ nonetopen(Chan *c, int omode)
 		line = STREAMID(c->qid.path);
 		ifc = &noifc[c->dev];
 		if(ifc->conv[line].state != Cannounced)
-			errors("channel not announced");
+			error(Enolisten);
 		nolisten(c, ifc);
 		break;
 	case Nraddrqid:

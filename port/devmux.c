@@ -221,20 +221,20 @@ muxopen(Chan *c, int omode)
 	switch(NCON(c)) {
 	case Qhead:
 		if(m->headopen)
-			errors("server channel busy");
+			error(Einuse);
 		m->headopen = 1;
 		m->ref++;
 		break;
 	case Qclone:
 		if(m->headopen == 0)
-			errors("server shutdown");
+			error(Emuxshutdown);
 
 		cm = m->connects;
 		for(e = &cm[Nmux]; cm < e; cm++)
 			if(cm->ref == 0)
 				break;
 		if(cm == e)
-			errors("all cannels busy");
+			error(Emuxbusy);
 		cm->ref = 1;
 		m->ref++;
 		strncpy(cm->user, u->p->user, NAMELEN);
@@ -275,7 +275,7 @@ muxcreate(Chan *c, char *name, int omode, ulong perm)
 	}
 
 	if(m == e)
-		errors("no multiplexors");
+		error(Enomux);
 
 	strncpy(m->name, name, NAMELEN);
 	strncpy(m->user, u->p->user, NAMELEN);
@@ -304,8 +304,8 @@ muxremove(Chan *c)
 	if((c->qid.path&CHDIR) == 0 && m->srv == 0)
 		error(Eperm);
 		
-	if(strcmp(u->p->user, m->user) != 0)
-		errors("not owner");
+	if(strncmp(u->p->user, m->user, NAMELEN))
+		error(Eperm);
 
 	srv = 0;
 	lock(m);
@@ -332,8 +332,8 @@ muxwstat(Chan *c, char *db)
 		error(Eperm);
 
 	m = &muxes[NMUX(c)];
-	if(strcmp(u->p->user, m->user) != 0)
-		errors("not owner");
+	if(strncmp(u->p->user, m->user, NAMELEN))
+		error(Eperm);
 
 	convM2D(db, &d);
 	d.mode &= 0777;
@@ -434,11 +434,11 @@ muxhdr(Mux *m, char *h)
 	Con *c;
 
 	if(h[0] != Tmux || h[2] != 0)
-		error(Ebadmsg);
+		error(Emuxmsg);
 
 	c = &m->connects[h[1]];
 	if(c < m->connects || c > &m->connects[Nmux])	
-		error(Ebadmsg);
+		error(Emuxmsg);
 
 	if(c->ref == 0)
 		return 0;
@@ -476,7 +476,7 @@ muxwrite(Chan *c, void *va, long n, ulong offset)
 		error(Eperm);
 	case Qhead:
 		if(n < 2)
-			error(Ebadmsg);
+			error(Emuxmsg);
 
 		a = (char*)va;
 		memmove(hdr, a, sizeof(hdr));
@@ -610,7 +610,7 @@ muxreadq(Mux *m, Dtq *q, char *va, ulong n)
 	while(!havedata(q)) {
 		sleep(&q->r, havedata, q);
 		if(m->headopen == 0)
-			errors("server shutdown");
+			errors(Emuxshutdown);
 	}
 
 	nread = 0;

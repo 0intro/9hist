@@ -487,7 +487,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 	if(r->reply.type != r->request.type+1) {
 		print("devmnt: mismatched reply 0x%lux T%d R%d tags req %d fls %d rep %d\n",
 		r, r->request.type, r->reply.type, r->request.tag, r->flushtag, r->reply.tag);
-		errors("protocol error");
+		error(Emountrpc);
 	}
 }
 
@@ -513,12 +513,12 @@ mountio(Mnt *m, Mntrpc *r)
 	else {
 		if(m->mux) {
 			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
-				error(Eshortmsg);
+				error(Emountrpc);
 		}
 		else {
 			qlock(&m->c->wrl);
 			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
-				error(Eshortmsg);
+				error(Emountrpc);
 			qunlock(&m->c->wrl);
 		}
 		poperror();
