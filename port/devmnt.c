@@ -92,9 +92,9 @@ mntattach(char *muxattach)
 		if(m->c == c && m->id) {
 			lock(m);
 			if(m->id && m->ref > 0 && m->c == c) {
-				unlock(&mntalloc);
 				m->ref++;
 				unlock(m);
+				unlock(&mntalloc);
 				c = mntchan();
 				if(waserror()) {
 					chanfree(c);
@@ -125,9 +125,9 @@ mntattach(char *muxattach)
 	m->list = mntalloc.list;
 	mntalloc.list = m;
 	m->id = mntalloc.id++;
-	lock(m);
 	unlock(&mntalloc);
 
+	lock(m);
 	m->ref = 1;
 	m->queue = 0;
 	m->rip = 0;

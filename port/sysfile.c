@@ -109,19 +109,33 @@ openmode(ulong o)
 long
 sysfd2path(ulong *arg)
 {
-	Chan *c;
+	Chan *c, *oc;
 
 	validaddr(arg[1], 1, 0);
 	if(vmemchr((char*)arg[1], '\0', arg[2]) == 0)
 		error(Ebadarg);
 
-	c = fdtochan(arg[0], -1, 0, 0);
+	/*
+	 * Undomount below may cclose the chan so bump the
+	 * reference count to guard against it going to zero
+	 * and being freed.
+	 */
+	c = fdtochan(arg[0], -1, 0, 1);
+	if(waserror()) {
+		cclose(c);
+		nexterror();
+	}
 	/* If we used open the chan will be at the first element
 	 * of a union rather than the mhead of the union. undomount
 	 * will make it look like we used Atodir rather than Aopen.
 	 */
+	oc = c;
 	if(c->qid.path & CHDIR)
 		c = undomount(c);
+	poperror();
+	if(c == oc)
+		cclose(c);
+
 	ptpath(c->path, (char*)arg[1], arg[2]);
 	return 0;
 }
