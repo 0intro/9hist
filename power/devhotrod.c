@@ -67,6 +67,7 @@ enum{
 	REBOOT=	1,	/* params: none */
 	READ=	2,	/* params: buffer, count, returned count */
 	WRITE=	3,	/* params: buffer, count */
+	TEST=	7,	/* params: none */
 };
 
 void
@@ -185,6 +186,16 @@ hotrodopen(Chan *c, int omode)
 		mp->param[0] = MP2VME(&hp->rq);
 		mp->param[1] = NhotQ;
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		delay(1000);
+		print("reset\n");
+		/*
+		 * Issue reset
+		 */
+		mp->cmd = TEST;
+		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		print("ok1\n");
+		delay(1000);
+		print("ok2\n");
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;

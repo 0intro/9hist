@@ -10,34 +10,92 @@ char	bootserver[64];
 
 void	error(char*);
 void	sendmsg(int, char*);
+void	bootparams(void);
+void	dkconfig(void);
+int	dkdial(void);
+void	nop(int);
+void	session(int);
+int	cache(int);
 
 main(int argc, char *argv[])
 {
-	int cfd, fd, n, fu, f, i;
+	int fd, f;
 	char buf[256];
-	int p[2];
 	Dir dir;
 
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
 
-	fd = open("#e/bootline", OREAD);
-	if(fd >= 0){
-		read(fd, bootline, sizeof bootline);
-		close(fd);
-	}
-	fd = open("#e/bootdevice", OREAD);
-	if(fd >= 0){
-		read(fd, &bootdevice, 1);
-		close(fd);
-	}
-	fd = open("#e/bootserver", OREAD);
-	if(fd >= 0){
-		read(fd, bootserver, 64);
-		close(fd);
-	} else
-		strcpy(bootserver, "nfs");
+	bootparams();
+	dkconfig();
+	fd = dkdial();
+	nop(fd);
+	session(fd);
+	fd = cache(fd);
+
+	/*
+	 *  make a /srv/boot and a /srv/bootes
+	 */
+	print("post...");
+	sprint(buf, "#s/%s", "bootes");
+	f = create(buf, 1, 0666);
+	if(f < 0)
+		error("create");
+	sprint(buf, "%d", fd);
+	if(write(f, buf, strlen(buf)) != strlen(buf))
+		error("write");
+	close(f);
+	sprint(buf, "#s/%s", "bootes");
+	f = create("#s/boot", 1, 0666);
+	if(f < 0)
+		error("create");
+	sprint(buf, "%d", fd);
+	if(write(f, buf, strlen(buf)) != strlen(buf))
+		error("write");
+	close(f);
+
+	/*
+	 *  mount file server root after #/ root
+	 */
+	if(bind("/", "/", MREPL) < 0)
+		error("bind");
+	print("mount...");
+	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
+		error("mount");
+
+	/*
+	 * set the time from the access time of the root of the file server,
+	 * accessible as /..
+	 */
+	print("time...");
+	if(stat("/..", buf) < 0)
+		error("stat");
+	convM2D(buf, &dir);
+	f = open("#c/time", OWRITE);
+	sprint(buf, "%ld", dir.atime);
+	write(f, buf, strlen(buf));
+	close(f);
+	
+	print("success\n");
+
+	bind("#k", "/net/net", MREPL);
+	bind("#k", "/net/dk", MREPL);
+
+	if(strchr(bootline, ' '))
+		execl("/68020/init", "init", "-m", 0);
+	else
+		execl("/68020/init", "init", 0);
+	error("/68020/init");
+}
+
+/*
+ *  open the network device, push on the needed multiplexors
+ */
+void
+dkconfig(void)
+{
+	int cfd;
 
 	switch(bootdevice){
 	case 'A':
@@ -84,6 +142,7 @@ main(int argc, char *argv[])
 
 	/*
 	 *  fork a process to hold the device channel open
+	 *  forever
 	 */
 	switch(fork()){
 	case -1:
@@ -96,11 +155,19 @@ main(int argc, char *argv[])
 		close(cfd);
 		break;
 	}
+}
 
-	/*
-	 *  open a datakit channel and call ken, leave the
-	 *  incon ctl channel open
-	 */
+/*
+ *  open a datakit channel and call ken, return an fd to the
+ *  connection.
+ */
+int
+dkdial(void)
+{
+	int fd, cfd;
+	int i;
+	long n;
+
 	for(i = 0; ; i++){
 		fd = open("#k/2/data", 2);
 		if(fd < 0)
@@ -114,16 +181,50 @@ main(int argc, char *argv[])
 			break;
 		if(i == 5)
 			error("dialing");
-		print("error dialing, retrying ...\n");
+		print("error dialing %s, retrying ...\n", bootserver);
 		close(fd);
 		close(cfd);
 	}
 	print("connected to %s\n", bootserver);
 	close(cfd);
+	return fd;
+}
 
-	/*
-	 *  talk to the file server
-	 */
+/*
+ *  read arguments passed by kernel as
+ *  environment variables - YECH!
+ */
+void
+bootparams(void)
+{
+	int f;
+
+	f = open("#e/bootline", OREAD);
+	if(f >= 0){
+		read(f, bootline, sizeof bootline);
+		close(f);
+	}
+	f = open("#e/bootdevice", OREAD);
+	if(f >= 0){
+		read(f, &bootdevice, 1);
+		close(f);
+	}
+	f = open("#e/bootserver", OREAD);
+	if(f >= 0){
+		read(f, bootserver, 64);
+		close(f);
+	} else
+		strcpy(bootserver, "nfs");
+}
+
+/*
+ *  send nop to file server
+ */
+void
+nop(int fd)
+{
+	long n;
+
 	print("nop...");
 	hdr.type = Tnop;
 	hdr.tag = ~0;
@@ -142,6 +243,15 @@ main(int argc, char *argv[])
 	}
 	if(hdr.type != Rnop)
 		error("not Rnop");
+}
+
+/*
+ *  send nop to file server
+ */
+void
+session(int fd)
+{
+	long n;
 
 	print("session...");
 	hdr.type = Tsession;
@@ -160,54 +270,52 @@ main(int argc, char *argv[])
 	}
 	if(hdr.type != Rsession)
 		error("not Rsession");
+}
 
-	print("post...");
-	sprint(buf, "#s/%s", "bootes");
-	f = create(buf, 1, 0666);
-	if(f < 0)
-		error("create");
-	sprint(buf, "%d", fd);
-	if(write(f, buf, strlen(buf)) != strlen(buf))
-		error("write");
-	close(f);
-	sprint(buf, "#s/%s", "bootes");
-	f = create("#s/boot", 1, 0666);
-	if(f < 0)
-		error("create");
-	sprint(buf, "%d", fd);
-	if(write(f, buf, strlen(buf)) != strlen(buf))
-		error("write");
-	close(f);
-	
-	print("mount...");
-	if(bind("/", "/", MREPL) < 0)
-		error("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
-		error("mount");
+/*
+ *  see if we have a cache file system server in the kernel,
+ *  and use it if we do
+ */
+int
+cache(int fd)
+{
+	int f;
+	ulong i;
+	int p[2];
 
 	/*
-	 * set the time from the access time of the root of the file server,
-	 * accessible as /..
+	 *  if there's no /cfs, just return the fd to the
+	 *  file server
 	 */
-	print("time...");
-	if(stat("/..", buf) < 0)
-		error("stat");
-	convM2D(buf, &dir);
-	f = open("#c/time", OWRITE);
-	sprint(buf, "%ld", dir.atime);
-	write(f, buf, strlen(buf));
-	close(f);
-	
-	print("success\n");
+	f = open("/cfs", OREAD);
+	if(f < 0)
+		return fd;
+	print("cfs...");
 
-	bind("#k", "/net/net", MREPL);
-	bind("#k", "/net/dk", MREPL);
-
-	if(strchr(bootline, ' '))
-		execl("/68020/init", "init", "-m", 0);
-	else
-		execl("/68020/init", "init", 0);
-	error("/68020/init");
+	/*
+	 *  if we have a cfs, give it the file server as fd 0
+	 *  and requests on fd 1
+	 */
+	if(pipe(p)<0)
+		error("pipe");
+	switch(fork()){
+	case -1:
+		error("fork");
+	case 0:
+		close(p[1]);
+		dup(fd, 0);
+		close(fd);
+		dup(p[0], 1);
+		close(p[0]);
+		execl("/cfs", "bootcfs", "-s", 0);
+		break;
+	default:
+		close(p[0]);
+		close(fd);
+		fd = p[1];
+		break;
+	}
+	return fd;
 }
 
 void

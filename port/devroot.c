@@ -10,10 +10,15 @@ enum{
 	Qdir,
 	Qbin,
 	Qboot,
+	Qcfs,
 	Qdev,
 	Qenv,
 	Qproc,
 };
+
+extern long	cfslen;
+extern ulong	*cfscode;
+
 
 Dirtab rootdir[]={
 	"bin",		{Qbin|CHDIR},	0,			0700,
@@ -21,13 +26,16 @@ Dirtab rootdir[]={
 	"dev",		{Qdev|CHDIR},	0,			0700,
 	"env",		{Qenv|CHDIR},	0,			0700,
 	"proc",		{Qproc|CHDIR},	0,			0700,
+	"cfs",		{Qcfs},		0,			0700,
 };
 
 #define	NROOT	(sizeof rootdir/sizeof(Dirtab))
+int	nroot;
 
 void
 rootreset(void)
 {
+	nroot = (cfslen > 0) ? NROOT : NROOT-1;
 }
 
 void
@@ -50,19 +58,19 @@ rootclone(Chan *c, Chan *nc)
 int	 
 rootwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, rootdir, NROOT, devgen);
+	return devwalk(c, name, rootdir, nroot, devgen);
 }
 
 void	 
 rootstat(Chan *c, char *dp)
 {
-	devstat(c, dp, rootdir, NROOT, devgen);
+	devstat(c, dp, rootdir, nroot, devgen);
 }
 
 Chan*
 rootopen(Chan *c, int omode)
 {
-	return devopen(c, omode, rootdir, NROOT, devgen);
+	return devopen(c, omode, rootdir, nroot, devgen);
 }
 
 void	 
@@ -87,7 +95,7 @@ rootread(Chan *c, void *buf, long n)
 
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:
-		return devdirread(c, buf, n, rootdir, NROOT, devgen);
+		return devdirread(c, buf, n, rootdir, nroot, devgen);
 
 	case Qboot:		/* boot */
 		if(c->offset >= sizeof bootcode)
@@ -95,6 +103,14 @@ rootread(Chan *c, void *buf, long n)
 		if(c->offset+n > sizeof bootcode)
 			n = sizeof bootcode - c->offset;
 		memcpy(buf, ((char*)bootcode)+c->offset, n);
+		return n;
+
+	case Qcfs:		/* boot */
+		if(c->offset >= cfslen)
+			return 0;
+		if(c->offset+n > cfslen)
+			n = cfslen - c->offset;
+		memcpy(buf, ((char*)cfscode)+c->offset, n);
 		return n;
 
 	case Qdev:
