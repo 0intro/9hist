@@ -344,7 +344,7 @@ typedef struct Controller {
 		Lock;
 		uchar head[4];		/* head of free list (NCR byte order) */
 		Dsa	*tail;
-		Dsa	*free;
+		Dsa	*freechain;
 	} dsalist;
 
 	QLock q[MAXTARGET];		/* queues for each target */
@@ -427,7 +427,7 @@ dsaalloc(Controller *c, int target, int lun)
 	Dsa *d;
 
 	ilock(&c->dsalist);
-	if ((d = c->dsalist.free) == 0) {
+	if ((d = c->dsalist.freechain) == 0) {
 		d = xalloc(sizeof(*d));
 		if (DEBUG(1))
 			KPRINT("sd53c8xx: %d/%d: allocated new dsa %lux\n", target, lun, d);
@@ -442,7 +442,7 @@ dsaalloc(Controller *c, int target, int lun)
 	else {
 		if (DEBUG(1))
 			KPRINT("sd53c8xx: %d/%d: reused dsa %lux\n", target, lun, d);
-		c->dsalist.free = d->freechain;
+		c->dsalist.freechain = d->freechain;
 		lesetl(d->state, A_STATE_ALLOCATED);
 	}
 	iunlock(&c->dsalist);
@@ -455,8 +455,8 @@ static void
 dsafree(Controller *c, Dsa *d)
 {
 	ilock(&c->dsalist);
-	d->freechain = c->dsalist.free;
-	c->dsalist.free = d;
+	d->freechain = c->dsalist.freechain;
+	c->dsalist.freechain = d;
 	lesetl(d->state, A_STATE_FREE);
 	iunlock(&c->dsalist);
 }
@@ -1851,7 +1851,7 @@ static Variant variant[] = {
 { SYM_885_DID,   0xff, "SYM53C885",	Burst128, 16, 24, Prefetch|LocalRAM|BigFifo|Wide|Ultra|ClockDouble },
 { SYM_895_DID,   0xff, "SYM53C895",	Burst128, 16, 24, Prefetch|LocalRAM|BigFifo|Wide|Ultra|Ultra2 },
 { SYM_896_DID,   0xff, "SYM53C896",	Burst128, 16, 64, Prefetch|LocalRAM|BigFifo|Wide|Ultra|Ultra2 },
-{ SYM_896_DID,   0xff, "SYM53C1010",	Burst128, 16, 64, Prefetch|LocalRAM|BigFifo|Wide|Ultra|Ultra2 },
+{ SYM_1010_DID,   0xff, "SYM53C1010",	Burst128, 16, 64, Prefetch|LocalRAM|BigFifo|Wide|Ultra|Ultra2 },
 };
 
 #define offsetof(s, t) ((ulong)&((s *)0)->t)
@@ -1933,23 +1933,17 @@ na_fixup(Controller *c, ulong pa_reg,
 static SDev*
 sympnp(void)
 {
-	char *cp;
+	int ba;
 	Pcidev *p;
 	Variant *v;
-	int ba, nctlr;
 	void *scriptma;
 	Controller *ctlr;
 	SDev *sdev, *head, *tail;
 	ulong regpa, *script, scriptpa;
 
-	if(cp = getconf("*maxsd53c8xx"))
-		nctlr = strtoul(cp, 0, 0);
-	else
-		nctlr = 32;
-
 	p = nil;
 	head = tail = nil;
-	while((p = pcimatch(p, NCR_VID, 0)) != nil && nctlr > 0){
+	while(p = pcimatch(p, NCR_VID, 0)){
 		for(v = variant; v < &variant[nelem(variant)]; v++){
 			if(p->did == v->did && p->rid <= v->maxrid)
 				break;
@@ -2025,7 +2019,7 @@ buggery:
 		}
 		swabl(ctlr->script, ctlr->script, sizeof(na_script));
 
-		ctlr->dsalist.free = 0;
+		ctlr->dsalist.freechain = 0;
 		lesetl(ctlr->dsalist.head, 0);
 
 		ctlr->pcidev = p;
@@ -2043,8 +2037,6 @@ buggery:
 		else
 			head = sdev;
 		tail = sdev;
-
-		nctlr--;
 	}
 
 	return head;
@@ -2096,5 +2088,3 @@ SDifc sd53c8xxifc = {
 
 	scsibio,			/* bio */
 };
-
-
