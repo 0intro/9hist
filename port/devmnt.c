@@ -573,7 +573,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
  	Mntrpc *r;
 	char *uba;
 	int cache;
-	ulong cnt, nr;
+	ulong cnt, nr, nreq;
 
 	m = mntchk(c);
 	uba = buf;
@@ -593,9 +593,10 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 		r->request.data = uba;
 		r->request.count = limit(n, m->blocksize);
 		mountrpc(m, r);
+		nreq = r->request.count;
 		nr = r->reply.count;
-		if(nr > r->request.count)
-			nr = r->request.count;
+		if(nr > nreq)
+			nr = nreq;
 
 		if(type == Tread)
 			memmove(uba, r->reply.data, nr);
@@ -608,7 +609,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 		uba += nr;
 		cnt += nr;
 		n -= nr;
-		if(nr != r->request.count || n == 0 || up->nnote)
+		if(nr != nreq || n == 0 || up->nnote)
 			break;
 	}
 	return cnt;
