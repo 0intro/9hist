@@ -94,7 +94,7 @@ trap(Ureg *ur)
 		sprint(buf, "pc=%lux trap: %s", ur->pc, excname(ur->vo));
 		postnote(u->p, 1, buf, NDebug);
 	}else{
-		print("kernel trap vo=%ux pc=%lux\n", ur->vo, ur->pc);
+		print("kernel trap vo=0x%ux pc=%lux\n", ur->vo, ur->pc);
 		dumpregs(ur);
 		exit();
 	}
@@ -243,7 +243,6 @@ syscall(Ureg *aur)
 	ulong r0;
 	Ureg *ur;
 	char *msg;
-	long fpnull = 0;
 
 	u->p->insyscall = 1;
 	ur = aur;
@@ -258,7 +257,7 @@ syscall(Ureg *aur)
 	splhi();
 	fpsave(&u->fpsave);
 	if(u->p->fpstate==FPactive || u->fpsave.type){
-		fprestore((FPsave*)&fpnull);
+		fprestore(&initfp);
 		u->p->fpstate = FPinit;
 		m->fpstate = FPinit;
 	}

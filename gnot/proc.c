@@ -5,7 +5,7 @@
 #include	"fns.h"
 #include	"errno.h"
 
-#include	<balu.h>
+#include	<gnot.h>
 
 struct
 {
@@ -79,8 +79,6 @@ sched(void)
 {
 	Proc *p;
 	ulong tlbvirt, tlbphys;
-	void (*f)(ulong);
-	long fpnull = 0;
 	Balu balu;
 
 	if(u){
@@ -88,6 +86,8 @@ sched(void)
 
 		fpsave(&u->fpsave);
 		if(u->fpsave.type){
+			if(u->fpsave.size > sizeof u->fpsave.junk)
+				panic("fpsize %d max %d\n", u->fpsave.size, sizeof u->fpsave.junk);
 			fpregsave(u->fpsave.reg);
 			u->p->fpstate = FPactive;
 			m->fpstate = FPdirty;
@@ -107,7 +107,7 @@ if(u->p->mach)panic("mach non zero");
 			if(p->fpstate != m->fpstate){
 				if(p->fpstate == FPinit){
 					u->p->fpstate = FPinit;
-					fprestore((FPsave*)&fpnull);
+					fprestore(&initfp);
 					m->fpstate = FPinit;
 				}else{
 					fpregrestore(u->fpsave.reg);

@@ -44,9 +44,12 @@ struct SBCC
 
 #define LANCERAM	IO2(uchar, 0xE00000)
 #define LANCEEND	IO2(uchar, 0xF00000)
+#define LANCE3RAM	IO2(uchar, 0xFF4000)
+#define LANCE3END	IO2(uchar, 0xFF8000)
 #define LANCERDP	IO2(ushort, 0xFC0002)
 #define LANCERAP	IO2(ushort, 0xFC000a)
 #define LANCEID		IO2(ushort, 0xFF0002)
+
 #define IOID		IO2(uchar, 0xFFFFF0)
 #define IO2R1		1	/* IO2 revision level 1 */
 #define IO2R2		2	/* IO2 revision level 2 */
@@ -83,21 +86,20 @@ struct INTVEC {
 #define	MPBERR1		IO2(ulong, 0xF4C000)
 #define SBEADDR		((ulong *)(UNCACHED|0x1F080000))
 
-/*
- *  IO board type
- */
-extern int ioid;
+extern int ioid;	/* io board type */
+extern int iolevels;	/* number of io levels */
+extern int iomask;	/* interrupts to enable */
 
 /*
  *  The IO2/IO3 slave maps.  These maps are used to map
  *  external addresses to MP bus addresses.
  */
 enum {
-	a24map,		/* VME A24 non-priv address space */
-	a32map,		/* VME A32 non-priv address space */
-	lancemap,	/* Lance chip address space */
-	scsi1map,	/* SCSI bus 1 address space */
-	scsi0map,	/* SCSI bus 0 address space */
-	nomap,
+	A24map,		/* VME A24 non-priv address space */
+	A32map,		/* VME A32 non-priv address space */
+	Lancemap,	/* Lance chip address space */
+	Scsi1map,	/* SCSI bus 1 address space */
+	Scsi0map,	/* SCSI bus 0 address space */
+	Nomap,
 };
 #define	WRITEMAP	IO2(ulong, 0xFA0000);

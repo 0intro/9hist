@@ -232,6 +232,26 @@ freeb(Block *bp)
 }
 
 /*
+ *  pad a block to the front with n bytes
+ */
+Block *
+padb(Block *bp, int n)
+{
+	Block *nbp;
+
+	if(bp->base && bp->rptr-bp->base>=n){
+		bp->rptr -= n;
+		return bp;
+	} else {
+		nbp = allocb(n);
+		nbp->wptr = nbp->lim;
+		nbp->rptr = nbp->wptr - n;
+		nbp->next = nbp;
+		return nbp;
+	}
+} 
+
+/*
  *  allocate a pair of queues.  flavor them with the requested put routines.
  *  the `QINUSE' flag on the read side is the only one used.
  */

@@ -35,9 +35,11 @@ char confbuf[4*1024];
 char sysname[64];
 
 /*
- *  IO board type
+ *  IO board type, number of interrupt levels, and interrupt enable mask
  */
 int ioid;
+int iolevels;
+int iomask;
 
 void
 main(void)
@@ -133,8 +135,23 @@ void
 ioboardinit(void)
 {
 	long i;
+	int intrs;
 
+	/*
+	 *  set up interrupts based on IO board type
+	 */
 	ioid = *IOID;
+	switch(ioid){
+	case IO2R1:
+	case IO2R2:
+		iolevels = 8;
+		iomask = 0xff;
+		break;
+	case IO3R1:
+		iolevels = 11;
+		iomask = 0x7fe;
+		break;
+	}
 
 	/*
 	 *  reset VME bus (MODEREG is on the IO2)
@@ -152,9 +169,9 @@ ioboardinit(void)
 		setvmevec(i, novme);
 
 	/*
-	 *  tell IO2 to sent all interrupts to CPU 0's SBCC
+	 *  tell IO2 to send all interrupts to CPU 0's SBCC
 	 */
-	for(i=0; i<8; i++)
+	for(i=0; i<iolevels; i++)
 		INTVECREG->i[i].vec = 0<<8;
 
 	/*
@@ -174,13 +191,13 @@ ioboardinit(void)
 	 *  The SBCC 16 bit registers are read/written as ulong, but only
 	 *  bits 23-16 and 7-0 are meaningful.
 	 */
-	SBCCREG->fintenable |= 0xff;	  /* allow all interrupts on the IO2 */
+	SBCCREG->fintenable |= iomask;	/* turn on all interrupts */
 	SBCCREG->idintenable |= 0x800000; /* allow interrupts from the IO2 */
 
 	/*
 	 *  enable all interrupts on the IO2
 	 */
-	*IO2SETMASK = 0xff;
+	*IO2SETMASK = iomask;
 }
 
 void

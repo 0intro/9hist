@@ -97,6 +97,7 @@ Orig	*lookorig(ulong, ulong, int, Chan*);
 void	machinit(void);
 void	mapstack(Proc*);
 int	mount(Chan*, Chan*, int);
+void	mpbuserror(void);
 Chan	*namec(char*, int, int, ulong);
 void	nexterror(void);
 Alarm	*newalarm(void);

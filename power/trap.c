@@ -180,6 +180,14 @@ trap(Ureg *ur)
 }
 
 void
+mpbuserror(void)
+{
+	print("io2 mp bus error %d %lux %lux\n", 0,
+		*MPBERR0, *MPBERR1);
+	*MPBERR0 = 0;
+}
+
+void
 intr(ulong cause, ulong pc)
 {
 	int i, pend;
@@ -227,33 +235,34 @@ intr(ulong cause, ulong pc)
 		/*
 		 *  5a. process lance, scsi
 		 */
-	loop:
 		if(pend & 1) {
 			v = INTVECREG->i[0].vec;
-			if(!(v & (1<<12))){
-				print("io2 mp bus error %d %lux %lux\n", 0,
-					*MPBERR0, *MPBERR1);
-				*MPBERR0 = 0;
-			}
-			switch(ioid){
-			case IO2R1:
-			case IO2R2:
-				if(!(v & (1<<2)))
-					lanceintr();
-				if(!(v & (1<<1)))
-					lanceparity();
-				if(!(v & (1<<0)))
-					print("SCSI interrupt\n");
-				break;
-			case IO3R1:
-				if(v & (1<<2))
-					lance3intr();
-				if(v & (1<<1))
-					print("SCSI 1 interrupt\n");
-				if(v & (1<<0))
-					print("SCSI 0 interrupt\n");
-				break;
-			}
+			if(!(v & (1<<12)))
+				mpbuserror();
+			if(!(v & (1<<2)))
+				lanceintr();
+			if(!(v & (1<<1)))
+				lanceparity();
+			if(!(v & (1<<0)))
+				print("SCSI interrupt\n");
+		}
+		if(pend & (1<<10)) {
+			v = INTVECREG->i[10].vec;
+			if(!(v & (1<<12)))
+				mpbuserror();
+			lance3intr();
+		}
+		if(pend & (1<<8)) {
+			v = INTVECREG->i[10].vec;
+			if(!(v & (1<<12)))
+				mpbuserror();
+			print("SCSI0 interrupt\n");
+		}
+		if(pend & (1<<9)) {
+			v = INTVECREG->i[10].vec;
+			if(!(v & (1<<12)))
+				mpbuserror();
+			print("SCSI1 interrupt\n");
 		}
 		/*
 		 *  5b. process vme
@@ -263,11 +272,8 @@ intr(ulong cause, ulong pc)
 		for(i=1; pend; i++) {
 			if(pend & 1) {
 				v = INTVECREG->i[i].vec;
-				if(!(v & (1<<12))){
-					print("io2 mp bus error %d %lux %lux\n", i,
-						*MPBERR0, *MPBERR1);
-					*MPBERR0 = 0;
-				}
+				if(!(v & (1<<12)))
+					mpbuserror();
 				v &= 0xff;
 				(*vmevec[v])(v);
 			}
@@ -276,7 +282,7 @@ intr(ulong cause, ulong pc)
 		/*
 		 *  6. re-enable interrupts
 		 */
-		*IO2SETMASK = 0xff;
+		*IO2SETMASK = iomask;
 		cause &= ~INTR5;
 	}
 	if(cause)

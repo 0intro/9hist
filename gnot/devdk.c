@@ -397,7 +397,8 @@ dkiput(Queue *q, Block *bp)
 /*
  *  we assume that each put is a message.
  *
- *  add a 2 byte channel number to the start of each message
+ *  add a 2 byte channel number to the start of each message,
+ *  low order byte first.
  */
 static void
 dkoput(Queue *q, Block *bp)
@@ -415,10 +416,7 @@ dkoput(Queue *q, Block *bp)
 	dp = lp->dp;
 	line = lp - dp->line;
 
-	if(bp->base && bp->rptr - bp->base >= 2)
-		bp->rptr -= 2;
-	else
-		panic("dkoput");
+	bp = padb(bp, 2);
 	bp->rptr[0] = line;
 	bp->rptr[1] = line>>8;
 

@@ -357,12 +357,12 @@ enum{
 	Qpid,
 	Qppid,
 	Qrcons,
-	Qrs232ctl,
 	Qtime,
 	Quser,
 	Qklog,
 	Qmsec,
 	Qclock,
+	Qrs232ctl = STREAMQID(1, Sctlqid),
 	Qrs232 = STREAMQID(1, Sdataqid),
 };
 
@@ -479,14 +479,17 @@ consopen(Chan *c, int omode)
 {
 	int ch;
 
-	if(c->qid==Quser && omode==(OWRITE|OTRUNC)){
-		/* truncate? */
-		if(strcmp(u->p->pgrp->user, "bootes") == 0)	/* BUG */
-			u->p->pgrp->user[0] = 0;
-		else
-			error(0, Eperm);
-	}
-	if(c->qid == Qrcons)
+	switch(c->qid){
+	case Quser:
+		if(omode==(OWRITE|OTRUNC)){
+			/* truncate? */
+			if(strcmp(u->p->pgrp->user, "bootes") == 0)	/* BUG */
+				u->p->pgrp->user[0] = 0;
+			else
+				error(0, Eperm);
+		}
+		break;
+	case Qrcons:
 		if(incref(&raw) == 1){
 			lock(&lineq);
 			while((ch=getc(&kbdq)) != -1){
@@ -496,8 +499,12 @@ consopen(Chan *c, int omode)
 			}
 			unlock(&lineq);
 		}
-	if(c->qid == Qrs232)
+		break;
+	case Qrs232:
+	case Qrs232ctl:
 		streamopen(c, &rs232info);
+		break;
+	}
 	return devopen(c, omode, consdir, NCONS, consgen);
 }
 
@@ -688,31 +695,8 @@ conswrite(Chan *c, void *va, long n)
 		break;
 
 	case Qrs232:
-		n = streamwrite(c, va, n, 1);
-		break;
-
 	case Qrs232ctl:
-		qlock(&rs232);
-		if(waserror()){
-			qunlock(&rs232);
-			nexterror();
-		}
-		if(n<=2 || n>=sizeof buf)
-			error(0, Ebadarg);
-		strncpy(buf, a, n);
-		buf[n] = 0;
-		l = strtoul(buf+1, 0, 0);
-		switch(buf[0]){
-		case 'B':
-			duartbaud(l); break;
-		case 'D':
-			duartdtr(l); break;
-		case 'K':
-			duartbreak(l); break;
-		default:
-			error(0, Ebadarg);
-		}
-		qunlock(&rs232);
+		n = streamwrite(c, va, n, 1);
 		break;
 
 	case Qtime:
@@ -776,32 +760,58 @@ consuserstr(Error *e, char *buf)
 
 /*
  *  rs232 stream routines
+ *
+ *  A kernel process, rs232kproc, stages blocks to be output and
+ *  packages input bytes into stream blocks to send upstream.
+ *  The process is awakened whenever the interrupt side is almost
+ *  out of bytes to xmit or 1/16 second has elapsed since a byte
+ *  was input.
  */
+static int
+rs232empty(void *a)
+{
+	Rs232 *r;
+
+	r = a;
+	return r->out.w == r->out.r;
+}
+
 static void
 rs232output(Rs232 *r)
 {
 	int next;
 	Queue *q;
 	Block *bp;
+	long l;
 
 	qlock(&r->outlock);
 	q = r->wq;
 
 	/*
- 	 *  free emptied blocks
-	 */
-	for(; r->out.f != r->out.r; r->out.f = NEXT(r->out.f)){
-		freeb(r->out.bp[r->out.f]);
-		r->out.bp[r->out.f] = 0;
-	}
-
-	/*
 	 *  stage new blocks
+	 *
+	 *  if we run into a control block, wait till the queue
+	 *  is empty before doing the control.
 	 */
-	for(next = NEXT(r->out.w); next!=r->out.r; next = NEXT(next)){
+	for(next = NEXT(r->out.w); next != r->out.r; next = NEXT(next)){
 		bp = getq(q);
 		if(bp == 0)
 			break;
+		if(bp->type == M_CTL){
+			while(!rs232empty(r))
+				sleep(&r->r, rs232empty, r);
+			l = strtoul((char *)(bp->rptr+1), 0, 0);
+			switch(*bp->rptr){
+			case 'B':
+				duartbaud(l); break;
+			case 'D':
+				duartdtr(l); break;
+			case 'K':
+				duartbreak(l); break;
+			}
+			freeb(bp);
+			break;
+		}
 		r->out.bp[r->out.w] = bp;
 		r->out.w = next;
 	}

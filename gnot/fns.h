@@ -106,6 +106,7 @@ char	*nextelem(char*, char*);
 void	notify(Ureg*);
 void	nullput(Queue*, Block*);
 int	openmode(ulong);
+Block*	padb(Block*, int);
 void	pageinit(void);
 void	panic(char*, ...);
 void	pexit(char*, int);
