@@ -25,6 +25,7 @@ newfd(Chan *c)
 			return i;
 		}
 	unlock(f);
+print("process %d (%s) out of file descriptors\n", up->pid, up->text);
 	exhausted("file descriptors");
 	return 0;
 }

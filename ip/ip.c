@@ -37,7 +37,6 @@ struct Iphdr
 
 struct Fragment
 {
-	QLock;
 	Block*	blist;
 	Fragment* next;
 	Ipaddr 	src;
@@ -52,9 +51,9 @@ struct Ipfrag
 	ushort	flen;
 };
 
+QLock		fraglock;
 Fragment*	flisthead;
 Fragment*	fragfree;
-QLock		fraglock;
 ulong		Id;
 int		iprouting;	/* true if we route like a gateway */
 ulong		ipcsumerr;
@@ -70,7 +69,7 @@ ulong		ipout, ippout;		/* bytes, packets out */
 
 ushort		ipcsum(byte*);
 Block*		ipreassemble(int, Block*, Iphdr*);
-void		ipfragfree(Fragment*, int);
+void		ipfragfree(Fragment*);
 Fragment*	ipfragallo(void);
 
 void
@@ -309,8 +308,6 @@ ipstats(char *buf, int len)
 	return n;
 }
 
-QLock iplock;
-
 Block*
 ipreassemble(int offset, Block *bp, Iphdr *ip)
 {
@@ -333,20 +330,18 @@ ipreassemble(int offset, Block *bp, Iphdr *ip)
 		ip = (Iphdr *)(bp->rp);
 	}
 
-	qlock(&iplock);
+	qlock(&fraglock);
 
 	/*
 	 *  find a reassembly queue for this fragment
 	 */
-	qlock(&fraglock);
 	for(f = flisthead; f; f = fnext){
 		fnext = f->next;	/* because ipfragfree changes the list */
 		if(f->src == src && f->dst == dst && f->id == id)
 			break;
-		if(f->age > msec && canqlock(f))
-			ipfragfree(f, 0);
+		if(f->age < msec)
+			ipfragfree(f);
 	}
-	qunlock(&fraglock);
 
 	/*
 	 *  if this isn't a fragmented packet, accept it
@@ -354,11 +349,9 @@ ipreassemble(int offset, Block *bp, Iphdr *ip)
 	 *  with it.
 	 */
 	if(!ip->tos && (offset & ~(IP_MF|IP_DF)) == 0) {
-		if(f != nil) {
-			qlock(f);
-			ipfragfree(f, 1);
-		}
-		qunlock(&iplock);
+		if(f != nil)
+			ipfragfree(f);
+		qunlock(&fraglock);
 		return bp;
 	}
 
@@ -373,18 +366,15 @@ ipreassemble(int offset, Block *bp, Iphdr *ip)
 	/* First fragment allocates a reassembly queue */
 	if(f == nil) {
 		f = ipfragallo();
-		qlock(f);
 		f->id = id;
 		f->src = src;
 		f->dst = dst;
 
 		f->blist = bp;
 
-		qunlock(f);
-		qunlock(&iplock);
+		qunlock(&fraglock);
 		return nil;
 	}
-	qlock(f);
 
 	/*
 	 *  find the new fragment's position in the queue
@@ -404,8 +394,7 @@ ipreassemble(int offset, Block *bp, Iphdr *ip)
 		if(ovlap > 0) {
 			if(ovlap >= BKFG(bp)->flen) {
 				freeblist(bp);
-				qunlock(f);
-				qunlock(&iplock);
+				qunlock(&fraglock);
 				return nil;
 			}
 			BKFG(prev)->flen -= ovlap;
@@ -465,24 +454,23 @@ ipreassemble(int offset, Block *bp, Iphdr *ip)
 
 			bl = f->blist;
 			f->blist = nil;
-			ipfragfree(f, 1);
+			ipfragfree(f);
 			ip = BLKIP(bl);
 			hnputs(ip->length, len);
-			qunlock(&iplock);
+			qunlock(&fraglock);
 			return bl;		
 		}
 		pktposn += BKFG(bl)->flen;
 	}
-	qunlock(f);
-	qunlock(&iplock);
+	qunlock(&fraglock);
 	return nil;
 }
 
 /*
- * ipfragfree - Free a list of fragments, fragment list must be locked
+ * ipfragfree - Free a list of fragments - assume hold fraglock
  */
 void
-ipfragfree(Fragment *frag, int lockq)
+ipfragfree(Fragment *frag)
 {
 	Fragment *fl, **l;
 
@@ -492,10 +480,6 @@ ipfragfree(Fragment *frag, int lockq)
 	frag->src = 0;
 	frag->id = 0;
 	frag->blist = nil;
-	qunlock(frag);
-
-	if(lockq)
-		qlock(&fraglock);
 
 	l = &flisthead;
 	for(fl = *l; fl; fl = fl->next) {
@@ -509,25 +493,21 @@ ipfragfree(Fragment *frag, int lockq)
 	frag->next = fragfree;
 	fragfree = frag;
 
-	if(lockq)
-		qunlock(&fraglock);
 }
 
 /*
- * ipfragallo - allocate a reassembly queue
+ * ipfragallo - allocate a reassembly queue - assume hold fraglock
  */
 Fragment *
 ipfragallo(void)
 {
 	Fragment *f;
 
-	qlock(&fraglock);
 	while(fragfree == nil) {
-		for(f = flisthead; f; f = f->next)
-			if(canqlock(f)) {
-				ipfragfree(f, 0);
-				break;
-			}
+		/* free last entry on fraglist */
+		for(f = flisthead; f->next; f = f->next)
+			;
+		ipfragfree(f);
 	}
 	f = fragfree;
 	fragfree = f->next;
@@ -535,7 +515,6 @@ ipfragallo(void)
 	flisthead = f;
 	f->age = msec + 30000;
 
-	qunlock(&fraglock);
 	return f;
 }
 
