@@ -180,8 +180,6 @@ netopen(Chan *c, int omode, Network *np)
 		case Sdataqid:
 		case Sctlqid:
 			id = STREAMID(c->qid.path);
-			if(netown(np, id, u->p->user, omode&7) < 0)
-				error(Eperm);
 			break;
 		case Qlisten:
 			streamopen(c, np->devp);
@@ -203,6 +201,8 @@ netopen(Chan *c, int omode, Network *np)
 			streamopen(c, np->devp);
 			if(np->protop && c->stream->devq->next->info != np->protop)
 				pushq(c->stream, np->protop);
+			if(netown(np, id, u->p->user, omode&7) < 0)
+				error(Eperm);
 			break;
 		}
 	}

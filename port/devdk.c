@@ -106,14 +106,17 @@ struct Line {
  *  dkmux line discipline is pushed onto.
  */
 struct Dk {
+	QLock;
+	Chan	*csc;
+
 	Lock;
 	int	opened;
+
 	char	name[64];	/* dk name */
 	Queue	*wq;		/* dk output queue */
 	Stream	*s;
-	int	lines;		/* number of lines */
 	int	ncsc;		/* csc line number */
-	Chan	*csc;
+	int	lines;		/* number of lines */
 	Line	**linep;
 	int	restart;
 	int	urpwindow;
@@ -123,7 +126,7 @@ struct Dk {
 	Network	net;
 	Netprot *prot;
 
-	Block	*alloc;
+	Block	*alloc;		/* blocks containing Line structs */
 };
 static Dk *dk;
 static Lock dklock;
@@ -179,6 +182,7 @@ extern Qinfo urpinfo;
 Chan*		dkattach(char*);
 static void	dkmuxconfig(Queue*, Block*);
 static Chan*	dkopenline(Dk*, int);
+static Chan*	dkopencsc(Dk*);
 static int	dkmesg(Chan*, int, int, int, int);
 static void	dkcsckproc(void*);
 static void	dkanswer(Chan*, int, int);
@@ -504,7 +508,7 @@ dkstclose(Queue *q)
 			close(c);
 		goto out;
 	}	
-	c = dkopenline(dp, dp->ncsc);
+	c = dkopencsc(dp);
 
 	/*
 	 *  shake hands with dk
@@ -536,8 +540,11 @@ dkstclose(Queue *q)
 out:
 	qlock(lp);
 	lp->rq = 0;
-	netdisown(&dp->net, lp->lineno);
 	qunlock(lp);
+
+	if(lp->lineno == dp->ncsc)
+		dp->csc = 0;
+	netdisown(&dp->net, lp->lineno);
 }
 
 /*
@@ -672,7 +679,7 @@ dkmuxconfig(Queue *q, Block *bp)
 	 *  all fighting for it at once.
 	 */
 	dp->closeall = 0;
-	dp->csc = dkopenline(dp, dp->ncsc);
+	dkopencsc(dp);
 
 	/*
 	 *  start a process to listen to csc messages
@@ -873,9 +880,6 @@ dkcloneline(Chan *c)
 	error(Enodev);
 }
 
-/*
- *  open the common signalling channel
- */
 static Chan*
 dkopenline(Dk *dp, int line)
 {
@@ -893,6 +897,21 @@ dkopenline(Dk *dp, int line)
 	poperror();
 
 	return c;
+}
+
+/*
+ *  open the common signalling channel
+ */
+static Chan*
+dkopencsc(Dk *dp)
+{
+	qlock(dp);
+	if(dp->csc == 0)
+		dp->csc = dkopenline(dp, dp->ncsc);
+	else
+		incref(dp->csc);
+	qunlock(dp);
+	return dp->csc;
 }
 
 /*
@@ -1037,7 +1056,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 *  tell the controller we want to make a call
 	 */
 	DPRINT("dialout\n");
-	csc = dkopenline(dp, dp->ncsc);
+	csc = dkopencsc(dp);
 	if(waserror()){
 		close(csc);
 		nexterror();
@@ -1610,10 +1629,7 @@ dktimer(void *a)
 		return;
 	}
 
-	/*
-	 *  open csc
-	 */
-	c = dkopenline(dp, dp->ncsc);
+	c = dkopencsc(dp);
 
 	for(;;){
 		if(dp->opened==0)

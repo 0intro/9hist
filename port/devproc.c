@@ -426,7 +426,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 
 	case Qnote:
 		if(p->kp)
-			errors("can' t note kproc");
+			errors("can't note kproc");
 		k = kmap(p->upage);
 		up = (User*)VA(k);
 		if(up->p != p){

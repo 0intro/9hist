@@ -679,7 +679,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 {
 	char cbuf[64];
 	char buf[256];
-	long l, m;
+	long l, bp;
 	char *a = va;
 	Mach *mp;
 	int id, fd;
@@ -693,13 +693,13 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		 */
 		l = n;
 		while(l > 0){
-			m = l;
-			if(m > sizeof buf)
-				m = sizeof buf;
-			memmove(buf, a, m);
-			putstrn(a, m);
-			a += m;
-			l -= m;
+			bp = l;
+			if(bp > sizeof buf)
+				bp = sizeof buf;
+			memmove(buf, a, bp);
+			putstrn(a, bp);
+			a += bp;
+			l -= bp;
 		}
 		break;
 
