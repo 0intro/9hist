@@ -94,62 +94,65 @@ mmuinit(void)
  *  map special space uncached, assume that the space isn't already mapped
  */
 ulong*
-mapspecmeg(ulong physaddr, int len)
-ulong*
-mapspecial(ulong physaddr, int len)
+mapspecial(ulong pa, int len)
 {
 	ulong *t;
-	ulong virtaddr, i, base, end, off, entry, candidate;
+	ulong va, i, base, end, off;
+	int livelarge;
+	ulong* rv;
 
-	base = physaddr & ~(BY2PG-1);
-	end = (physaddr+len-1) & ~(BY2PG-1);
-	if(len > 128*1024)
-		usemeg = 1;
-	off = 0;
-	candidate = 0;
+	rv = nil;
+	livelarge = len >= 128*1024;
+	if(livelarge){
+		base = pa & ~(OneMeg-1);
+		end = (pa+len-1) & ~(OneMeg-1);
+	} else {
+		base = pa & ~(BY2PG-1);
+		end = (pa+len-1) & ~(BY2PG-1);
+	}
+	off = pa - base;
 
-	/* first see if we've mapped it somewhere, the first hole means we're done */
-	for(virtaddr = REGZERO; virtaddr < REGTOP; virtaddr += OneMeg){
-		if((l1table[virtaddr>>20] & L1TypeMask) != L1PageTable){
-			/* create a page table and break */
-			t = xspanalloc(BY2PG, 1024, 0);
-			memzero(t, BY2PG, 0);
-			l1table[virtaddr>>20] = L1PageTable | L1Domain0 |
-						(((ulong)t) & L1PTBaseMask);
-			break;
-		}
-		t = (ulong*)(l1table[virtaddr>>20] & L1PTBaseMask);
-		for(i = 0; i < OneMeg; i += BY2PG){
-			entry = t[(virtaddr+i)>>20];
+	for(va = REGZERO; va < REGTOP && base >= end; va += OneMeg){
+		if((l1table[va>>20] & L1TypeMask) != L1PageTable){
 
-			/* first hole means nothing left, add map */
-			if((entry & L2TypeMask) != L2SmallPage)
-				break;
-
-			if(candidate == 0){
-				/* look for start of range */
-				if((entry & L2PageBaseMask) != base)
-					continue;
-				candidate = virtaddr+i;
-			} else {
-				/* look for contiunued range */
-				if((entry & L2PageBaseMask) != base + off){
-					candidate = 0;
-					continue;
-				}
+			/* found unused entry on level 1 table */
+			if(livelarge){
+				if(rv == nil)
+					rv = (ulong*)(va+i*BY2PG+off);
+				l1table[va>>20] = L1Section | L1KernelRW |
+							(base&L1SectBaseMask);
+				base += OneMeg;
+				continue;
 			}
 
-			/* if we're at the end of the range, area is already mapped */
-			if((entry & L2PageBaseMask) == end)
-				return candidate + (physaddr-base);
+			/* create a page table and keep going */
+			t = xspanalloc(BY2PG, 1024, 0);
+			memzero(t, BY2PG, 0);
+			l1table[va>>20] = L1PageTable | L1Domain0 |
+						(((ulong)t) & L1PTBaseMask);
 		}
-		if(i < OneMeg){
-			virtaddr += i;
-			break;
+
+		t = (ulong*)(l1table[va>>20] & L1PTBaseMask);
+		for(i = 0; i < OneMeg; i += BY2PG){
+			entry = t[i>>PGSHIFT];
+
+			/* found unused entry on level 2 table */
+			if((entry & L2TypeMask) != L2SmallPage){
+				if(rv == nil)
+					rv = (ulong*)(va+i*BY2PG+off);
+				t[i>>PGSHIFT] = L2SmallPage | L2KernelRW | 
+						(base & L2PageBaseMask);
+				base += BY2PG;
+				continue;
+			}
 		}
 	}
 
-	/* we get here if no entry was found mapping this physical range */
+	/* didn't fit */
+	if(base <= end)
+		return nil;
+
+	return rv;
 }
 
 void
