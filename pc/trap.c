@@ -56,6 +56,13 @@ intrdisable(int irq, void (*f)(Ureg *, void *), void *a, int tbdf, char *name)
 	Vctl **pv, *v;
 	int vno;
 
+	/*
+	 * For now, none of this will work with the APIC code,
+	 * there is no mapping between irq and vector as the IRQ
+	 * is pretty meaningless.
+	 */
+	if(arch->intrvecno == nil)
+		return;
 	vno = arch->intrvecno(irq);
 	ilock(&vctllock);
 	pv = &vctl[vno];
@@ -68,7 +75,7 @@ intrdisable(int irq, void (*f)(Ureg *, void *), void *a, int tbdf, char *name)
 	v = *pv;
 	*pv = (*pv)->next;	/* Link out the entry */
 	
-	if (vctl[vno] == nil)
+	if (vctl[vno] == nil && arch->intrdisable != nil)
 		arch->intrdisable(irq);
 	iunlock(&vctllock);
 	xfree(v);

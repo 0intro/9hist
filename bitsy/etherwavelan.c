@@ -438,7 +438,7 @@ ltv_outstr(Ctlr* ctlr, int type, char* val)
 	ltv.type = type;
 
 //	This should be ltv.slen = len; according to Axel Belinfante
-	ltv.slen = (len+1) & ~1;
+	ltv.slen = len;
 
 	strncpy(ltv.s, val, len);
 	w_outltv(ctlr, &ltv);
@@ -451,15 +451,20 @@ static char*
 ltv_inname(Ctlr* ctlr, int type)
 {
 	static Wltv ltv;
+	int len;
 
 	memset(&ltv,0,sizeof(ltv));
 	ltv.len = WNameLen/2+2;
 	ltv.type = type;
 	if (w_inltv(ctlr, &ltv))
 		return Unkname;
-	if (ltv.name[2] == 0)
+	len = ltv.slen;
+	if(len == 0 || ltv.s[0] == 0)
 		return Nilname;
-	return ltv.name+2;
+	if(len >= sizeof ltv.s)
+		len = sizeof ltv.s - 1;
+	ltv.s[len] = '\0';
+	return ltv.s;
 }
 
 static int
