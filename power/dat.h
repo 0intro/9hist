@@ -115,8 +115,7 @@ struct Mach
 	int	intr;
 	int	ledval;			/* value last written to LED */
 	int	otlbfault;
-	Schedq	hiq;
-	Schedq	loq;
+	int	nrdy;
 
 	int	stack[1];
 };

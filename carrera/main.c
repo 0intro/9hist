@@ -453,15 +453,6 @@ confinit(void)
 }
 
 void
-procsave(Proc *p)
-{
-	USED(p);
-
-	/* keep track of tlbfaults */
-	m->otlbfault = m->tlbfault;
-}
-
-void
 buzz(int f, int d)
 {
 	USED(f);

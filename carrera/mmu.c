@@ -77,8 +77,13 @@ kmap(Page *pg)
 	s = splhi();
 	lock(&kmaplock);
 
-	if(kmapfree == 0)
-		panic("out of kmap");
+	if(kmapfree == 0) {
+		unlock(&kmaplock);
+		kmapinval();		/* try and free some */
+		lock(&kmaplock);
+		if(kmapfree == 0)
+			panic("out of kmap");
+	}
 
 	k = kmapfree;
 	kmapfree = k->next;

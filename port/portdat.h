@@ -577,8 +577,6 @@ struct Proc
 	int	(*notify)(void*, char*);
 
 	Mach	*mp;		/* machine this process last ran on */
-	ulong	affinity;	/* affinity counter for that mach */
-	ulong	movetime;	/* ticks when proc was last reassigned */
 	ulong	priority;
 
 	void	*ureg;		/* User registers for notes */

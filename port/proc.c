@@ -21,8 +21,14 @@ struct
 	Waitq	*free;
 }waitqalloc;
 
+
+enum
+{
+	Nrq = 5,	/* number of run queues */
+};
+
 int	nrdy;
-Schedq	runhiq;		/* for hi priority process, don't bother with affinity */
+Schedq	runq[Nrq];
 
 char *statename[] =
 {			/* BUG: generate automatically */
@@ -102,7 +108,13 @@ sched(void)
 int
 anyready(void)
 {
-	return m->hiq.head != 0 || m->loq.head != 0;
+	Schedq *rq;
+
+	for(rq = runq; rq < &runq[Nrq]; rq++)
+		if(rq->head)
+			return 1;
+
+	return 0;
 }
 
 void
@@ -113,14 +125,17 @@ ready(Proc *p)
 
 	s = splhi();
 
-	if(p->priority)
-		rq = &runhiq;
-	else if(p->state == Running)
-		rq = &balance(p)->loq;
-	else
-		rq = &affinity(p)->hiq;
+	if(p->priority != 0){
+		if(p->state == Running){
+			if(p->priority < Nrq-1)
+				p->priority++;
+		} else
+			p->priority = 1;
+	}
+if(p->priority < 0 || p->priority >= Nrq) panic("ready");
+	rq = &runq[p->priority];
 
-	lock(&runhiq);
+	lock(runq);
 	p->rnext = 0;
 	if(rq->tail)
 		rq->tail->rnext = p;
@@ -130,7 +145,7 @@ ready(Proc *p)
 	rq->n++;
 	nrdy++;
 	p->state = Ready;
-	unlock(&runhiq);
+	unlock(runq);
 	splx(s);
 }
 
@@ -138,38 +153,59 @@ Proc*
 runproc(void)
 {
 	Schedq *rq;
-	Proc *p;
+	Proc *p, *l;
 
 loop:
+
+	/*
+	 *  find highest priority queue with runnable process
+	 */
 	spllo();
-	while(runhiq.head == 0 && m->hiq.head == 0 && m->loq.head == 0)
-		;
+	for(rq = runq; rq < &runq[Nrq]; rq++)
+		if(rq->head)
+			break;
+	if(rq == &runq[Nrq])
+		goto loop;
 	splhi();
 
-	lock(&runhiq);
-	if(runhiq.head)
-		rq = &runhiq;
-	else if(m->hiq.head)
-		rq = &m->hiq;
-	else
-		rq = &m->loq;
+	lock(runq);
 
-	p = rq->head;
-	/* p->mach==0 only when process state is saved */
+	/*
+	 *  affinity: look for a process last run on this processor,
+	 *	otherwise, take first in list.
+	 */
+	l = 0;
+	for(p = rq->head; p; p = p->rnext){
+		if(p->mp == m)
+			break;
+		l = p;
+	}
+	if(p == 0){
+		l = 0;
+		p = rq->head;
+	}
+
+	/*
+	 *  p->mach==0 only when process state is saved
+	 */
 	if(p == 0 || p->mach){	
-		unlock(&runhiq);
+		unlock(&runq[0]);
 		goto loop;
 	}
 	if(p->rnext == 0)
-		rq->tail = 0;
-	rq->head = p->rnext;
+		rq->tail = l;
+	if(l)
+		l->rnext = p->rnext;
+	else
+		rq->head = p->rnext;
 	rq->n--;
 	nrdy--;
 	if(p->state != Ready)
 		print("runproc %s %d %s\n", p->text, p->pid, statename[p->state]);
-	unlock(&runhiq);
+	unlock(runq);
 
 	p->state = Scheding;
+	p->mp = m;
 	return p;
 }
 
@@ -179,13 +215,13 @@ canpage(Proc *p)
 	int ok = 0;
 
 	splhi();
-	lock(&runhiq);
+	lock(&runq[0]);
 	/* Only reliable way to see if we are Running */
 	if(p->mach == 0) {
 		p->newtlb = 1;
 		ok = 1;
 	}
-	unlock(&runhiq);
+	unlock(&runq[0]);
 	spllo();
 
 	return ok;
@@ -672,6 +708,7 @@ procdump(void)
 	char *s;
 	Proc *p;
 	ulong bss;
+	Schedq *rq;
 
 	for(i=0; i<conf.nproc; i++) {
 		p = &procalloc.arena[i];
@@ -687,6 +724,12 @@ procdump(void)
 		print("%3d:%10s pc %8lux %8s (%s) ut %ld st %ld bss %lux\n",
 			p->pid, p->text, p->pc,  s, statename[p->state],
 			p->time[0], p->time[1], bss);
+	}
+	for(rq = runq; rq < &runq[Nrq]; rq++){
+		print("rq%d:", rq-runq);
+		for(p = rq->head; p; p = p->rnext)
+			print(" %d", p->pid);
+		print("\n");
 	}
 }
 

@@ -268,6 +268,11 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 			return total;
 		}
 
+		o = offset - e->start;
+		l = len;
+		if(l > e->len-o)
+			l = e->len-o;
+
 		k = kmap(p);
 		if(waserror()) {
 			kunmap(k);
@@ -276,15 +281,11 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 			nexterror();
 		}
 
-		o = offset - e->start;
-		l = len;
-		if(l > e->len-o)
-			l = e->len-o;
-
 		memmove(buf, (uchar*)VA(k) + o, l);
 
 		poperror();
 		kunmap(k);
+
 		putpage(p);
 
 		buf += l;
@@ -337,7 +338,12 @@ cchain(uchar *buf, ulong offset, int len, Extent **tail)
 
 		p->daddr = e->bid;
 		k = kmap(p);
+		if(waserror()) {		/* buf may be virtual */
+			kunmap(k);
+			nexterror();
+		}
 		memmove((void*)VA(k), buf, l);
+		poperror();
 		kunmap(k);
 
 		cachepage(p, &fscache);
@@ -366,7 +372,14 @@ cpgmove(Extent *e, uchar *buf, int boff, int len)
 		return 0;
 
 	k = kmap(p);
+	if(waserror()) {		/* Since buf may be virtual */
+		kunmap(k);
+		nexterror();
+	}
+
 	memmove((uchar*)VA(k)+boff, buf, len);
+
+	poperror();
 	kunmap(k);
 	putpage(p);
 

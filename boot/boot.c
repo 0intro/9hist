@@ -44,10 +44,11 @@ boot(int argc, char *argv[])
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
 	bind("#c", "/dev", MAFTER);
+
 #ifdef DEBUG
 	print("argc=%d\n", argc);
 	for(fd = 0; fd < argc; fd++)
-		print("%s ", argv[fd]);
+		print("%lux %s ", argv[fd], argv[fd]);
 	print("\n");
 #endif DEBUG
 

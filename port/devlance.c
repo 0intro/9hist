@@ -158,6 +158,7 @@ lancereset(void)
 	 */
 	*l.rap = 0;
 	*l.rdp = STOP;
+	l.wedged = 1;
 }
 
 /*
@@ -260,6 +261,12 @@ lancestart(int mode)
 	wbflush();
 	*l.rap = 0;
 	*l.rdp = INEA|INIT|STRT; /**/
+
+	for(i = 0; i < 1000; i++)
+		if(l.wedged == 0)
+			break;
+
+	qunlock(&l.tlock);
 }
 
 void
@@ -294,10 +301,8 @@ lanceintr(void)
 		}
 	}
 
-	if(csr & IDON){
+	if(csr & IDON)
 		l.wedged = 0;
-		qunlock(&l.tlock);
-	}
 
 	/*
 	 *  the lance turns off if it gets strange output errors

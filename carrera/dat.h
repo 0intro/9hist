@@ -98,7 +98,6 @@ struct Mach
 	int	tlbpurge;		/* MUST BE SIXTH */
 
 	/* the following are safe to move */
-	ulong	otlbfault;		/* tlbfault at last sched */
 	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
 	int	lastpid;		/* last pid allocated on this machine */
@@ -110,8 +109,7 @@ struct Mach
 	uchar	ktlbnext;
 	int	speed;			/* cpu speed */
 	ulong	delayloop;		/* for the delay() routine */
-	Schedq	hiq;
-	Schedq	loq;
+	int	nrdy;
 
 	int	pfault;
 	int	cs;

@@ -125,8 +125,7 @@ struct Mach
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
-	Schedq	hiq;
-	Schedq	loq;
+	int	nrdy;
 
 	int	tlbfault;
 	int	tlbpurge;
