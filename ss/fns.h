@@ -61,9 +61,10 @@ void	screeninit(void);
 void	screenputc(int);
 void	screenputs(char*, int);
 void	spldone(void);
-ulong	swap1(ulong*);
+ulong	tas(ulong*);
 void	touser(ulong);
 void	trap(Ureg*);
 void	trapinit(void);
 #define	wbflush()	/* mips compatibility */
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
+#define getcallerpc(x)	(*(ulong*)(x))

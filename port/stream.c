@@ -235,9 +235,12 @@ freeb(Block *bp)
 	Block *nbp;
 	Bclass *bcp;
 	int x;
+	ulong pc;
 
-	if((bp->flags&S_CLASS) >= Nclass)
-		panic("freeb class");
+	pc = getcallerpc(((uchar*)&bp) - sizeof(bp));
+	if((bp->flags&S_CLASS) >= Nclass)		/* Check for double free */
+		panic("freeb class last(%lux) this(%lux)", bp->pc, pc);
+	bp->pc = pc;
 
 	for(; bp; bp = nbp){
 		bcp = &bclass[bp->flags & S_CLASS];

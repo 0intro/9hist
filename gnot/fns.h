@@ -61,3 +61,4 @@ int	tas(char*);
 void	touser(void);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
+#define getcallerpc(x)	(*(ulong*)(x))

@@ -132,16 +132,16 @@ lock(Lock *l)
 	 * Try the fast grab first
 	 */
 	if((*sbsem&1) == 0){
-		l->pc = getcallerpc();
+		l->pc = getcallerpc(l);
 		return;
 	}
 	for(i=0; i<10000000; i++)
     		if((*sbsem&1) == 0){
-			l->pc = getcallerpc();
+			l->pc = getcallerpc(l);
 			return;
 	}
 	*sbsem = 0;
-	print("lock loop %lux pc %lux held by pc %lux\n", l, getcallerpc(), l->pc);
+	print("lock loop %lux pc %lux held by pc %lux\n", l, getcallerpc(l), l->pc);
 	dumpstack();
 }
 
@@ -168,7 +168,7 @@ canlock(Lock *l)
 	}
 	if(*sbsem & 1)
 		return 0;
-	l->pc = getcallerpc();
+	l->pc = getcallerpc(l);
 	return 1;
 }
 

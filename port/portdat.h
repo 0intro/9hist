@@ -107,6 +107,7 @@ struct Block
 	uchar	*base;			/* start of the buffer */
 	uchar	flags;
 	uchar	type;
+	ulong	pc;			/* pc of caller */
 };
 
 struct Blist {

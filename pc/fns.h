@@ -57,9 +57,10 @@ void	setvec(int, void (*)(Ureg*));
 void	systrap(void);
 void	touser(void);
 void	trapinit(void);
-int	tas(Lock*);
+int	tas(void*);
 void	uartclock(void);
 void	uartintr0(Ureg*);
 void	vgainit(void);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
+#define getcallerpc(x)	(*(ulong*)(x))

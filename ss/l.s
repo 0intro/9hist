@@ -55,7 +55,7 @@ TEXT	startvirt(SB), $-4
 	MOVW	(R0), R0
 	RETURN
 
-TEXT	swap1(SB), $0
+TEXT	tas(SB), $0
 
 	TAS	(R7), R7		/* LDSTUB, thank you ken */
 	RETURN

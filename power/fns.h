@@ -25,7 +25,7 @@ void	flushmmu(void);
 void	gettlb(int, ulong*);
 ulong	gettlbvirt(int);
 void	gotopc(ulong);
-ulong	getcallerpc(void);
+ulong	getcallerpc(void*);
 void	icflush(void *, ulong);
 void	ioboardinit(void);
 void	intr(Ureg*);
