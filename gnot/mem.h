@@ -93,7 +93,8 @@
 #define	UZERO	KUSEG			/* base of user address space */
 #define	UTZERO	(UZERO+BY2PG)		/* first address in user text */
 #define	TSTKTOP	0x10000000		/* end of new stack in sysexec */
-#define	USTKTOP	(TSTKTOP-100*BY2PG)	/* byte just beyond user stack */
+#define TSTKSIZ 100
+#define	USTKTOP	(TSTKTOP-TSTKSIZ*BY2PG) /* byte just beyond user stack */
 #define	KZERO	KSEG			/* base of kernel address space */
 #define	KTZERO	(KZERO+BY2PG)		/* first address in kernel text */
 #define	USTACKSIZE	(4*1024*1024)	/* size of user stack */

@@ -339,11 +339,12 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(p->upage == 0)
 		errors("noted process disappeared");
 
-	if(p != u->p){
+	if(u == 0 || p != u->p){
 		k = kmap(p->upage);
 		up = (User*)VA(k);
 	}else 
 		up = u;
+
 
 	if(flag!=NUser && (up->notify==0 || up->notified))
 		up->nnote = 0;	/* force user's hand */
