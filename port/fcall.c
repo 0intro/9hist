@@ -40,6 +40,12 @@ convS2M(Fcall *f, char *ap)
 		STRING(auth, sizeof(f->auth));
 		break;
 
+	case Tauth:
+		SHORT(fid);
+		STRING(client, sizeof(f->client));
+		STRING(chal, 8+NAMELEN);
+		break;
+
 	case Tclone:
 		SHORT(fid);
 		SHORT(newfid);
@@ -117,6 +123,11 @@ convS2M(Fcall *f, char *ap)
 		SHORT(fid);
 		LONG(qid.path);
 		LONG(qid.vers);
+		break;
+
+	case Rauth:
+		SHORT(fid);
+		STRING(chal, 8+8+7+7);
 		break;
 
 	case Rclone:
@@ -239,6 +250,12 @@ convM2S(char *ap, Fcall *f, int n)
 		STRING(auth, sizeof(f->auth));
 		break;
 
+	case Tauth:
+		SHORT(fid);
+		STRING(client, sizeof(f->client));
+		STRING(chal, 8+NAMELEN);
+		break;
+
 	case Tclone:
 		SHORT(fid);
 		SHORT(newfid);
@@ -316,6 +333,11 @@ convM2S(char *ap, Fcall *f, int n)
 		SHORT(fid);
 		LONG(qid.path);
 		LONG(qid.vers);
+		break;
+
+	case Rauth:
+		SHORT(fid);
+		STRING(chal, 8+8+7+7);
 		break;
 
 	case Rclone:
